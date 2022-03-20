@@ -1,0 +1,9 @@
+# The listen address and port of the network interface used for client communication.
+network:
+  # network.address denotes the listen address
+  address: 127.0.0.1
+  # network.port denotes the listen port
+  port: 11070
+
+# logLevel can be debug, info, warn, err, and panic
+logLevel: info
