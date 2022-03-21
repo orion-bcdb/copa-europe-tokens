@@ -11,6 +11,7 @@ import (
 
 	"github.com/copa-europe-tokens/pkg/config"
 	"github.com/copa-europe-tokens/pkg/server"
+	"github.com/hyperledger-labs/orion-server/pkg/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -80,8 +81,20 @@ func startCmd() *cobra.Command {
 			}
 
 			cmd.SilenceUsage = true
-			log.Println("Starting a copaTokens server")
-			tokensServer, err := server.NewTokensServer(conf)
+			c := &logger.Config{
+				Level:         conf.LogLevel,
+				OutputPath:    []string{"stdout"},
+				ErrOutputPath: []string{"stderr"},
+				Encoding:      "console",
+				Name:          "copa-tokens",
+			}
+			lg, err := logger.New(c)
+			if err != nil {
+				return err
+			}
+
+			lg.Info("Starting a COPA Europe tokens server")
+			tokensServer, err := server.NewTokensServer(conf, lg)
 			if err != nil {
 				return err
 			}
