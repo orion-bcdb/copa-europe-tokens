@@ -47,9 +47,10 @@ goimports:
 .PHONY: binary
 binary:
 	go build -o $(BIN)/copaTokens cmd/main.go
+	go build -o $(BIN)/bdb github.com/hyperledger-labs/orion-server/cmd/bdb
 
 .PHONY: clean
-clean: 
+clean:
 	@rm -rf $(BIN)
 	@rm -rf test/tests.* test/coverage.*
 
@@ -65,12 +66,14 @@ test-race:    ARGS=-race
 $(TEST_TARGETS): test
 check test tests:
 	go build -o $(BIN)/copaTokens cmd/main.go
+	go build -o $(BIN)/bdb github.com/hyperledger-labs/orion-server/cmd/bdb
 	go test -timeout $(TIMEOUT) $(ARGS) $(TESTPKGS)
 
-test-coverage-tools: | $(GOCOVMERGE) $(GOCOV) $(GOCOVXML) 
+test-coverage-tools: | $(GOCOVMERGE) $(GOCOV) $(GOCOVXML)
 test-coverage: COVERAGE_DIR := $(CURDIR)/test/coverage.$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 test-coverage: test-coverage-tools
 	go build -o $(BIN)/copaTokens cmd/main.go
+	go build -o $(BIN)/bdb github.com/hyperledger-labs/orion-server/cmd/bdb
 	mkdir -p $(COVERAGE_DIR)/coverage
 	$(GO) test \
 		-coverpkg=$$($(GO) list -f '{{ join .Deps "\n" }}' $(TESTPKGS) | \
