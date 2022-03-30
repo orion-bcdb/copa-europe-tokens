@@ -5,7 +5,7 @@ package types
 
 // HttpResponseErr holds an error message. It is used as the body of an http error response.
 type HttpResponseErr struct {
-	ErrMsg string `json:"error,omitempty"`
+	ErrMsg string `json:"error"`
 }
 
 func (e *HttpResponseErr) Error() string {
@@ -13,14 +13,16 @@ func (e *HttpResponseErr) Error() string {
 }
 
 type StatusResponse struct {
-	Status string `json:"status,omitempty"`
+	Status string `json:"status"`
 }
 
 type DeployRequest struct {
-
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
-
 type DeployResponse struct {
-
+	TypeId string `json:"typeId"`
+	Name   string `json:"name"`
+	Url    string `json:"url"`
 }
