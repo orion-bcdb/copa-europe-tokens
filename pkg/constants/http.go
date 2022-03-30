@@ -5,7 +5,8 @@ package constants
 
 const (
 	StatusEndpoint       = "/status"
-	TokensEndpoint       = "/tokens/"
-	TokensTypesEndpoint  = TokensEndpoint + "types"
-	TokensAssetsEndpoint = TokensEndpoint + "assets"
+	TokensEndpoint       = "/tokens"
+	TokensTypesEndpoint  = "/tokens/types"
+	TokensTypesQuery     = "/tokens/types/{typeId}"
+	TokensAssetsEndpoint = "/tokens/assets"
 )

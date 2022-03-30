@@ -27,7 +27,8 @@ func NewDeployHandler(manager tokens.Operations, lg *logger.SugarLogger) *deploy
 		lg:      lg,
 	}
 
-	handler.router.HandleFunc(constants.TokensTypesEndpoint, handler.queryTypes).Methods(http.MethodGet)
+	handler.router.HandleFunc(constants.TokensTypesQuery, handler.queryType).Methods(http.MethodGet)
+	handler.router.HandleFunc(constants.TokensTypesEndpoint, handler.listTypes).Methods(http.MethodGet)
 	handler.router.HandleFunc(constants.TokensTypesEndpoint, handler.deployType).Methods(http.MethodPost)
 	//TODO add method not allowed handler
 
@@ -38,9 +39,30 @@ func (d *deployHandler) ServeHTTP(response http.ResponseWriter, request *http.Re
 	d.router.ServeHTTP(response, request)
 }
 
-func (d *deployHandler) queryTypes(response http.ResponseWriter, request *http.Request) {
+func (d *deployHandler) listTypes(response http.ResponseWriter, request *http.Request) {
 	//TODO
 	SendHTTPResponse(response, http.StatusNotImplemented, &types.HttpResponseErr{ErrMsg: "not implemented yet"}, d.lg)
+}
+
+func (d *deployHandler) queryType(response http.ResponseWriter, request *http.Request) {
+	params := mux.Vars(request)
+	tokenTypeId := params["typeId"]
+
+	deployResponse, err := d.manager.GetTokenType(tokenTypeId)
+	if err != nil {
+		switch err.(type) {
+		case *tokens.ErrInvalid:
+			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		case *tokens.ErrNotFound:
+			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		default:
+			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		}
+
+		return
+	}
+
+	SendHTTPResponse(response, http.StatusOK, deployResponse, d.lg)
 }
 
 func (d *deployHandler) deployType(response http.ResponseWriter, request *http.Request) {
@@ -68,5 +90,5 @@ func (d *deployHandler) deployType(response http.ResponseWriter, request *http.R
 		return
 	}
 
-	SendHTTPResponse(response, http.StatusOK, deployResponse, d.lg)
+	SendHTTPResponse(response, http.StatusCreated, deployResponse, d.lg)
 }
