@@ -22,7 +22,8 @@ type DeployRequest struct {
 }
 
 type DeployResponse struct {
-	TypeId string `json:"typeId"`
-	Name   string `json:"name"`
-	Url    string `json:"url"`
+	TypeId      string `json:"typeId"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Url         string `json:"url"`
 }

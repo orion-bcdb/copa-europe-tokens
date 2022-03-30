@@ -25,9 +25,9 @@ import (
 )
 
 const (
-	TokenDBSeparator        = "."
-	TypesDBName             = "token-types"
-	TokenTypeDBNamePrefix   = "tt" + TokenDBSeparator
+	TokenDBSeparator      = "."
+	TypesDBName           = "token-types"
+	TokenTypeDBNamePrefix = "ttid" + TokenDBSeparator
 )
 
 //go:generate counterfeiter -o mocks/operations.go --fake-name Operations . Operations
@@ -35,6 +35,7 @@ const (
 type Operations interface {
 	GetStatus() (string, error)
 	DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error)
+	GetTokenType(tokenTypeId string) (*types.DeployResponse, error)
 }
 
 type Manager struct {
@@ -243,10 +244,50 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 	m.lg.Infof("Custodian [%s] granted RW privilege to database: %s; txID: %s, receipt: %+v", m.config.Users.Custodian.UserID, tokenDBName, txID, receiptEnv.GetResponse().GetReceipt())
 
 	return &types.DeployResponse{
-		TypeId: tokenTypeIDBase64,
-		Name:   deployRequest.Name,
-		Url:    constants.TokensTypesEndpoint + "/" + tokenTypeIDBase64,
+		TypeId:      tokenTypeIDBase64,
+		Name:        deployRequest.Name,
+		Description: deployRequest.Description,
+		Url:         constants.TokensTypesEndpoint + "/" + tokenTypeIDBase64,
 	}, nil
+}
+
+func (m *Manager) GetTokenType(tokenTypeId string) (*types.DeployResponse, error) {
+	if tokenTypeId == "" {
+		return nil, &ErrInvalid{ErrMsg: "token type ID is empty"}
+	}
+
+	if len(tokenTypeId) > base64.RawURLEncoding.EncodedLen(crypto.MD5.Size()) {
+		return nil, &ErrInvalid{ErrMsg: "token type ID is too long"}
+	}
+	if _, err := base64.RawURLEncoding.DecodeString(tokenTypeId); err != nil {
+		return nil, &ErrInvalid{ErrMsg: "token type ID is not in base64url"}
+	}
+
+	dataTx, err := m.custodianSession.DataTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create DataTx")
+	}
+
+	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
+	val, meta, err := dataTx.Get(TypesDBName, tokenDBName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to Get %s", tokenDBName)
+	}
+
+	if val == nil {
+		return nil, &ErrNotFound{ErrMsg: "not found"}
+	}
+
+	deployResponse := &types.DeployResponse{}
+	err = json.Unmarshal(val, deployResponse)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to json.Unmarshal %s", tokenDBName)
+	}
+	deployResponse.Url = constants.TokensTypesEndpoint + "/" + deployResponse.TypeId
+
+	m.lg.Debugf("Token type deploy response: %+v; metadata: %v", deployResponse, meta)
+
+	return deployResponse, nil
 }
 
 func nodeConfigToString(n *oriontypes.NodeConfig) string {
@@ -378,40 +419,4 @@ func (m *Manager) createTypesDB() (err error) {
 	m.lg.Infof("Created DB: %s, TxID: %s, receipt: %+v", TypesDBName, txID, receiptEnv.GetResponse().GetReceipt())
 
 	return nil
-}
-
-func ComputeSHA256Hash(msgBytes []byte) ([]byte, error) {
-	digest := crypto.SHA256.New()
-	_, err := digest.Write(msgBytes)
-	if err != nil {
-		return nil, err
-	}
-	return digest.Sum(nil), nil
-}
-
-func ComputeSHA1Hash(msgBytes []byte) ([]byte, error) {
-	digest := crypto.SHA1.New()
-	_, err := digest.Write(msgBytes)
-	if err != nil {
-		return nil, err
-	}
-	return digest.Sum(nil), nil
-}
-
-func ComputeMD5Hash(msgBytes []byte) ([]byte, error) {
-	digest := crypto.MD5.New()
-	_, err := digest.Write(msgBytes)
-	if err != nil {
-		return nil, err
-	}
-	return digest.Sum(nil), nil
-}
-
-func NameToID(name string) (string, error) {
-	tokenIDBytes, err := ComputeMD5Hash([]byte(name))
-	if err != nil {
-		return "", errors.Wrap(err, "failed to compute hash of token type name")
-	}
-	tokenTypeIDBase64 := base64.RawURLEncoding.EncodeToString(tokenIDBytes)
-	return tokenTypeIDBase64, nil
 }
