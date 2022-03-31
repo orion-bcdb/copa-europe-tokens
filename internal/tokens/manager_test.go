@@ -1,19 +1,24 @@
 package tokens
 
 import (
-	"github.com/copa-europe-tokens/pkg/constants"
-	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/stretchr/testify/assert"
+	"encoding/base64"
 	"io/ioutil"
+	"os"
 	"path"
 	"testing"
 	"time"
 
 	"github.com/copa-europe-tokens/pkg/config"
+	"github.com/copa-europe-tokens/pkg/constants"
+	"github.com/copa-europe-tokens/pkg/types"
+	"github.com/golang/protobuf/proto"
 	sdkconfig "github.com/hyperledger-labs/orion-sdk-go/pkg/config"
+	"github.com/hyperledger-labs/orion-server/pkg/crypto"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
 	"github.com/hyperledger-labs/orion-server/pkg/server/testutils"
+	oriontypes "github.com/hyperledger-labs/orion-server/pkg/types"
 	"github.com/hyperledger-labs/orion-server/test/setup"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -346,9 +351,238 @@ func TestTokensManager_GetTokenType(t *testing.T) {
 	})
 }
 
+func TestTokensManager_MintToken(t *testing.T) {
+	env := newTestEnv(t)
+
+	manager, err := NewManager(env.conf, env.lg)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	stat, err := manager.GetStatus()
+	require.NoError(t, err)
+	require.Contains(t, stat, "connected:")
+
+	deployRequest := &types.DeployRequest{
+		Name:        "my-NFT",
+		Description: "my NFT for testing",
+	}
+
+	deployResponseMy, err := manager.DeployTokenType(deployRequest)
+	assert.NoError(t, err)
+
+	t.Run("success: owner is custodian", func(t *testing.T) { //TODO should we prevent custodian and admin from owning tokens?
+		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		assert.NoError(t, err)
+		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+
+		mintRequest := &types.MintRequest{
+			Owner:         "alice",
+			AssetData:     "my asset",
+			AssetMetadata: "my asset meta",
+		}
+		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxPayload)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		_, keyPath := env.cluster.GetUserCertKeyPath("alice")
+		aliceSigner, err := crypto.NewSigner(&crypto.SignerOptions{
+			Identity:    "alice",
+			KeyFilePath: keyPath,
+		})
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, aliceSigner, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       mintResponse.TokenId,
+			TxPayload:     mintResponse.TxPayload,
+			TxPayloadHash: mintResponse.TxPayloadHash,
+			Signer:        "alice",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.NoError(t, err)
+		require.NotNil(t, submitResponse)
+		require.Equal(t, submitRequest.TokenId, submitResponse.TokenId)
+	})
+
+	t.Run("error: token already exists", func(t *testing.T) {
+		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		assert.NoError(t, err)
+		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+
+		mintRequest := &types.MintRequest{
+			Owner:         "charlie",
+			AssetData:     "my asset",
+			AssetMetadata: "my asset meta",
+		}
+		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
+		require.EqualError(t, err, "token already exists")
+		require.IsType(t, &ErrExist{}, err)
+		require.Nil(t, mintResponse)
+	})
+
+	t.Run("error: not a user", func(t *testing.T) {
+		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		assert.NoError(t, err)
+		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+
+		mintRequest := &types.MintRequest{
+			Owner:         "charlie",
+			AssetData:     "charlie's asset",
+			AssetMetadata: "charlie's asset meta",
+		}
+		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxPayload)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		_, keyPath := env.cluster.GetUserCertKeyPath("charlie")
+		aliceSigner, err := crypto.NewSigner(&crypto.SignerOptions{
+			Identity:    "charlie",
+			KeyFilePath: keyPath,
+		})
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, aliceSigner, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       mintResponse.TokenId,
+			TxPayload:     mintResponse.TxPayload,
+			TxPayloadHash: mintResponse.TxPayloadHash,
+			Signer:        "charlie",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.EqualError(t, err, "failed to submit transaction, server returned: status: 401 Unauthorized, message: signature verification failed")
+		require.IsType(t, &ErrPermission{}, err)
+		require.Nil(t, submitResponse)
+	})
+
+}
+
 func assertEqualDeployResponse(t *testing.T, expected, actual *types.DeployResponse) {
 	assert.Equal(t, expected.Name, actual.Name)
 	assert.Equal(t, expected.TypeId, actual.TypeId)
 	assert.Equal(t, expected.Description, actual.Description)
 	assert.Equal(t, expected.Url, actual.Url)
+}
+
+func testLogger(t *testing.T, level string) *logger.SugarLogger {
+	lg, err := logger.New(&logger.Config{
+		Level:         level,
+		OutputPath:    []string{"stdout"},
+		ErrOutputPath: []string{"stderr"},
+		Encoding:      "console",
+		Name:          "copa-tokens-test",
+	})
+	require.NoError(t, err)
+	return lg
+}
+
+type testEnv struct {
+	dir     string
+	cluster *setup.Cluster
+	conf    *config.Configuration
+	lg      *logger.SugarLogger
+}
+
+func newTestEnv(t *testing.T) *testEnv {
+	e := &testEnv{}
+	t.Cleanup(e.clean)
+
+	dir, err := ioutil.TempDir("", "token-manager-test")
+	require.NoError(t, err)
+
+	nPort := uint32(7581)
+	pPort := uint32(7681)
+	setupConfig := &setup.Config{
+		NumberOfServers:     1,
+		TestDirAbsolutePath: dir,
+		BDBBinaryPath:       "../../bin/bdb",
+		CmdTimeout:          10 * time.Second,
+		BaseNodePort:        nPort,
+		BasePeerPort:        pPort,
+	}
+	e.cluster, err = setup.NewCluster(setupConfig)
+	require.NoError(t, err)
+
+	err = e.cluster.Start()
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool { return e.cluster.AgreedLeader(t, 0) >= 0 }, 30*time.Second, time.Second)
+
+	adminCertPath, adminKeyPath := e.cluster.GetUserCertKeyPath("admin")
+	aliceCertPath, aliceKeyPath := e.cluster.GetUserCertKeyPath("alice")
+	e.conf = &config.Configuration{
+		Network: config.NetworkConf{
+			Address: "127.0.0.1",
+			Port:    6481,
+		},
+		TLS:      config.TLSConf{Enabled: false},
+		LogLevel: "debug",
+		Orion: config.OrionConf{
+			Replicas: []*sdkconfig.Replica{
+				{
+					ID:       "node-1",
+					Endpoint: e.cluster.Servers[0].URL(),
+				},
+			},
+			CaConfig: config.CAConf{
+				RootCACertsPath: []string{path.Join(setupConfig.TestDirAbsolutePath, "ca", testutils.RootCAFileName+".pem")},
+			},
+		},
+		Users: config.UsersConf{
+			Admin: sdkconfig.UserConfig{
+				UserID:         "admin",
+				CertPath:       adminCertPath,
+				PrivateKeyPath: adminKeyPath,
+			},
+			Custodian: sdkconfig.UserConfig{
+				UserID:         "alice",
+				CertPath:       aliceCertPath,
+				PrivateKeyPath: aliceKeyPath,
+			},
+		},
+		Session: config.SessionConf{
+			TxTimeout:    10 * time.Second,
+			QueryTimeout: 10 * time.Second,
+		},
+	}
+
+	e.lg, err = logger.New(&logger.Config{
+		Level:         "debug",
+		OutputPath:    []string{"stdout"},
+		ErrOutputPath: []string{"stderr"},
+		Encoding:      "console",
+		Name:          "copa-tokens-test",
+	})
+	require.NoError(t, err)
+
+	return e
+}
+
+func (e *testEnv) clean() {
+	if e == nil {
+		return
+	}
+	if e.cluster != nil {
+		_ = e.cluster.ShutdownAndCleanup()
+	}
+	_ = os.RemoveAll(e.dir)
 }

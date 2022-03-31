@@ -47,6 +47,33 @@ type Operations struct {
 		result1 *types.DeployResponse
 		result2 error
 	}
+	PrepareMintStub        func(string, *types.MintRequest) (*types.MintResponse, error)
+	prepareMintMutex       sync.RWMutex
+	prepareMintArgsForCall []struct {
+		arg1 string
+		arg2 *types.MintRequest
+	}
+	prepareMintReturns struct {
+		result1 *types.MintResponse
+		result2 error
+	}
+	prepareMintReturnsOnCall map[int]struct {
+		result1 *types.MintResponse
+		result2 error
+	}
+	SubmitTxStub        func(*types.SubmitRequest) (*types.SubmitResponse, error)
+	submitTxMutex       sync.RWMutex
+	submitTxArgsForCall []struct {
+		arg1 *types.SubmitRequest
+	}
+	submitTxReturns struct {
+		result1 *types.SubmitResponse
+		result2 error
+	}
+	submitTxReturnsOnCall map[int]struct {
+		result1 *types.SubmitResponse
+		result2 error
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -232,6 +259,133 @@ func (fake *Operations) GetTokenTypeReturnsOnCall(i int, result1 *types.DeployRe
 	}{result1, result2}
 }
 
+func (fake *Operations) PrepareMint(arg1 string, arg2 *types.MintRequest) (*types.MintResponse, error) {
+	fake.prepareMintMutex.Lock()
+	ret, specificReturn := fake.prepareMintReturnsOnCall[len(fake.prepareMintArgsForCall)]
+	fake.prepareMintArgsForCall = append(fake.prepareMintArgsForCall, struct {
+		arg1 string
+		arg2 *types.MintRequest
+	}{arg1, arg2})
+	fake.recordInvocation("PrepareMint", []interface{}{arg1, arg2})
+	fake.prepareMintMutex.Unlock()
+	if fake.PrepareMintStub != nil {
+		return fake.PrepareMintStub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	fakeReturns := fake.prepareMintReturns
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) PrepareMintCallCount() int {
+	fake.prepareMintMutex.RLock()
+	defer fake.prepareMintMutex.RUnlock()
+	return len(fake.prepareMintArgsForCall)
+}
+
+func (fake *Operations) PrepareMintCalls(stub func(string, *types.MintRequest) (*types.MintResponse, error)) {
+	fake.prepareMintMutex.Lock()
+	defer fake.prepareMintMutex.Unlock()
+	fake.PrepareMintStub = stub
+}
+
+func (fake *Operations) PrepareMintArgsForCall(i int) (string, *types.MintRequest) {
+	fake.prepareMintMutex.RLock()
+	defer fake.prepareMintMutex.RUnlock()
+	argsForCall := fake.prepareMintArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *Operations) PrepareMintReturns(result1 *types.MintResponse, result2 error) {
+	fake.prepareMintMutex.Lock()
+	defer fake.prepareMintMutex.Unlock()
+	fake.PrepareMintStub = nil
+	fake.prepareMintReturns = struct {
+		result1 *types.MintResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) PrepareMintReturnsOnCall(i int, result1 *types.MintResponse, result2 error) {
+	fake.prepareMintMutex.Lock()
+	defer fake.prepareMintMutex.Unlock()
+	fake.PrepareMintStub = nil
+	if fake.prepareMintReturnsOnCall == nil {
+		fake.prepareMintReturnsOnCall = make(map[int]struct {
+			result1 *types.MintResponse
+			result2 error
+		})
+	}
+	fake.prepareMintReturnsOnCall[i] = struct {
+		result1 *types.MintResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) SubmitTx(arg1 *types.SubmitRequest) (*types.SubmitResponse, error) {
+	fake.submitTxMutex.Lock()
+	ret, specificReturn := fake.submitTxReturnsOnCall[len(fake.submitTxArgsForCall)]
+	fake.submitTxArgsForCall = append(fake.submitTxArgsForCall, struct {
+		arg1 *types.SubmitRequest
+	}{arg1})
+	fake.recordInvocation("SubmitTx", []interface{}{arg1})
+	fake.submitTxMutex.Unlock()
+	if fake.SubmitTxStub != nil {
+		return fake.SubmitTxStub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	fakeReturns := fake.submitTxReturns
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) SubmitTxCallCount() int {
+	fake.submitTxMutex.RLock()
+	defer fake.submitTxMutex.RUnlock()
+	return len(fake.submitTxArgsForCall)
+}
+
+func (fake *Operations) SubmitTxCalls(stub func(*types.SubmitRequest) (*types.SubmitResponse, error)) {
+	fake.submitTxMutex.Lock()
+	defer fake.submitTxMutex.Unlock()
+	fake.SubmitTxStub = stub
+}
+
+func (fake *Operations) SubmitTxArgsForCall(i int) *types.SubmitRequest {
+	fake.submitTxMutex.RLock()
+	defer fake.submitTxMutex.RUnlock()
+	argsForCall := fake.submitTxArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *Operations) SubmitTxReturns(result1 *types.SubmitResponse, result2 error) {
+	fake.submitTxMutex.Lock()
+	defer fake.submitTxMutex.Unlock()
+	fake.SubmitTxStub = nil
+	fake.submitTxReturns = struct {
+		result1 *types.SubmitResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) SubmitTxReturnsOnCall(i int, result1 *types.SubmitResponse, result2 error) {
+	fake.submitTxMutex.Lock()
+	defer fake.submitTxMutex.Unlock()
+	fake.SubmitTxStub = nil
+	if fake.submitTxReturnsOnCall == nil {
+		fake.submitTxReturnsOnCall = make(map[int]struct {
+			result1 *types.SubmitResponse
+			result2 error
+		})
+	}
+	fake.submitTxReturnsOnCall[i] = struct {
+		result1 *types.SubmitResponse
+		result2 error
+	}{result1, result2}
+}
+
 func (fake *Operations) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
@@ -241,6 +395,10 @@ func (fake *Operations) Invocations() map[string][][]interface{} {
 	defer fake.getStatusMutex.RUnlock()
 	fake.getTokenTypeMutex.RLock()
 	defer fake.getTokenTypeMutex.RUnlock()
+	fake.prepareMintMutex.RLock()
+	defer fake.prepareMintMutex.RUnlock()
+	fake.submitTxMutex.RLock()
+	defer fake.submitTxMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

@@ -17,6 +17,7 @@ import (
 	"github.com/copa-europe-tokens/pkg/config"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
+	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
 	sdkconfig "github.com/hyperledger-labs/orion-sdk-go/pkg/config"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
@@ -36,6 +37,8 @@ type Operations interface {
 	GetStatus() (string, error)
 	DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error)
 	GetTokenType(tokenTypeId string) (*types.DeployResponse, error)
+	PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error)
+	SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error)
 }
 
 type Manager struct {
@@ -252,15 +255,8 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 }
 
 func (m *Manager) GetTokenType(tokenTypeId string) (*types.DeployResponse, error) {
-	if tokenTypeId == "" {
-		return nil, &ErrInvalid{ErrMsg: "token type ID is empty"}
-	}
-
-	if len(tokenTypeId) > base64.RawURLEncoding.EncodedLen(crypto.MD5.Size()) {
-		return nil, &ErrInvalid{ErrMsg: "token type ID is too long"}
-	}
-	if _, err := base64.RawURLEncoding.DecodeString(tokenTypeId); err != nil {
-		return nil, &ErrInvalid{ErrMsg: "token type ID is not in base64url"}
+	if err := validateMD5Base64ID(tokenTypeId, "token type"); err != nil {
+		return nil, err
 	}
 
 	dataTx, err := m.custodianSession.DataTx()
@@ -288,6 +284,143 @@ func (m *Manager) GetTokenType(tokenTypeId string) (*types.DeployResponse, error
 	m.lg.Debugf("Token type deploy response: %+v; metadata: %v", deployResponse, meta)
 
 	return deployResponse, nil
+}
+
+func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error) {
+	if err := validateMD5Base64ID(tokenTypeId, "token type"); err != nil {
+		return nil, err
+	}
+
+	if mintRequest.Owner == "" {
+		return nil, &ErrInvalid{ErrMsg: "missing owner"}
+	}
+	if mintRequest.AssetData == "" {
+		return nil, &ErrInvalid{ErrMsg: "missing asset data"}
+	}
+
+	assetDataId, err := NameToID(mintRequest.AssetData)
+	if err != nil {
+		return nil, err
+	}
+
+	dataTx, err := m.custodianSession.DataTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create DataTx")
+	}
+
+	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
+	val, meta, err := dataTx.Get(tokenDBName, assetDataId)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to Get %s", tokenDBName)
+	}
+	if val != nil {
+		m.lg.Debugf("token already exists: DB: %s, assetId: %s, record: %s, meta: %+v", tokenDBName, assetDataId, string(val), meta)
+		return nil, &ErrExist{ErrMsg: "token already exists"}
+	}
+
+	record := &types.TokenRecord{
+		AssetDataId:   assetDataId,
+		Owner:         mintRequest.Owner,
+		AssetData:     mintRequest.AssetData,
+		AssetMetadata: mintRequest.AssetMetadata,
+	}
+
+	val, err = json.Marshal(record)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to json.Marshal record")
+	}
+
+	dataTx.Put(tokenDBName, assetDataId, val,
+		&oriontypes.AccessControl{
+			ReadWriteUsers: map[string]bool{
+				m.config.Users.Custodian.UserID: true,
+				mintRequest.Owner:               true,
+			},
+		},
+	)
+
+	dataTx.AddMustSignUser(mintRequest.Owner)
+
+	txEnv, err := dataTx.SignConstructedTxEnvelopeAndCloseTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to construct Tx envelope")
+	}
+
+	txEnvBytes, err := proto.Marshal(txEnv)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
+	}
+
+	payloadBytes, err := json.Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
+	}
+	payloadHash, err := ComputeSHA256Hash(payloadBytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to compute hash of DataTx bytes")
+	}
+
+	m.lg.Debugf("Received mint request for token: %+v", record)
+
+	mintResponse := &types.MintResponse{
+		TokenId:       tokenTypeId + "." + assetDataId,
+		Owner:         mintRequest.Owner,
+		TxPayload:     base64.StdEncoding.EncodeToString(txEnvBytes),
+		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
+	}
+
+	return mintResponse, nil
+}
+
+func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error) {
+	tokenTypeId, assetId, err := parseTokenId(submitRequest.TokenId)
+	if err != nil {
+		return nil, err
+	}
+
+	m.lg.Infof("Custodian [%s] preparing to commit the Tx to the database,  tokenTypeId: %s, assetId: %s, signer: %s",
+		m.config.Users.Custodian.UserID, tokenTypeId, assetId, submitRequest.Signer)
+
+	txEnvBytes, err := base64.StdEncoding.DecodeString(submitRequest.TxPayload)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to decode TxPayload")
+	}
+
+	txEnv := &oriontypes.DataTxEnvelope{}
+	err = proto.Unmarshal(txEnvBytes, txEnv)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to proto.Unmarshal TxPayload")
+	}
+
+	sigBytes, err := base64.StdEncoding.DecodeString(submitRequest.Signature)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to decode Signature")
+	}
+
+	txEnv.Signatures[submitRequest.Signer] = sigBytes
+
+	loadedTx, err := m.custodianSession.LoadDataTx(txEnv)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load tx envelope")
+	}
+
+	txID, receiptEnv, err := loadedTx.Commit(true)
+	if err != nil {
+		if strings.Contains(err.Error(), "status: 401 Unauthorized") {
+			return nil, &ErrPermission{ErrMsg: err.Error()}
+		}
+		return nil, err
+	}
+
+	m.lg.Infof("Custodian [%s] committed the Tx to the database, txID: %s, receipt: %+v", m.config.Users.Custodian.UserID, txID, receiptEnv.GetResponse().GetReceipt())
+
+	receiptBytes, err := proto.Marshal(receiptEnv)
+
+	return &types.SubmitResponse{
+		TokenId:   submitRequest.TokenId,
+		TxId:      txID,
+		TxReceipt: base64.StdEncoding.EncodeToString(receiptBytes),
+	}, nil
 }
 
 func nodeConfigToString(n *oriontypes.NodeConfig) string {
@@ -419,4 +552,37 @@ func (m *Manager) createTypesDB() (err error) {
 	m.lg.Infof("Created DB: %s, TxID: %s, receipt: %+v", TypesDBName, txID, receiptEnv.GetResponse().GetReceipt())
 
 	return nil
+}
+
+func validateMD5Base64ID(tokenTypeId string, tag string) error {
+	if tokenTypeId == "" {
+		return &ErrInvalid{ErrMsg: fmt.Sprintf("%s ID is empty", tag)}
+	}
+
+	if len(tokenTypeId) > base64.RawURLEncoding.EncodedLen(crypto.MD5.Size()) {
+		return &ErrInvalid{ErrMsg: fmt.Sprintf("%s ID is too long", tag)}
+	}
+
+	if _, err := base64.RawURLEncoding.DecodeString(tokenTypeId); err != nil {
+		return &ErrInvalid{ErrMsg: fmt.Sprintf("%s ID is not in base64url", tag)}
+	}
+
+	return nil
+}
+
+func parseTokenId(tokenId string) (tokenTypeId, assetDataId string, err error) {
+	ids := strings.Split(tokenId, ".")
+	if len(ids) != 2 {
+		return "", "", &ErrInvalid{ErrMsg: "invalid tokenId"}
+	}
+
+	if err := validateMD5Base64ID(ids[0], "token type"); err != nil {
+		return "", "", err
+	}
+
+	if err := validateMD5Base64ID(ids[1], "asset"); err != nil {
+		return "", "", err
+	}
+
+	return ids[0], ids[1], nil
 }

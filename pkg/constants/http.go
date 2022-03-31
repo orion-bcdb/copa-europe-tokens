@@ -4,9 +4,15 @@
 package constants
 
 const (
-	StatusEndpoint       = "/status"
-	TokensEndpoint       = "/tokens"
-	TokensTypesEndpoint  = "/tokens/types"
-	TokensTypesQuery     = "/tokens/types/{typeId}"
-	TokensAssetsEndpoint = "/tokens/assets"
+	StatusEndpoint = "/status"
+	TokensEndpoint = "/tokens"
+
+	TokensTypesEndpoint = "/tokens/types"
+	TokensTypesQuery    = "/tokens/types/{typeId}"
+
+	TokensAssetsEndpoint        = "/tokens/assets"
+	TokensAssetsPrepareMint     = "/tokens/assets/prepare-mint/{typeId}"
+	TokensAssetsPrepareTransfer = "/tokens/assets/prepare-transfer/{typeId}"
+	TokensAssetsSubmit          = "/tokens/assets/submit"
+	TokensAssetsQuery           = "/tokens/assets/{assetId}"
 )
