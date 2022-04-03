@@ -304,6 +304,12 @@ func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest
 	if mintRequest.Owner == "" {
 		return nil, &ErrInvalid{ErrMsg: "missing owner"}
 	}
+	if mintRequest.Owner == m.config.Users.Custodian.UserID {
+		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("owner cannot be the custodian: %s", m.config.Users.Custodian.UserID)}
+	}
+	if mintRequest.Owner == m.config.Users.Admin.UserID {
+		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("owner cannot be the admin: %s", m.config.Users.Admin.UserID)}
+	}
 	if mintRequest.AssetData == "" {
 		return nil, &ErrInvalid{ErrMsg: "missing asset data"}
 	}

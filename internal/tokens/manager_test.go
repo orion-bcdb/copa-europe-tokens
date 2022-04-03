@@ -24,75 +24,9 @@ import (
 )
 
 func TestNewTokensManager(t *testing.T) {
-	dir, err := ioutil.TempDir("", "token-manager-test")
-	require.NoError(t, err)
+	env := newTestEnv(t)
 
-	nPort := uint32(7581)
-	pPort := uint32(7681)
-	setupConfig := &setup.Config{
-		NumberOfServers:     1,
-		TestDirAbsolutePath: dir,
-		BDBBinaryPath:       "../../bin/bdb",
-		CmdTimeout:          10 * time.Second,
-		BaseNodePort:        nPort,
-		BasePeerPort:        pPort,
-	}
-	c, err := setup.NewCluster(setupConfig)
-	require.NoError(t, err)
-	defer c.ShutdownAndCleanup()
-
-	require.NoError(t, c.Start())
-
-	require.Eventually(t, func() bool { return c.AgreedLeader(t, 0) >= 0 }, 30*time.Second, time.Second)
-
-	adminCertPath, adminKeyPath := c.GetUserCertKeyPath("admin")
-	aliceCertPath, aliceKeyPath := c.GetUserCertKeyPath("alice")
-	conf := &config.Configuration{
-		Network: config.NetworkConf{
-			Address: "127.0.0.1",
-			Port:    6481,
-		},
-		TLS:      config.TLSConf{Enabled: false},
-		LogLevel: "debug",
-		Orion: config.OrionConf{
-			Replicas: []*sdkconfig.Replica{
-				{
-					ID:       "node-1",
-					Endpoint: c.Servers[0].URL(),
-				},
-			},
-			CaConfig: config.CAConf{
-				RootCACertsPath: []string{path.Join(setupConfig.TestDirAbsolutePath, "ca", testutils.RootCAFileName+".pem")},
-			},
-		},
-		Users: config.UsersConf{
-			Admin: sdkconfig.UserConfig{
-				UserID:         "admin",
-				CertPath:       adminCertPath,
-				PrivateKeyPath: adminKeyPath,
-			},
-			Custodian: sdkconfig.UserConfig{
-				UserID:         "alice",
-				CertPath:       aliceCertPath,
-				PrivateKeyPath: aliceKeyPath,
-			},
-		},
-		Session: config.SessionConf{
-			TxTimeout:    10 * time.Second,
-			QueryTimeout: 10 * time.Second,
-		},
-	}
-
-	lg, err := logger.New(&logger.Config{
-		Level:         conf.LogLevel,
-		OutputPath:    []string{"stdout"},
-		ErrOutputPath: []string{"stderr"},
-		Encoding:      "console",
-		Name:          "copa-tokens-test",
-	})
-	require.NoError(t, err)
-
-	manager, err := NewManager(conf, lg)
+	manager, err := NewManager(env.conf, env.lg)
 	require.NoError(t, err)
 	require.NotNil(t, manager)
 
@@ -102,75 +36,9 @@ func TestNewTokensManager(t *testing.T) {
 }
 
 func TestTokensManager_Deploy(t *testing.T) {
-	dir, err := ioutil.TempDir("", "token-manager-test")
-	require.NoError(t, err)
+	env := newTestEnv(t)
 
-	nPort := uint32(7581)
-	pPort := uint32(7681)
-	setupConfig := &setup.Config{
-		NumberOfServers:     1,
-		TestDirAbsolutePath: dir,
-		BDBBinaryPath:       "../../bin/bdb",
-		CmdTimeout:          10 * time.Second,
-		BaseNodePort:        nPort,
-		BasePeerPort:        pPort,
-	}
-	c, err := setup.NewCluster(setupConfig)
-	require.NoError(t, err)
-	defer c.ShutdownAndCleanup()
-
-	require.NoError(t, c.Start())
-
-	require.Eventually(t, func() bool { return c.AgreedLeader(t, 0) >= 0 }, 30*time.Second, time.Second)
-
-	adminCertPath, adminKeyPath := c.GetUserCertKeyPath("admin")
-	aliceCertPath, aliceKeyPath := c.GetUserCertKeyPath("alice")
-	conf := &config.Configuration{
-		Network: config.NetworkConf{
-			Address: "127.0.0.1",
-			Port:    6481,
-		},
-		TLS:      config.TLSConf{Enabled: false},
-		LogLevel: "debug",
-		Orion: config.OrionConf{
-			Replicas: []*sdkconfig.Replica{
-				{
-					ID:       "node-1",
-					Endpoint: c.Servers[0].URL(),
-				},
-			},
-			CaConfig: config.CAConf{
-				RootCACertsPath: []string{path.Join(setupConfig.TestDirAbsolutePath, "ca", testutils.RootCAFileName+".pem")},
-			},
-		},
-		Users: config.UsersConf{
-			Admin: sdkconfig.UserConfig{
-				UserID:         "admin",
-				CertPath:       adminCertPath,
-				PrivateKeyPath: adminKeyPath,
-			},
-			Custodian: sdkconfig.UserConfig{
-				UserID:         "alice",
-				CertPath:       aliceCertPath,
-				PrivateKeyPath: aliceKeyPath,
-			},
-		},
-		Session: config.SessionConf{
-			TxTimeout:    10 * time.Second,
-			QueryTimeout: 10 * time.Second,
-		},
-	}
-
-	lg, err := logger.New(&logger.Config{
-		Level:         conf.LogLevel,
-		OutputPath:    []string{"stdout"},
-		ErrOutputPath: []string{"stderr"},
-		Encoding:      "console",
-		Name:          "copa-tokens-test",
-	})
-	require.NoError(t, err)
-
-	manager, err := NewManager(conf, lg)
+	manager, err := NewManager(env.conf, env.lg)
 	require.NoError(t, err)
 	require.NotNil(t, manager)
 
@@ -222,75 +90,9 @@ func TestTokensManager_Deploy(t *testing.T) {
 }
 
 func TestTokensManager_GetTokenType(t *testing.T) {
-	dir, err := ioutil.TempDir("", "token-manager-test")
-	require.NoError(t, err)
+	env := newTestEnv(t)
 
-	nPort := uint32(7581)
-	pPort := uint32(7681)
-	setupConfig := &setup.Config{
-		NumberOfServers:     1,
-		TestDirAbsolutePath: dir,
-		BDBBinaryPath:       "../../bin/bdb",
-		CmdTimeout:          10 * time.Second,
-		BaseNodePort:        nPort,
-		BasePeerPort:        pPort,
-	}
-	c, err := setup.NewCluster(setupConfig)
-	require.NoError(t, err)
-	defer c.ShutdownAndCleanup()
-
-	require.NoError(t, c.Start())
-
-	require.Eventually(t, func() bool { return c.AgreedLeader(t, 0) >= 0 }, 30*time.Second, time.Second)
-
-	adminCertPath, adminKeyPath := c.GetUserCertKeyPath("admin")
-	aliceCertPath, aliceKeyPath := c.GetUserCertKeyPath("alice")
-	conf := &config.Configuration{
-		Network: config.NetworkConf{
-			Address: "127.0.0.1",
-			Port:    6481,
-		},
-		TLS:      config.TLSConf{Enabled: false},
-		LogLevel: "debug",
-		Orion: config.OrionConf{
-			Replicas: []*sdkconfig.Replica{
-				{
-					ID:       "node-1",
-					Endpoint: c.Servers[0].URL(),
-				},
-			},
-			CaConfig: config.CAConf{
-				RootCACertsPath: []string{path.Join(setupConfig.TestDirAbsolutePath, "ca", testutils.RootCAFileName+".pem")},
-			},
-		},
-		Users: config.UsersConf{
-			Admin: sdkconfig.UserConfig{
-				UserID:         "admin",
-				CertPath:       adminCertPath,
-				PrivateKeyPath: adminKeyPath,
-			},
-			Custodian: sdkconfig.UserConfig{
-				UserID:         "alice",
-				CertPath:       aliceCertPath,
-				PrivateKeyPath: aliceKeyPath,
-			},
-		},
-		Session: config.SessionConf{
-			TxTimeout:    10 * time.Second,
-			QueryTimeout: 10 * time.Second,
-		},
-	}
-
-	lg, err := logger.New(&logger.Config{
-		Level:         conf.LogLevel,
-		OutputPath:    []string{"stdout"},
-		ErrOutputPath: []string{"stderr"},
-		Encoding:      "console",
-		Name:          "copa-tokens-test",
-	})
-	require.NoError(t, err)
-
-	manager, err := NewManager(conf, lg)
+	manager, err := NewManager(env.conf, env.lg)
 	require.NoError(t, err)
 	require.NotNil(t, manager)
 
@@ -371,15 +173,23 @@ func TestTokensManager_MintToken(t *testing.T) {
 	deployResponseMy, err := manager.DeployTokenType(deployRequest)
 	assert.NoError(t, err)
 
-	t.Run("success: owner is custodian", func(t *testing.T) { //TODO should we prevent custodian and admin from owning tokens?
+	t.Run("success: owner is user bob", func(t *testing.T) { //TODO should we prevent custodian and admin from owning tokens?
 		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
 		assert.NoError(t, err)
 		assertEqualDeployResponse(t, deployResponseMy, getResponse)
 
+		certBob, signerBob := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
+		err = manager.AddUser(&types.UserRecord{
+			Identity:    "bob",
+			Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
+			Privilege:   nil,
+		})
+		assert.NoError(t, err)
+
 		mintRequest := &types.MintRequest{
-			Owner:         "alice",
-			AssetData:     "my asset",
-			AssetMetadata: "my asset meta",
+			Owner:         "bob",
+			AssetData:     "bob's asset",
+			AssetMetadata: "bob's asset meta",
 		}
 		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
 		require.NoError(t, err)
@@ -391,21 +201,14 @@ func TestTokensManager_MintToken(t *testing.T) {
 		err = proto.Unmarshal(txEnvBytes, txEnv)
 		require.NoError(t, err)
 
-		_, keyPath := env.cluster.GetUserCertKeyPath("alice")
-		aliceSigner, err := crypto.NewSigner(&crypto.SignerOptions{
-			Identity:    "alice",
-			KeyFilePath: keyPath,
-		})
-		require.NoError(t, err)
-
-		sig := testutils.SignatureFromTx(t, aliceSigner, txEnv.Payload)
+		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
 		require.NotNil(t, sig)
 
 		submitRequest := &types.SubmitRequest{
 			TokenId:       mintResponse.TokenId,
 			TxPayload:     mintResponse.TxPayload,
 			TxPayloadHash: mintResponse.TxPayloadHash,
-			Signer:        "alice",
+			Signer:        "bob",
 			Signature:     base64.StdEncoding.EncodeToString(sig),
 		}
 
@@ -415,6 +218,33 @@ func TestTokensManager_MintToken(t *testing.T) {
 		require.Equal(t, submitRequest.TokenId, submitResponse.TokenId)
 	})
 
+
+	t.Run("error: owner is custodian or admin", func(t *testing.T) {
+		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		assert.NoError(t, err)
+		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+
+		mintRequest := &types.MintRequest{
+			Owner:         "alice",
+			AssetData:     "my asset",
+			AssetMetadata: "my asset meta",
+		}
+		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
+		require.EqualError(t, err, "owner cannot be the custodian: alice")
+		require.IsType(t, &ErrInvalid{}, err)
+		require.Nil(t, mintResponse)
+
+		mintRequest = &types.MintRequest{
+			Owner:         "admin",
+			AssetData:     "my asset",
+			AssetMetadata: "my asset meta",
+		}
+		mintResponse, err = manager.PrepareMint(getResponse.TypeId, mintRequest)
+		require.EqualError(t, err, "owner cannot be the admin: admin")
+		require.IsType(t, &ErrInvalid{}, err)
+		require.Nil(t, mintResponse)
+	})
+
 	t.Run("error: token already exists", func(t *testing.T) {
 		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
 		assert.NoError(t, err)
@@ -422,8 +252,8 @@ func TestTokensManager_MintToken(t *testing.T) {
 
 		mintRequest := &types.MintRequest{
 			Owner:         "charlie",
-			AssetData:     "my asset",
-			AssetMetadata: "my asset meta",
+			AssetData:     "bob's asset",
+			AssetMetadata: "bob's asset meta",
 		}
 		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
 		require.EqualError(t, err, "token already exists")
@@ -474,7 +304,6 @@ func TestTokensManager_MintToken(t *testing.T) {
 		require.IsType(t, &ErrPermission{}, err)
 		require.Nil(t, submitResponse)
 	})
-
 }
 
 func TestManager_Users(t *testing.T) {
@@ -571,18 +400,6 @@ func assertEqualDeployResponse(t *testing.T, expected, actual *types.DeployRespo
 	assert.Equal(t, expected.TypeId, actual.TypeId)
 	assert.Equal(t, expected.Description, actual.Description)
 	assert.Equal(t, expected.Url, actual.Url)
-}
-
-func testLogger(t *testing.T, level string) *logger.SugarLogger {
-	lg, err := logger.New(&logger.Config{
-		Level:         level,
-		OutputPath:    []string{"stdout"},
-		ErrOutputPath: []string{"stderr"},
-		Encoding:      "console",
-		Name:          "copa-tokens-test",
-	})
-	require.NoError(t, err)
-	return lg
 }
 
 type testEnv struct {
