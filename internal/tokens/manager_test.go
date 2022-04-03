@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"sort"
 	"testing"
 	"time"
 
@@ -474,6 +475,95 @@ func TestTokensManager_MintToken(t *testing.T) {
 		require.Nil(t, submitResponse)
 	})
 
+}
+
+func TestManager_Users(t *testing.T) {
+	env := newTestEnv(t)
+
+	manager, err := NewManager(env.conf, env.lg)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	stat, err := manager.GetStatus()
+	require.NoError(t, err)
+	require.Contains(t, stat, "connected:")
+
+	deployRequest1 := &types.DeployRequest{
+		Name:        "my-1st-NFT",
+		Description: "my NFT for testing",
+	}
+	deployResponse1, err := manager.DeployTokenType(deployRequest1)
+	assert.NoError(t, err)
+	deployRequest2 := &types.DeployRequest{
+		Name:        "my-2nd-NFT",
+		Description: "his NFT for testing",
+	}
+	deployResponse2, err := manager.DeployTokenType(deployRequest2)
+	assert.NoError(t, err)
+	tokenTypes := []string{deployResponse1.TypeId, deployResponse2.TypeId}
+	sort.Strings(tokenTypes)
+
+	// Add a user
+	certBob, _ := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
+	err = manager.AddUser(&types.UserRecord{
+		Identity:    "bob",
+		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
+		Privilege:   nil,
+	})
+	assert.NoError(t, err)
+
+	// Get a user
+	userRecord, err := manager.GetUser("bob")
+	assert.NoError(t, err)
+	assert.Equal(t, "bob", userRecord.Identity)
+	sort.Strings(userRecord.Privilege)
+	assert.Equal(t, tokenTypes, userRecord.Privilege)
+	assert.Equal(t, base64.StdEncoding.EncodeToString(certBob.Raw), userRecord.Certificate)
+
+	// Add same user again
+	err = manager.AddUser(&types.UserRecord{
+		Identity:    "bob",
+		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
+		Privilege:   nil,
+	})
+	assert.EqualError(t, err, "user already exists")
+	assert.IsType(t, &ErrExist{}, err)
+
+	// Update a user
+	certCharlie, _ := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "charlie")
+	err = manager.UpdateUser(&types.UserRecord{
+		Identity:    "bob",
+		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
+		Privilege:   []string{deployResponse1.TypeId},
+	})
+	assert.NoError(t, err)
+
+	// Get updated user
+	userRecord, err = manager.GetUser("bob")
+	assert.NoError(t, err)
+	assert.Equal(t, "bob", userRecord.Identity)
+	assert.Len(t, userRecord.Privilege, 1)
+	assert.Equal(t, deployResponse1.TypeId, userRecord.Privilege[0])
+	assert.Equal(t, base64.StdEncoding.EncodeToString(certCharlie.Raw), userRecord.Certificate)
+
+	// Delete user
+	err = manager.RemoveUser("bob")
+	assert.NoError(t, err)
+	userRecord, err = manager.GetUser("bob")
+	assert.EqualError(t, err, "user not found: bob")
+	assert.IsType(t, &ErrNotFound{}, err)
+	err = manager.RemoveUser("bob")
+	assert.EqualError(t, err, "user not found: bob")
+	assert.IsType(t, &ErrNotFound{}, err)
+
+	// Update a non-existing user
+	err = manager.UpdateUser(&types.UserRecord{
+		Identity:    "bob",
+		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
+		Privilege:   []string{deployResponse1.TypeId},
+	})
+	assert.EqualError(t, err, "user not found: bob")
+	assert.IsType(t, &ErrNotFound{}, err)
 }
 
 func assertEqualDeployResponse(t *testing.T, expected, actual *types.DeployResponse) {
