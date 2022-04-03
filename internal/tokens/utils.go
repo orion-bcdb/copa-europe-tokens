@@ -40,7 +40,7 @@ func ComputeMD5Hash(msgBytes []byte) ([]byte, error) {
 func NameToID(name string) (string, error) {
 	tokenIDBytes, err := ComputeMD5Hash([]byte(name))
 	if err != nil {
-		return "", errors.Wrap(err, "failed to compute hash of token type name")
+		return "", errors.Wrap(err, "failed to compute hash of name")
 	}
 	tokenTypeIDBase64 := base64.RawURLEncoding.EncodeToString(tokenIDBytes)
 	return tokenTypeIDBase64, nil
