@@ -37,16 +37,16 @@ type MintRequest struct {
 type MintResponse struct {
 	TokenId       string `json:"tokenId"`
 	Owner         string `json:"owner"`
-	TxPayload     string `json:"txPayload"`
-	TxPayloadHash string `json:"txPayloadHash"`
+	TxPayload     string `json:"txPayload"`     //base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }
 
 type SubmitRequest struct {
 	TokenId       string `json:"TokenId"`
-	TxPayload     string `json:"txPayload"`
-	TxPayloadHash string `json:"txPayloadHash"`
+	TxPayload     string `json:"txPayload"`     //base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 	Signer        string `json:"signer"`
-	Signature     string `json:"ownerSignature"`
+	Signature     string `json:"ownerSignature"` //base64 (std, padded) encoding of bytes
 }
 
 type SubmitResponse struct {
@@ -60,4 +60,10 @@ type TokenRecord struct {
 	Owner         string
 	AssetData     string `json:"assetData"`
 	AssetMetadata string `json:"assetMetadata"`
+}
+
+type UserRecord struct {
+	Identity    string   `json:"identity"`    //a unique identifier
+	Certificate string   `json:"certificate"` //base64 (std, padded) encoding of bytes
+	Privilege   []string `json:"privilege"`   //a list of token types, or empty for all
 }

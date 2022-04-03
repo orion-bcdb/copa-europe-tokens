@@ -5,7 +5,6 @@ package tokens
 
 import (
 	"bytes"
-	"crypto"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -37,9 +36,17 @@ type Operations interface {
 	GetStatus() (string, error)
 	DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error)
 	GetTokenType(tokenTypeId string) (*types.DeployResponse, error)
+
 	PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error)
 	SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error)
+
+	AddUser(userRecord *types.UserRecord) error
+	UpdateUser(userRecord *types.UserRecord) error
+	RemoveUser(userId string) error
+	GetUser(userId string) (*types.UserRecord, error)
 }
+
+// TODO handle ServerTimeout on Commit
 
 type Manager struct {
 	config *config.Configuration
@@ -48,6 +55,8 @@ type Manager struct {
 	bcDB             bcdb.BCDB
 	adminSession     bcdb.DBSession
 	custodianSession bcdb.DBSession
+
+	tokenTypesDBs map[string]bool
 }
 
 type TokenDescription struct {
@@ -61,6 +70,8 @@ func NewManager(config *config.Configuration, lg *logger.SugarLogger) (*Manager,
 	m := &Manager{
 		config: config,
 		lg:     lg,
+
+		tokenTypesDBs: make(map[string]bool),
 	}
 
 	if len(config.Orion.CaConfig.RootCACertsPath) == 0 {
@@ -87,9 +98,7 @@ func NewManager(config *config.Configuration, lg *logger.SugarLogger) (*Manager,
 		return nil, err
 	}
 
-	if err := m.createTypesDB(); err != nil {
-		return nil, err
-	}
+	//TODO read all token types to the cache
 
 	m.lg.Info("Connected to Orion")
 
@@ -244,6 +253,7 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 		return nil, errors.Wrap(err, "failed to commit user")
 	}
 
+	m.tokenTypesDBs[tokenDBName] = true
 	m.lg.Infof("Custodian [%s] granted RW privilege to database: %s; txID: %s, receipt: %+v", m.config.Users.Custodian.UserID, tokenDBName, txID, receiptEnv.GetResponse().GetReceipt())
 
 	return &types.DeployResponse{
@@ -423,6 +433,148 @@ func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitRes
 	}, nil
 }
 
+func (m *Manager) AddUser(userRecord *types.UserRecord) error {
+	m.lg.Debugf("Add user: %v", userRecord)
+	return m.writeUser(userRecord, true)
+}
+
+func (m *Manager) UpdateUser(userRecord *types.UserRecord) error {
+	m.lg.Debugf("Update user: %v", userRecord)
+	return m.writeUser(userRecord, false)
+}
+
+func (m *Manager) writeUser(userRecord *types.UserRecord, insert bool) error {
+	userTx, err := m.adminSession.UsersTx()
+	if err != nil {
+		return errors.Wrap(err, "failed to create userTx")
+	}
+
+	user, err := userTx.GetUser(userRecord.Identity)
+	if err != nil {
+		userTx.Abort()
+		return errors.Wrapf(err, "failed to get user: %s", userRecord.Identity)
+	}
+
+	if insert && user != nil {
+		userTx.Abort()
+		return &ErrExist{"user already exists"}
+	}
+
+	if !insert && user == nil {
+		userTx.Abort()
+		return &ErrNotFound{fmt.Sprintf("user not found: %s", userRecord.Identity)}
+	}
+
+	cert, err := base64.StdEncoding.DecodeString(userRecord.Certificate)
+	if err != nil {
+		return &ErrInvalid{ErrMsg: fmt.Sprintf("failed to decode certificate: %s", err.Error())}
+	}
+
+	privilege := &oriontypes.Privilege{
+		DbPermission: make(map[string]oriontypes.Privilege_Access),
+		Admin:        false,
+	}
+	// all token types or a partial list
+	if len(userRecord.Privilege) == 0 {
+		for db, _ := range m.tokenTypesDBs {
+			privilege.DbPermission[db] = oriontypes.Privilege_ReadWrite
+		}
+	} else {
+		for _, tt := range userRecord.Privilege {
+			db := TokenTypeDBNamePrefix + tt
+			if _, ok := m.tokenTypesDBs[db]; !ok {
+				return &ErrInvalid{fmt.Sprintf("token type does not exist: %s", tt)}
+			}
+			privilege.DbPermission[db] = oriontypes.Privilege_ReadWrite
+		}
+	}
+	user = &oriontypes.User{
+		Id:          userRecord.Identity,
+		Certificate: cert,
+		Privilege:   privilege,
+	}
+
+	err = userTx.PutUser(user, nil)
+	if err != nil {
+		userTx.Abort()
+		return errors.Wrapf(err, "failed to put user: %s", user.Id)
+	}
+
+	txID, receiptEnv, err := userTx.Commit(true)
+	if err != nil {
+		return errors.Wrap(err, "failed to commit user")
+	}
+
+	m.lg.Infof("User [%s] written to database, privilege: %+v; txID: %s, receipt: %+v", user.Id, user.GetPrivilege(), txID, receiptEnv.GetResponse().GetReceipt())
+
+	return nil
+}
+
+func (m *Manager) RemoveUser(userId string) error {
+	m.lg.Debugf("Removing user: %v", userId)
+
+	userTx, err := m.adminSession.UsersTx()
+	if err != nil {
+		return errors.Wrap(err, "failed to create userTx")
+	}
+
+	user, err := userTx.GetUser(userId)
+	if err != nil {
+		userTx.Abort()
+		return errors.Wrapf(err, "failed to get user: %s", userId)
+	}
+
+	if user == nil {
+		return &ErrNotFound{ErrMsg: fmt.Sprintf("user not found: %s", userId)}
+	}
+
+	err = userTx.RemoveUser(userId)
+	if err != nil {
+		userTx.Abort()
+		return errors.Wrapf(err, "failed to remove user: %s", userId)
+	}
+
+	txId, receiptEnv, err := userTx.Commit(true)
+	if err != nil {
+		return errors.Wrap(err, "failed to commit remove user")
+	}
+
+	m.lg.Infof("User [%s] removed from database; txID: %s, receipt: %+v", userId, txId, receiptEnv.GetResponse().GetReceipt())
+
+	return nil
+}
+
+func (m *Manager) GetUser(userId string) (*types.UserRecord, error) {
+	m.lg.Debugf("Getting user: %v", userId)
+
+	userTx, err := m.adminSession.UsersTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create userTx")
+	}
+	defer userTx.Abort()
+
+	user, err := userTx.GetUser(userId)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get user: %s", userId)
+	}
+	if user == nil {
+		return nil, &ErrNotFound{fmt.Sprintf("user not found: %s", userId)}
+	}
+
+	userRecord := &types.UserRecord{
+		Identity:    user.Id,
+		Certificate: base64.StdEncoding.EncodeToString(user.Certificate),
+		Privilege:   nil,
+	}
+
+	for dbName, _ := range user.Privilege.GetDbPermission() {
+		tt := dbName[len(TokenTypeDBNamePrefix):]
+		userRecord.Privilege = append(userRecord.Privilege, tt)
+	}
+
+	return userRecord, nil
+}
+
 func nodeConfigToString(n *oriontypes.NodeConfig) string {
 	return fmt.Sprintf("Id: %s, Address: %s, Port: %d, Cert-hash: %x", n.Id, n.Address, n.Port, crc32.ChecksumIEEE(n.Certificate))
 }
@@ -486,8 +638,10 @@ func (m *Manager) enrollCustodian() (err error) {
 			Id:          m.config.Users.Custodian.UserID,
 			Certificate: certBlock.Bytes,
 			Privilege: &oriontypes.Privilege{
-				DbPermission: map[string]oriontypes.Privilege_Access{TypesDBName: oriontypes.Privilege_Read},
-				Admin:        false,
+				DbPermission: map[string]oriontypes.Privilege_Access{
+					TypesDBName: oriontypes.Privilege_Read,
+				},
+				Admin: false,
 			},
 		},
 		nil)
@@ -552,37 +706,4 @@ func (m *Manager) createTypesDB() (err error) {
 	m.lg.Infof("Created DB: %s, TxID: %s, receipt: %+v", TypesDBName, txID, receiptEnv.GetResponse().GetReceipt())
 
 	return nil
-}
-
-func validateMD5Base64ID(tokenTypeId string, tag string) error {
-	if tokenTypeId == "" {
-		return &ErrInvalid{ErrMsg: fmt.Sprintf("%s ID is empty", tag)}
-	}
-
-	if len(tokenTypeId) > base64.RawURLEncoding.EncodedLen(crypto.MD5.Size()) {
-		return &ErrInvalid{ErrMsg: fmt.Sprintf("%s ID is too long", tag)}
-	}
-
-	if _, err := base64.RawURLEncoding.DecodeString(tokenTypeId); err != nil {
-		return &ErrInvalid{ErrMsg: fmt.Sprintf("%s ID is not in base64url", tag)}
-	}
-
-	return nil
-}
-
-func parseTokenId(tokenId string) (tokenTypeId, assetDataId string, err error) {
-	ids := strings.Split(tokenId, ".")
-	if len(ids) != 2 {
-		return "", "", &ErrInvalid{ErrMsg: "invalid tokenId"}
-	}
-
-	if err := validateMD5Base64ID(ids[0], "token type"); err != nil {
-		return "", "", err
-	}
-
-	if err := validateMD5Base64ID(ids[1], "asset"); err != nil {
-		return "", "", err
-	}
-
-	return ids[0], ids[1], nil
 }

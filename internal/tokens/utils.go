@@ -6,6 +6,8 @@ package tokens
 import (
 	"crypto"
 	"encoding/base64"
+	"fmt"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -44,4 +46,37 @@ func NameToID(name string) (string, error) {
 	}
 	tokenTypeIDBase64 := base64.RawURLEncoding.EncodeToString(tokenIDBytes)
 	return tokenTypeIDBase64, nil
+}
+
+func validateMD5Base64ID(tokenTypeId string, tag string) error {
+	if tokenTypeId == "" {
+		return &ErrInvalid{ErrMsg: fmt.Sprintf("%s ID is empty", tag)}
+	}
+
+	if len(tokenTypeId) > base64.RawURLEncoding.EncodedLen(crypto.MD5.Size()) {
+		return &ErrInvalid{ErrMsg: fmt.Sprintf("%s ID is too long", tag)}
+	}
+
+	if _, err := base64.RawURLEncoding.DecodeString(tokenTypeId); err != nil {
+		return &ErrInvalid{ErrMsg: fmt.Sprintf("%s ID is not in base64url", tag)}
+	}
+
+	return nil
+}
+
+func parseTokenId(tokenId string) (tokenTypeId, assetDataId string, err error) {
+	ids := strings.Split(tokenId, ".")
+	if len(ids) != 2 {
+		return "", "", &ErrInvalid{ErrMsg: "invalid tokenId"}
+	}
+
+	if err := validateMD5Base64ID(ids[0], "token type"); err != nil {
+		return "", "", err
+	}
+
+	if err := validateMD5Base64ID(ids[1], "asset"); err != nil {
+		return "", "", err
+	}
+
+	return ids[0], ids[1], nil
 }
