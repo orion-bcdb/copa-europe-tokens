@@ -216,6 +216,16 @@ func TestTokensManager_MintToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, submitResponse)
 		require.Equal(t, submitRequest.TokenId, submitResponse.TokenId)
+
+		// Get this token
+		tokenRecord, err := manager.GetToken(mintResponse.TokenId)
+		require.NoError(t, err)
+		require.Equal(t, mintRequest.Owner, tokenRecord.Owner)
+		require.Equal(t, mintRequest.AssetData, tokenRecord.AssetData)
+		require.Equal(t, mintRequest.AssetMetadata, tokenRecord.AssetMetadata)
+		h, err := ComputeMD5Hash([]byte(tokenRecord.AssetData))
+		require.NoError(t, err)
+		require.Equal(t, base64.RawURLEncoding.EncodeToString(h), tokenRecord.AssetDataId)
 	})
 
 
@@ -303,6 +313,28 @@ func TestTokensManager_MintToken(t *testing.T) {
 		require.EqualError(t, err, "failed to submit transaction, server returned: status: 401 Unauthorized, message: signature verification failed")
 		require.IsType(t, &ErrPermission{}, err)
 		require.Nil(t, submitResponse)
+	})
+
+	t.Run("error: get parameters", func(t *testing.T) {
+		tokenRecord, err := manager.GetToken("")
+		require.EqualError(t, err, "invalid tokenId")
+		require.IsType(t, &ErrInvalid{}, err)
+		require.Nil(t, tokenRecord)
+
+		tokenRecord, err = manager.GetToken("xxx")
+		require.EqualError(t, err, "invalid tokenId")
+		require.IsType(t, &ErrInvalid{}, err)
+		require.Nil(t, tokenRecord)
+
+		tokenRecord, err = manager.GetToken("xxx.yyy.zzz")
+		require.EqualError(t, err, "invalid tokenId")
+		require.IsType(t, &ErrInvalid{}, err)
+		require.Nil(t, tokenRecord)
+
+		tokenRecord, err = manager.GetToken("token-not-deployed.xxx")
+		require.EqualError(t, err, "token type not found: token-not-deployed")
+		require.IsType(t, &ErrNotFound{}, err)
+		require.Nil(t, tokenRecord)
 	})
 }
 

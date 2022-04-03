@@ -28,8 +28,8 @@ func NewAssetsHandler(manager tokens.Operations, lg *logger.SugarLogger) *assets
 	}
 
 	handler.router.HandleFunc(constants.TokensAssetsQuery, handler.queryAsset).Methods(http.MethodGet)
-	handler.router.HandleFunc(constants.TokensAssetsPrepareMint, handler.prepareMint).Methods(http.MethodPost)
-	handler.router.HandleFunc(constants.TokensAssetsPrepareTransfer, handler.prepareTransfer).Methods(http.MethodPost)
+	handler.router.HandleFunc(constants.TokensAssetsPrepareMintMatch, handler.prepareMint).Methods(http.MethodPost)
+	handler.router.HandleFunc(constants.TokensAssetsPrepareTransferMatch, handler.prepareTransfer).Methods(http.MethodPost)
 	handler.router.HandleFunc(constants.TokensAssetsSubmit, handler.submit).Methods(http.MethodPost)
 
 	//TODO add method not allowed handler
@@ -42,8 +42,24 @@ func (d *assetsHandler) ServeHTTP(response http.ResponseWriter, request *http.Re
 }
 
 func (d *assetsHandler) queryAsset(response http.ResponseWriter, request *http.Request) {
-	//TODO
-	SendHTTPResponse(response, http.StatusNotImplemented, &types.HttpResponseErr{ErrMsg: "not implemented yet"}, d.lg)
+	params := mux.Vars(request)
+	tokenId := params["tokenId"]
+
+	tokenRecord, err := d.manager.GetToken(tokenId)
+	if err != nil {
+		switch err.(type) {
+		case *tokens.ErrInvalid:
+			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		case *tokens.ErrNotFound:
+			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		default:
+			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		}
+
+		return
+	}
+
+	SendHTTPResponse(response, http.StatusOK, tokenRecord, d.lg)
 }
 
 func (d *assetsHandler) prepareMint(response http.ResponseWriter, request *http.Request) {

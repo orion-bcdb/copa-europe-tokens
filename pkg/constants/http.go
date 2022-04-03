@@ -10,9 +10,11 @@ const (
 	TokensTypesEndpoint = "/tokens/types"
 	TokensTypesQuery    = "/tokens/types/{typeId}"
 
-	TokensAssetsEndpoint        = "/tokens/assets"
-	TokensAssetsPrepareMint     = "/tokens/assets/prepare-mint/{typeId}"
-	TokensAssetsPrepareTransfer = "/tokens/assets/prepare-transfer/{typeId}"
-	TokensAssetsSubmit          = "/tokens/assets/submit"
-	TokensAssetsQuery           = "/tokens/assets/{assetId}"
+	TokensAssetsEndpoint             = "/tokens/assets"
+	TokensAssetsPrepareMint          = "/tokens/assets/prepare-mint"
+	TokensAssetsPrepareMintMatch     = "/tokens/assets/prepare-mint/{typeId}"
+	TokensAssetsPrepareTransfer      = "/tokens/assets/prepare-transfer"
+	TokensAssetsPrepareTransferMatch = "/tokens/assets/prepare-transfer/{typeId}"
+	TokensAssetsSubmit               = "/tokens/assets/submit"
+	TokensAssetsQuery                = "/tokens/assets/{tokenId}"
 )
