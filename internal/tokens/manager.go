@@ -39,6 +39,7 @@ type Operations interface {
 
 	PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error)
 	SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error)
+	GetToken(tokenId string) (*types.TokenRecord, error)
 
 	AddUser(userRecord *types.UserRecord) error
 	UpdateUser(userRecord *types.UserRecord) error
@@ -437,6 +438,42 @@ func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitRes
 		TxId:      txID,
 		TxReceipt: base64.StdEncoding.EncodeToString(receiptBytes),
 	}, nil
+}
+
+func (m *Manager) GetToken(tokenId string) (*types.TokenRecord, error) {
+	tokenTypeId, assetId, err := parseTokenId(tokenId)
+	if err != nil {
+		return nil, err
+	}
+
+	dataTx, err := m.custodianSession.DataTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create DataTx")
+	}
+	defer dataTx.Abort()
+
+	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
+	if _, ok := m.tokenTypesDBs[tokenDBName]; !ok {
+		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
+	}
+
+	val, meta, err := dataTx.Get(tokenDBName, assetId)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to Get %s", tokenDBName)
+	}
+	if val == nil {
+		return nil, &ErrNotFound{ErrMsg: "token not found"}
+	}
+
+	record := &types.TokenRecord{}
+	err = json.Unmarshal(val, record)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to json.Unmarshal %v", val)
+	}
+
+	m.lg.Debugf("Token record: %v; metadata: %+v", record, meta)
+
+	return record, nil
 }
 
 func (m *Manager) AddUser(userRecord *types.UserRecord) error {
