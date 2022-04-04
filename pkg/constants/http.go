@@ -17,4 +17,7 @@ const (
 	TokensAssetsPrepareTransferMatch = "/tokens/assets/prepare-transfer/{typeId}"
 	TokensAssetsSubmit               = "/tokens/assets/submit"
 	TokensAssetsQuery                = "/tokens/assets/{tokenId}"
+
+	TokensUsersEndpoint = "/tokens/users"
+	TokensUsersMatch    = "/tokens/users/{userId}"
 )

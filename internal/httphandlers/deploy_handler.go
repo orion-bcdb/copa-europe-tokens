@@ -30,7 +30,6 @@ func NewDeployHandler(manager tokens.Operations, lg *logger.SugarLogger) *deploy
 	handler.router.HandleFunc(constants.TokensTypesQuery, handler.queryType).Methods(http.MethodGet)
 	handler.router.HandleFunc(constants.TokensTypesEndpoint, handler.listTypes).Methods(http.MethodGet)
 	handler.router.HandleFunc(constants.TokensTypesEndpoint, handler.deployType).Methods(http.MethodPost)
-	//TODO add method not allowed handler
 
 	return handler
 }
