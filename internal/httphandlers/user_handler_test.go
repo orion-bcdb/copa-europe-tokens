@@ -35,7 +35,7 @@ func TestUserHandler_Get(t *testing.T) {
 		require.NotNil(t, rr)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensUsersEndpoint + "/bob"}
+			Path: constants.TokensUsersEndpoint + "bob"}
 		req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
 		require.NoError(t, err)
 
@@ -97,7 +97,7 @@ func TestUserHandler_Get(t *testing.T) {
 			require.NotNil(t, rr)
 
 			reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-				Path: constants.TokensUsersEndpoint + "/bob"}
+				Path: constants.TokensUsersEndpoint + "bob"}
 			req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
 			require.NoError(t, err)
 
@@ -243,7 +243,7 @@ func TestUserHandler_Update(t *testing.T) {
 		require.NotNil(t, txReader)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensUsersEndpoint +"/bob"}
+			Path: constants.TokensUsersEndpoint +"bob"}
 		req, err := http.NewRequest(http.MethodPut, reqUrl.String(), txReader)
 		require.NoError(t, err)
 
@@ -303,7 +303,7 @@ func TestUserHandler_Update(t *testing.T) {
 			require.NotNil(t, txReader)
 
 			reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-				Path: constants.TokensUsersEndpoint +"/bob"}
+				Path: constants.TokensUsersEndpoint +"bob"}
 			req, err := http.NewRequest(http.MethodPut, reqUrl.String(), txReader)
 			require.NoError(t, err)
 
@@ -329,7 +329,7 @@ func TestUserHandler_Delete(t *testing.T) {
 		require.NotNil(t, rr)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensUsersEndpoint +"/bob"}
+			Path: constants.TokensUsersEndpoint +"bob"}
 		req, err := http.NewRequest(http.MethodDelete, reqUrl.String(), nil)
 		require.NoError(t, err)
 
@@ -383,7 +383,7 @@ func TestUserHandler_Delete(t *testing.T) {
 			require.NotNil(t, rr)
 
 			reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-				Path: constants.TokensUsersEndpoint +"/bob"}
+				Path: constants.TokensUsersEndpoint +"bob"}
 			req, err := http.NewRequest(http.MethodDelete, reqUrl.String(), nil)
 			require.NoError(t, err)
 

@@ -36,7 +36,7 @@ func TestAssetsHandler_Get(t *testing.T) {
 		require.NotNil(t, rr)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensAssetsEndpoint + "/aAbBcCdDeEfFgG.xXyYzZ"}
+			Path: constants.TokensAssetsEndpoint + "aAbBcCdDeEfFgG.xXyYzZ"}
 		req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
 		require.NoError(t, err)
 
@@ -99,7 +99,7 @@ func TestAssetsHandler_Get(t *testing.T) {
 			require.NotNil(t, rr)
 
 			reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-				Path: constants.TokensAssetsEndpoint + "/aAbBcCdDeEfFgG.xXyYzZ"}
+				Path: constants.TokensAssetsEndpoint + "aAbBcCdDeEfFgG.xXyYzZ"}
 			req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
 			require.NoError(t, err)
 
