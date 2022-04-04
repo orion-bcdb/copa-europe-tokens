@@ -261,7 +261,7 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 		TypeId:      tokenTypeIDBase64,
 		Name:        deployRequest.Name,
 		Description: deployRequest.Description,
-		Url:         constants.TokensTypesEndpoint + "/" + tokenTypeIDBase64,
+		Url:         constants.TokensTypesEndpoint + tokenTypeIDBase64,
 	}, nil
 }
 
@@ -290,7 +290,7 @@ func (m *Manager) GetTokenType(tokenTypeId string) (*types.DeployResponse, error
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to json.Unmarshal %s", tokenDBName)
 	}
-	deployResponse.Url = constants.TokensTypesEndpoint + "/" + deployResponse.TypeId
+	deployResponse.Url = constants.TokensTypesEndpoint + deployResponse.TypeId
 
 	m.lg.Debugf("Token type deploy response: %+v; metadata: %v", deployResponse, meta)
 

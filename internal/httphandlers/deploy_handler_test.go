@@ -186,7 +186,7 @@ func TestDeployHandler_GetTokenType(t *testing.T) {
 		require.NotNil(t, rr)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensTypesEndpoint + "/aAbBcCdDeEfFgG"}
+			Path: constants.TokensTypesEndpoint + "aAbBcCdDeEfFgG"}
 		req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
 		require.NoError(t, err)
 
@@ -214,7 +214,7 @@ func TestDeployHandler_GetTokenType(t *testing.T) {
 		require.NotNil(t, rr)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensTypesEndpoint + "/123."}
+			Path: constants.TokensTypesEndpoint + "123."}
 		req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
 		require.NoError(t, err)
 
@@ -239,7 +239,7 @@ func TestDeployHandler_GetTokenType(t *testing.T) {
 		require.NotNil(t, rr)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensTypesEndpoint + "/1234"}
+			Path: constants.TokensTypesEndpoint + "1234"}
 		req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
 		require.NoError(t, err)
 
