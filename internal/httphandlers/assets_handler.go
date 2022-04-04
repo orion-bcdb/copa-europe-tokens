@@ -32,8 +32,6 @@ func NewAssetsHandler(manager tokens.Operations, lg *logger.SugarLogger) *assets
 	handler.router.HandleFunc(constants.TokensAssetsPrepareTransferMatch, handler.prepareTransfer).Methods(http.MethodPost)
 	handler.router.HandleFunc(constants.TokensAssetsSubmit, handler.submit).Methods(http.MethodPost)
 
-	//TODO add method not allowed handler
-
 	return handler
 }
 
