@@ -94,8 +94,36 @@ func (d *assetsHandler) prepareMint(response http.ResponseWriter, request *http.
 }
 
 func (d *assetsHandler) prepareTransfer(response http.ResponseWriter, request *http.Request) {
-	//TODO
-	SendHTTPResponse(response, http.StatusNotImplemented, &types.HttpResponseErr{ErrMsg: "not implemented yet"}, d.lg)
+	params := mux.Vars(request)
+	tokenId := params["tokenId"]
+
+	transferRequest := &types.TransferRequest{}
+
+	dec := json.NewDecoder(request.Body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(transferRequest); err != nil {
+		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		return
+	}
+
+	mintResponse, err := d.manager.PrepareTransfer(tokenId, transferRequest)
+	if err != nil {
+		switch err.(type) {
+		case *tokens.ErrPermission:
+			SendHTTPResponse(response, http.StatusForbidden, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		case *tokens.ErrInvalid:
+			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		case *tokens.ErrNotFound:
+			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		default:
+			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		}
+
+		return
+	}
+
+	SendHTTPResponse(response, http.StatusOK, mintResponse, d.lg)
 }
 
 func (d *assetsHandler) submit(response http.ResponseWriter, request *http.Request) {

@@ -14,7 +14,7 @@ const (
 	TokensAssetsPrepareMint          = "/tokens/assets/prepare-mint"
 	TokensAssetsPrepareMintMatch     = "/tokens/assets/prepare-mint/{typeId}"
 	TokensAssetsPrepareTransfer      = "/tokens/assets/prepare-transfer"
-	TokensAssetsPrepareTransferMatch = "/tokens/assets/prepare-transfer/{typeId}"
+	TokensAssetsPrepareTransferMatch = "/tokens/assets/prepare-transfer/{tokenId}"
 	TokensAssetsSubmit               = "/tokens/assets/submit"
 	TokensAssetsQuery                = "/tokens/assets/{tokenId}"
 

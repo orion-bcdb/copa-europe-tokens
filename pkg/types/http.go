@@ -41,6 +41,19 @@ type MintResponse struct {
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }
 
+type TransferRequest struct {
+	Owner    string `json:"owner"`
+	NewOwner string `json:"newOwner"`
+}
+
+type TransferResponse struct {
+	TokenId       string `json:"tokenId"`
+	Owner         string `json:"owner"`
+	NewOwner      string `json:"newOwner"`
+	TxPayload     string `json:"txPayload"`     //base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
+}
+
 type SubmitRequest struct {
 	TokenId       string `json:"TokenId"`
 	TxPayload     string `json:"txPayload"`     //base64 (std, padded) encoding of bytes

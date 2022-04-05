@@ -38,6 +38,7 @@ type Operations interface {
 	GetTokenType(tokenTypeId string) (*types.DeployResponse, error)
 
 	PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error)
+	PrepareTransfer(tokenId string, transferRequest *types.TransferRequest) (*types.TransferResponse, error)
 	SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error)
 	GetToken(tokenId string) (*types.TokenRecord, error)
 
@@ -99,7 +100,7 @@ func NewManager(config *config.Configuration, lg *logger.SugarLogger) (*Manager,
 		return nil, err
 	}
 
-	//TODO read all token types to the cache
+	//TODO read all token types to the tokenTypesDBs map
 
 	m.lg.Info("Connected to Orion")
 
@@ -347,14 +348,18 @@ func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest
 		return nil, errors.Wrap(err, "failed to json.Marshal record")
 	}
 
-	dataTx.Put(tokenDBName, assetDataId, val,
+	err = dataTx.Put(tokenDBName, assetDataId, val,
 		&oriontypes.AccessControl{
 			ReadWriteUsers: map[string]bool{
 				m.config.Users.Custodian.UserID: true,
 				mintRequest.Owner:               true,
 			},
+			SignPolicyForWrite: oriontypes.AccessControl_ALL,
 		},
 	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to Put")
+	}
 
 	dataTx.AddMustSignUser(mintRequest.Owner)
 
@@ -389,13 +394,111 @@ func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest
 	return mintResponse, nil
 }
 
+func (m *Manager) PrepareTransfer(tokenId string, transferRequest *types.TransferRequest) (*types.TransferResponse, error) {
+	m.lg.Debugf("Received transfer request: %+v, for tokenId: %s", transferRequest, tokenId)
+
+	tokenTypeId, assetId, err := parseTokenId(tokenId)
+	if err != nil {
+		return nil, err
+	}
+
+	if transferRequest.NewOwner == "" {
+		return nil, &ErrInvalid{ErrMsg: "missing new owner"}
+	}
+	if transferRequest.NewOwner == m.config.Users.Custodian.UserID {
+		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("new owner cannot be the custodian: %s", m.config.Users.Custodian.UserID)}
+	}
+	if transferRequest.NewOwner == m.config.Users.Admin.UserID {
+		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("new owner cannot be the admin: %s", m.config.Users.Admin.UserID)}
+	}
+
+	dataTx, err := m.custodianSession.DataTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create DataTx")
+	}
+	defer dataTx.Abort()
+
+	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
+	if _, ok := m.tokenTypesDBs[tokenDBName]; !ok {
+		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
+	}
+
+	val, meta, err := dataTx.Get(tokenDBName, assetId)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to Get %s", tokenDBName)
+	}
+	if val == nil {
+		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token not found: %s", tokenId)}
+	}
+
+	record := &types.TokenRecord{}
+	err = json.Unmarshal(val, record)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to json.Unmarshal %v", val)
+	}
+
+	if transferRequest.Owner != record.Owner {
+		return nil, &ErrPermission{ErrMsg: fmt.Sprintf("not owner: %s", transferRequest.Owner)}
+	}
+
+	m.lg.Debugf("Token: %+v; meta: %+v", record, meta)
+
+	record.Owner = transferRequest.NewOwner
+	recordBytes, err := json.Marshal(record)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to json.Marshal %v", record)
+	}
+
+	acl := &oriontypes.AccessControl{
+		ReadWriteUsers: map[string]bool{
+			m.config.Users.Custodian.UserID: true,
+			transferRequest.NewOwner:        true,
+		},
+		SignPolicyForWrite: oriontypes.AccessControl_ALL,
+	}
+
+	err = dataTx.Put(tokenDBName, assetId, recordBytes, acl)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to Put")
+	}
+
+	txEnv, err := dataTx.SignConstructedTxEnvelopeAndCloseTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to construct Tx envelope")
+	}
+
+	txEnvBytes, err := proto.Marshal(txEnv)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
+	}
+
+	payloadBytes, err := json.Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
+	}
+	payloadHash, err := ComputeSHA256Hash(payloadBytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to compute hash of DataTx bytes")
+	}
+
+	transferResponse := &types.TransferResponse{
+		TokenId:       tokenId,
+		Owner:         transferRequest.Owner,
+		NewOwner:      transferRequest.NewOwner,
+		TxPayload:     base64.StdEncoding.EncodeToString(txEnvBytes),
+		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
+	}
+
+	return transferResponse, nil
+}
+
 func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error) {
 	tokenTypeId, assetId, err := parseTokenId(submitRequest.TokenId)
 	if err != nil {
 		return nil, err
 	}
 
-	m.lg.Infof("Custodian [%s] preparing to commit the Tx to the database,  tokenTypeId: %s, assetId: %s, signer: %s",
+	m.lg.Infof("Custodian [%s] preparing to submit the Tx to the database,  tokenTypeId: %s, assetId: %s, signer: %s",
 		m.config.Users.Custodian.UserID, tokenTypeId, assetId, submitRequest.Signer)
 
 	txEnvBytes, err := base64.StdEncoding.DecodeString(submitRequest.TxPayload)
@@ -415,17 +518,28 @@ func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitRes
 	}
 
 	txEnv.Signatures[submitRequest.Signer] = sigBytes
-
 	loadedTx, err := m.custodianSession.LoadDataTx(txEnv)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load tx envelope")
 	}
+
+	m.lg.Debugf("signed users: %+v", loadedTx.SignedUsers())
 
 	txID, receiptEnv, err := loadedTx.Commit(true)
 	if err != nil {
 		if strings.Contains(err.Error(), "status: 401 Unauthorized") {
 			return nil, &ErrPermission{ErrMsg: err.Error()}
 		}
+
+		if errV, ok := err.(*bcdb.ErrorTxValidation); ok {
+			switch oriontypes.Flag_value[errV.Flag] {
+			case int32(oriontypes.Flag_INVALID_NO_PERMISSION), int32(oriontypes.Flag_INVALID_UNAUTHORISED), int32(oriontypes.Flag_INVALID_MISSING_SIGNATURE):
+				return nil, &ErrPermission{ErrMsg: err.Error()}
+			default:
+				return nil, &ErrInvalid{ErrMsg: err.Error()}
+			}
+		}
+
 		return nil, err
 	}
 
