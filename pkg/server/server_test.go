@@ -269,6 +269,50 @@ func TestTokensServer_MainFlow(t *testing.T) {
 		t.Logf("Token: %+v", tokenRecord)
 	}
 
+	// Transfer the tokens
+	for _, tokenId := range []string{submitResponse1.TokenId, submitResponse2.TokenId, submitResponse3.TokenId} {
+		request := &types.TransferRequest{
+			Owner:    "bob",
+			NewOwner: "charlie",
+		}
+		resp := transferToken(t, httpClient, baseURL, tokenId, request, signerBob)
+		require.Equal(t, tokenId, resp.TokenId)
+	}
+
+	// Transfer the tokens
+	for _, tokenId := range []string{submitResponse4.TokenId, submitResponse5.TokenId } {
+		request := &types.TransferRequest{
+			Owner:    "charlie",
+			NewOwner: "bob",
+		}
+		resp := transferToken(t, httpClient, baseURL, tokenId, request, signerCharlie)
+		require.Equal(t, tokenId, resp.TokenId)
+	}
+
+	// Get the tokens
+	for _, tokenId := range []string{submitResponse1.TokenId, submitResponse2.TokenId, submitResponse3.TokenId} {
+		u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsEndpoint + tokenId})
+		resp, err = httpClient.Get(u.String())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		tokenRecord := &types.TokenRecord{}
+		err = json.NewDecoder(resp.Body).Decode(tokenRecord)
+		require.NoError(t, err)
+		require.Equal(t, "charlie", tokenRecord.Owner)
+	}
+
+	// Get the tokens
+	for _, tokenId := range []string{submitResponse4.TokenId, submitResponse5.TokenId} {
+		u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsEndpoint + tokenId})
+		resp, err = httpClient.Get(u.String())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		tokenRecord := &types.TokenRecord{}
+		err = json.NewDecoder(resp.Body).Decode(tokenRecord)
+		require.NoError(t, err)
+		require.Equal(t, "bob", tokenRecord.Owner)
+	}
+
 	wg.Add(1)
 	err = tokensServer.Stop()
 	require.NoError(t, err)
@@ -322,6 +366,51 @@ func mintToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, typeId s
 		TxPayload:     mintResponse.TxPayload,
 		TxPayloadHash: mintResponse.TxPayloadHash,
 		Signer:        mintResponse.Owner,
+		Signature:     base64.StdEncoding.EncodeToString(sig),
+	}
+	requestBytes, err = json.Marshal(submitRequest)
+	require.NoError(t, err)
+	reader = bytes.NewReader(requestBytes)
+	require.NotNil(t, reader)
+	resp, err = httpClient.Post(u.String(), "application/json", reader)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	submitResponse := &types.SubmitResponse{}
+	err = json.NewDecoder(resp.Body).Decode(submitResponse)
+	require.NoError(t, err)
+	return submitResponse
+}
+
+func transferToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, tokenId string, transferRequest *types.TransferRequest, signer crypto.Signer) *types.SubmitResponse {
+	// 1. Transfer prepare
+	u := baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsPrepareTransfer + "/" + tokenId})
+	requestBytes, err := json.Marshal(transferRequest)
+	require.NoError(t, err)
+	reader := bytes.NewReader(requestBytes)
+	require.NotNil(t, reader)
+	resp, err := httpClient.Post(u.String(), "application/json", reader)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	transferResponse := &types.TransferResponse{}
+	err = json.NewDecoder(resp.Body).Decode(transferResponse)
+	require.NoError(t, err)
+
+	// 2. Sign by owner
+	txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxPayload)
+	require.NoError(t, err)
+	txEnv := &oriontypes.DataTxEnvelope{}
+	err = proto.Unmarshal(txEnvBytes, txEnv)
+	require.NoError(t, err)
+	sig := testutils.SignatureFromTx(t, signer, txEnv.Payload)
+	require.NotNil(t, sig)
+
+	// 3. Submit
+	u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsSubmit})
+	submitRequest := &types.SubmitRequest{
+		TokenId:       transferResponse.TokenId,
+		TxPayload:     transferResponse.TxPayload,
+		TxPayloadHash: transferResponse.TxPayloadHash,
+		Signer:        transferResponse.Owner,
 		Signature:     base64.StdEncoding.EncodeToString(sig),
 	}
 	requestBytes, err = json.Marshal(submitRequest)

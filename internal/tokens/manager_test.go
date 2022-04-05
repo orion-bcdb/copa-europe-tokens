@@ -2,6 +2,7 @@ package tokens
 
 import (
 	"encoding/base64"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -173,7 +174,7 @@ func TestTokensManager_MintToken(t *testing.T) {
 	deployResponseMy, err := manager.DeployTokenType(deployRequest)
 	assert.NoError(t, err)
 
-	t.Run("success: owner is user bob", func(t *testing.T) { //TODO should we prevent custodian and admin from owning tokens?
+	t.Run("success: owner is user bob", func(t *testing.T) {
 		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
 		assert.NoError(t, err)
 		assertEqualDeployResponse(t, deployResponseMy, getResponse)
@@ -227,7 +228,6 @@ func TestTokensManager_MintToken(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, base64.RawURLEncoding.EncodeToString(h), tokenRecord.AssetDataId)
 	})
-
 
 	t.Run("error: owner is custodian or admin", func(t *testing.T) {
 		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
@@ -335,6 +335,222 @@ func TestTokensManager_MintToken(t *testing.T) {
 		require.EqualError(t, err, "token type not found: token-not-deployed")
 		require.IsType(t, &ErrNotFound{}, err)
 		require.Nil(t, tokenRecord)
+	})
+}
+
+func TestTokensManager_TransferToken(t *testing.T) {
+	env := newTestEnv(t)
+
+	manager, err := NewManager(env.conf, env.lg)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	stat, err := manager.GetStatus()
+	require.NoError(t, err)
+	require.Contains(t, stat, "connected:")
+
+	deployRequest := &types.DeployRequest{
+		Name:        "my-NFT",
+		Description: "my NFT for testing",
+	}
+
+	deployResponse, err := manager.DeployTokenType(deployRequest)
+	assert.NoError(t, err)
+
+	certBob, signerBob := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
+	err = manager.AddUser(&types.UserRecord{
+		Identity:    "bob",
+		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
+		Privilege:   nil,
+	})
+	assert.NoError(t, err)
+
+	certCharlie, signerCharlie := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "charlie")
+	err = manager.AddUser(&types.UserRecord{
+		Identity:    "charlie",
+		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
+		Privilege:   nil,
+	})
+	assert.NoError(t, err)
+
+	var tokenIDs []string
+	for i := 1; i <= 5; i++ {
+		mintRequest := &types.MintRequest{
+			Owner:         "bob",
+			AssetData:     fmt.Sprintf("bob's asset %d", i),
+			AssetMetadata: "bob's asset metadata",
+		}
+		mintResponse, err := manager.PrepareMint(deployResponse.TypeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxPayload)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       mintResponse.TokenId,
+			TxPayload:     mintResponse.TxPayload,
+			TxPayloadHash: mintResponse.TxPayloadHash,
+			Signer:        "bob",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.NoError(t, err)
+		tokenIDs = append(tokenIDs, submitResponse.TokenId)
+	}
+
+	t.Run("success: bob to charlie", func(t *testing.T) {
+		transferRequest := &types.TransferRequest{
+			Owner:    "bob",
+			NewOwner: "charlie",
+		}
+		transferResponse, err := manager.PrepareTransfer(tokenIDs[0], transferRequest)
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxPayload)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       transferResponse.TokenId,
+			TxPayload:     transferResponse.TxPayload,
+			TxPayloadHash: transferResponse.TxPayloadHash,
+			Signer:        "bob",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.NoError(t, err)
+		require.NotNil(t, submitResponse)
+
+		// Get this token
+		tokenRecord, err := manager.GetToken(tokenIDs[0])
+		require.NoError(t, err)
+		require.Equal(t, transferRequest.NewOwner, tokenRecord.Owner)
+	})
+
+	t.Run("error: new-owner is custodian or admin", func(t *testing.T) {
+		transferRequest := &types.TransferRequest{
+			Owner:    "bob",
+			NewOwner: "alice", //custodian
+		}
+		transferResponse, err := manager.PrepareTransfer(tokenIDs[1], transferRequest)
+		require.EqualError(t, err, "new owner cannot be the custodian: alice")
+		require.Nil(t, transferResponse)
+
+		transferRequest = &types.TransferRequest{
+			Owner:    "bob",
+			NewOwner: "admin", //admin
+		}
+		transferResponse, err = manager.PrepareTransfer(tokenIDs[1], transferRequest)
+		require.EqualError(t, err, "new owner cannot be the admin: admin")
+		require.Nil(t, transferResponse)
+
+		transferRequest = &types.TransferRequest{
+			Owner:    "bob",
+			NewOwner: "admin", //admin
+		}
+		transferResponse, err = manager.PrepareTransfer(tokenIDs[1], transferRequest)
+		require.EqualError(t, err, "new owner cannot be the admin: admin")
+		require.Nil(t, transferResponse)
+	})
+
+	t.Run("error: token type does not exists", func(t *testing.T) {
+		transferRequest := &types.TransferRequest{
+			Owner:    "bob",
+			NewOwner: "charlie",
+		}
+		transferResponse, err := manager.PrepareTransfer("aaaaabbbbbcccccdddddee.uuuuuvvvvvwwwwwxxxxxzz", transferRequest)
+		require.EqualError(t, err, "token type not found: aaaaabbbbbcccccdddddee")
+		require.IsType(t, &ErrNotFound{}, err)
+		require.Nil(t, transferResponse)
+	})
+
+	t.Run("error: token does not exists", func(t *testing.T) {
+		transferRequest := &types.TransferRequest{
+			Owner:    "bob",
+			NewOwner: "charlie",
+		}
+		transferResponse, err := manager.PrepareTransfer(deployResponse.TypeId+".uuuuuvvvvvwwwwwxxxxxzz", transferRequest)
+		require.EqualError(t, err, "token not found: "+deployResponse.TypeId+".uuuuuvvvvvwwwwwxxxxxzz")
+		require.IsType(t, &ErrNotFound{}, err)
+		require.Nil(t, transferResponse)
+	})
+
+	t.Run("error: new owner not a user", func(t *testing.T) {
+		transferRequest := &types.TransferRequest{
+			Owner:    "bob",
+			NewOwner: "david",
+		}
+		transferResponse, err := manager.PrepareTransfer(tokenIDs[1], transferRequest)
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxPayload)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       transferResponse.TokenId,
+			TxPayload:     transferResponse.TxPayload,
+			TxPayloadHash: transferResponse.TxPayloadHash,
+			Signer:        "bob",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		assert.Contains(t, err.Error(), "is not valid, flag: INVALID_INCORRECT_ENTRIES, reason: the user [david] defined in the access control for the key [gm8Ndnh5x9firTQ2FLrIcQ] does not exist")
+		assert.IsType(t, &ErrInvalid{}, err)
+		require.Nil(t, submitResponse)
+	})
+
+	t.Run("error: wrong signature", func(t *testing.T) {
+		transferRequest := &types.TransferRequest{
+			Owner:    "bob",
+			NewOwner: "charlie",
+		}
+		transferResponse, err := manager.PrepareTransfer(tokenIDs[2], transferRequest)
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxPayload)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerCharlie, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       transferResponse.TokenId,
+			TxPayload:     transferResponse.TxPayload,
+			TxPayloadHash: transferResponse.TxPayloadHash,
+			Signer:        "bob",
+			Signature:     base64.StdEncoding.EncodeToString([]byte("bogus-sig")),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		assert.Contains(t, err.Error(), "is not valid, flag: INVALID_NO_PERMISSION, reason: not all required users in [alice,bob] have signed the transaction to write/delete key [sVnBPZovzX2wvtnOxxg1Sg] present in the database [ttid.kdcFXEExc8FvQTDDumKyUw]")
+		require.Nil(t, submitResponse)
 	})
 }
 
