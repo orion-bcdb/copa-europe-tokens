@@ -1,9 +1,9 @@
 # The listen address and port of the network interface used for client communication.
 network:
   # network.address denotes the listen address
-  address: 127.0.0.1
+  address: 0.0.0.0
   # network.port denotes the listen port
-  port: 11070
+  port: 6101
 
 # TLS configuration of incoming connections.
 tls:
@@ -16,24 +16,20 @@ logLevel: info
 orion:
   replicas:
     - id: "orion-server1"
-      endpoint: "http://127.0.0.1:6001"
+      endpoint: "http://orion1.net:6001"
   caConfig:
     rootCACertsPath:
-      - "./crypto/CA/CA1.pem"
-      - "./crypto/CA/CA2.pem"
-    intermediateCACertsPath:
-      - "./crypto/CA/midCA1.pem"
-      - "./crypto/CA/midCA2.pem"
+      - "/etc/copa-europe-tokens/crypto/CA/CA.pem"
 
 users:
   admin:
     userID: "admin"
-    certPath: "./crypto/admin/admin.pem"
-    privateKeyPath: "./crypto/admin/admin.key"
+    certPath: "/etc/copa-europe-tokens/crypto/admin/admin.pem"
+    privateKeyPath: "/etc/copa-europe-tokens/crypto/admin/admin.key"
   custodian:
     userID: "custodian"
-    certPath: "./crypto/custodian/custodian.pem"
-    privateKeyPath: "./crypto/custodian/custodian.key"
+    certPath: "/etc/copa-europe-tokens/crypto/custodian/custodian.pem"
+    privateKeyPath: "/etc/copa-europe-tokens/crypto/custodian/custodian.key"
 
 session:
   txTimeout: 20s

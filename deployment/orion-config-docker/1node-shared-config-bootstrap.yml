@@ -27,15 +27,7 @@ consensus:
   members:
     - nodeId: orion-server1
       raftId: 1
-      peerHost: raft1.example.com
-      peerPort: 7050
-
-  # observers contains the set of servers that are allowed to communicate
-  # with consensus.members, and fetch their state.
-  observers:
-    - nodeId: orion-server4
-      raftId: 0
-      peerHost: raft4.example.com
+      peerHost: 127.0.0.1
       peerPort: 7050
 
   # consensus.raftConfig carries the configuration parameters that are specific to
