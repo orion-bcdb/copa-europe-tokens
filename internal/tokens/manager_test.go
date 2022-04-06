@@ -196,7 +196,7 @@ func TestTokensManager_MintToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxPayload)
+		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
 		require.NoError(t, err)
 		txEnv := &oriontypes.DataTxEnvelope{}
 		err = proto.Unmarshal(txEnvBytes, txEnv)
@@ -207,7 +207,7 @@ func TestTokensManager_MintToken(t *testing.T) {
 
 		submitRequest := &types.SubmitRequest{
 			TokenId:       mintResponse.TokenId,
-			TxPayload:     mintResponse.TxPayload,
+			TxEnvelope:    mintResponse.TxEnvelope,
 			TxPayloadHash: mintResponse.TxPayloadHash,
 			Signer:        "bob",
 			Signature:     base64.StdEncoding.EncodeToString(sig),
@@ -285,7 +285,7 @@ func TestTokensManager_MintToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxPayload)
+		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
 		require.NoError(t, err)
 		txEnv := &oriontypes.DataTxEnvelope{}
 		err = proto.Unmarshal(txEnvBytes, txEnv)
@@ -303,7 +303,7 @@ func TestTokensManager_MintToken(t *testing.T) {
 
 		submitRequest := &types.SubmitRequest{
 			TokenId:       mintResponse.TokenId,
-			TxPayload:     mintResponse.TxPayload,
+			TxEnvelope:    mintResponse.TxEnvelope,
 			TxPayloadHash: mintResponse.TxPayloadHash,
 			Signer:        "charlie",
 			Signature:     base64.StdEncoding.EncodeToString(sig),
@@ -384,7 +384,7 @@ func TestTokensManager_TransferToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxPayload)
+		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
 		require.NoError(t, err)
 		txEnv := &oriontypes.DataTxEnvelope{}
 		err = proto.Unmarshal(txEnvBytes, txEnv)
@@ -395,7 +395,7 @@ func TestTokensManager_TransferToken(t *testing.T) {
 
 		submitRequest := &types.SubmitRequest{
 			TokenId:       mintResponse.TokenId,
-			TxPayload:     mintResponse.TxPayload,
+			TxEnvelope:    mintResponse.TxEnvelope,
 			TxPayloadHash: mintResponse.TxPayloadHash,
 			Signer:        "bob",
 			Signature:     base64.StdEncoding.EncodeToString(sig),
@@ -415,7 +415,7 @@ func TestTokensManager_TransferToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, transferResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxPayload)
+		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxEnvelope)
 		require.NoError(t, err)
 		txEnv := &oriontypes.DataTxEnvelope{}
 		err = proto.Unmarshal(txEnvBytes, txEnv)
@@ -426,7 +426,7 @@ func TestTokensManager_TransferToken(t *testing.T) {
 
 		submitRequest := &types.SubmitRequest{
 			TokenId:       transferResponse.TokenId,
-			TxPayload:     transferResponse.TxPayload,
+			TxEnvelope:    transferResponse.TxEnvelope,
 			TxPayloadHash: transferResponse.TxPayloadHash,
 			Signer:        "bob",
 			Signature:     base64.StdEncoding.EncodeToString(sig),
@@ -499,7 +499,7 @@ func TestTokensManager_TransferToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, transferResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxPayload)
+		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxEnvelope)
 		require.NoError(t, err)
 		txEnv := &oriontypes.DataTxEnvelope{}
 		err = proto.Unmarshal(txEnvBytes, txEnv)
@@ -510,7 +510,7 @@ func TestTokensManager_TransferToken(t *testing.T) {
 
 		submitRequest := &types.SubmitRequest{
 			TokenId:       transferResponse.TokenId,
-			TxPayload:     transferResponse.TxPayload,
+			TxEnvelope:    transferResponse.TxEnvelope,
 			TxPayloadHash: transferResponse.TxPayloadHash,
 			Signer:        "bob",
 			Signature:     base64.StdEncoding.EncodeToString(sig),
@@ -531,7 +531,7 @@ func TestTokensManager_TransferToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, transferResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxPayload)
+		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxEnvelope)
 		require.NoError(t, err)
 		txEnv := &oriontypes.DataTxEnvelope{}
 		err = proto.Unmarshal(txEnvBytes, txEnv)
@@ -542,7 +542,7 @@ func TestTokensManager_TransferToken(t *testing.T) {
 
 		submitRequest := &types.SubmitRequest{
 			TokenId:       transferResponse.TokenId,
-			TxPayload:     transferResponse.TxPayload,
+			TxEnvelope:    transferResponse.TxEnvelope,
 			TxPayloadHash: transferResponse.TxPayloadHash,
 			Signer:        "bob",
 			Signature:     base64.StdEncoding.EncodeToString([]byte("bogus-sig")),

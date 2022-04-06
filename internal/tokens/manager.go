@@ -387,7 +387,7 @@ func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest
 	mintResponse := &types.MintResponse{
 		TokenId:       tokenTypeId + "." + assetDataId,
 		Owner:         mintRequest.Owner,
-		TxPayload:     base64.StdEncoding.EncodeToString(txEnvBytes),
+		TxEnvelope:    base64.StdEncoding.EncodeToString(txEnvBytes),
 		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
 	}
 
@@ -485,7 +485,7 @@ func (m *Manager) PrepareTransfer(tokenId string, transferRequest *types.Transfe
 		TokenId:       tokenId,
 		Owner:         transferRequest.Owner,
 		NewOwner:      transferRequest.NewOwner,
-		TxPayload:     base64.StdEncoding.EncodeToString(txEnvBytes),
+		TxEnvelope:    base64.StdEncoding.EncodeToString(txEnvBytes),
 		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
 	}
 
@@ -501,15 +501,15 @@ func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitRes
 	m.lg.Infof("Custodian [%s] preparing to submit the Tx to the database,  tokenTypeId: %s, assetId: %s, signer: %s",
 		m.config.Users.Custodian.UserID, tokenTypeId, assetId, submitRequest.Signer)
 
-	txEnvBytes, err := base64.StdEncoding.DecodeString(submitRequest.TxPayload)
+	txEnvBytes, err := base64.StdEncoding.DecodeString(submitRequest.TxEnvelope)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode TxPayload")
+		return nil, errors.Wrap(err, "failed to decode TxEnvelope")
 	}
 
 	txEnv := &oriontypes.DataTxEnvelope{}
 	err = proto.Unmarshal(txEnvBytes, txEnv)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to proto.Unmarshal TxPayload")
+		return nil, errors.Wrap(err, "failed to proto.Unmarshal TxEnvelope")
 	}
 
 	sigBytes, err := base64.StdEncoding.DecodeString(submitRequest.Signature)
