@@ -1,0 +1,40 @@
+# The listen address and port of the network interface used for client communication.
+network:
+  # network.address denotes the listen address
+  address: 127.0.0.1
+  # network.port denotes the listen port
+  port: 11070
+
+# TLS configuration of incoming connections.
+tls:
+  enabled: false
+
+# logLevel can be debug, info, warn, err, and panic
+logLevel: info
+
+# Orion cluster setting
+orion:
+  replicas:
+    - id: "orion-server1"
+      endpoint: "http://127.0.0.1:6001"
+  caConfig:
+    rootCACertsPath:
+      - "./crypto/CA/CA1.pem"
+      - "./crypto/CA/CA2.pem"
+    intermediateCACertsPath:
+      - "./crypto/CA/midCA1.pem"
+      - "./crypto/CA/midCA2.pem"
+
+users:
+  admin:
+    userID: "admin"
+    certPath: "./crypto/admin/admin.pem"
+    privateKeyPath: "./crypto/admin/admin.key"
+  custodian:
+    userID: "custodian"
+    certPath: "./crypto/custodian/custodian.pem"
+    privateKeyPath: "./crypto/custodian/custodian.key"
+
+session:
+  txTimeout: 20s
+  queryTimeout: 10s
