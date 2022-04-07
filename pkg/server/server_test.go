@@ -351,7 +351,7 @@ func mintToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, typeId s
 	require.NoError(t, err)
 
 	// 2. Sign by owner
-	txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxPayload)
+	txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
 	require.NoError(t, err)
 	txEnv := &oriontypes.DataTxEnvelope{}
 	err = proto.Unmarshal(txEnvBytes, txEnv)
@@ -363,7 +363,7 @@ func mintToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, typeId s
 	u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsSubmit})
 	submitRequest := &types.SubmitRequest{
 		TokenId:       mintResponse.TokenId,
-		TxPayload:     mintResponse.TxPayload,
+		TxEnvelope:    mintResponse.TxEnvelope,
 		TxPayloadHash: mintResponse.TxPayloadHash,
 		Signer:        mintResponse.Owner,
 		Signature:     base64.StdEncoding.EncodeToString(sig),
@@ -396,7 +396,7 @@ func transferToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, toke
 	require.NoError(t, err)
 
 	// 2. Sign by owner
-	txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxPayload)
+	txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxEnvelope)
 	require.NoError(t, err)
 	txEnv := &oriontypes.DataTxEnvelope{}
 	err = proto.Unmarshal(txEnvBytes, txEnv)
@@ -408,7 +408,7 @@ func transferToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, toke
 	u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsSubmit})
 	submitRequest := &types.SubmitRequest{
 		TokenId:       transferResponse.TokenId,
-		TxPayload:     transferResponse.TxPayload,
+		TxEnvelope:    transferResponse.TxEnvelope,
 		TxPayloadHash: transferResponse.TxPayloadHash,
 		Signer:        transferResponse.Owner,
 		Signature:     base64.StdEncoding.EncodeToString(sig),

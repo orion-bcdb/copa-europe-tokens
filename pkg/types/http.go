@@ -37,7 +37,7 @@ type MintRequest struct {
 type MintResponse struct {
 	TokenId       string `json:"tokenId"`
 	Owner         string `json:"owner"`
-	TxPayload     string `json:"txPayload"`     //base64 (std, padded) encoding of bytes
+	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }
 
@@ -50,13 +50,13 @@ type TransferResponse struct {
 	TokenId       string `json:"tokenId"`
 	Owner         string `json:"owner"`
 	NewOwner      string `json:"newOwner"`
-	TxPayload     string `json:"txPayload"`     //base64 (std, padded) encoding of bytes
+	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }
 
 type SubmitRequest struct {
 	TokenId       string `json:"TokenId"`
-	TxPayload     string `json:"txPayload"`     //base64 (std, padded) encoding of bytes
+	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 	Signer        string `json:"signer"`
 	Signature     string `json:"ownerSignature"` //base64 (std, padded) encoding of bytes

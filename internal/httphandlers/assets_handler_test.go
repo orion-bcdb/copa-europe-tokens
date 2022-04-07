@@ -125,7 +125,7 @@ func TestAssetsHandler_Mint(t *testing.T) {
 		mockManager.PrepareMintReturns(&types.MintResponse{
 			TokenId:       "xxx.yyy",
 			Owner:         "bob",
-			TxPayload:     "abcd",
+			TxEnvelope:    "abcd",
 			TxPayloadHash: "efgh",
 		}, nil)
 
@@ -154,7 +154,7 @@ func TestAssetsHandler_Mint(t *testing.T) {
 		require.Equal(t, &types.MintResponse{
 			TokenId:       "xxx.yyy",
 			Owner:         "bob",
-			TxPayload:     "abcd",
+			TxEnvelope:    "abcd",
 			TxPayloadHash: "efgh",
 		}, resp)
 	})
@@ -247,7 +247,7 @@ func TestAssetsHandler_Transfer(t *testing.T) {
 			TokenId:       "xxx.yyy",
 			Owner:         "bob",
 			NewOwner:      "charlie",
-			TxPayload:     "abcd",
+			TxEnvelope:    "abcd",
 			TxPayloadHash: "efgh",
 		}, nil)
 
@@ -277,7 +277,7 @@ func TestAssetsHandler_Transfer(t *testing.T) {
 			TokenId:       "xxx.yyy",
 			Owner:         "bob",
 			NewOwner:      "charlie",
-			TxPayload:     "abcd",
+			TxEnvelope:    "abcd",
 			TxPayloadHash: "efgh",
 		}, resp)
 	})
@@ -361,7 +361,7 @@ func TestAssetsHandler_Transfer(t *testing.T) {
 func TestAssetsHandler_Submit(t *testing.T) {
 	request := &types.SubmitRequest{
 		TokenId:       "xxx.yyy",
-		TxPayload:     "abcd",
+		TxEnvelope:    "abcd",
 		TxPayloadHash: "efgh",
 		Signer:        "bob",
 		Signature:     "bogus-sig",
