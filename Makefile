@@ -1,5 +1,8 @@
 TIMEOUT  = 20m
 GO      = go
+DOCKER  = docker
+DOCKER_IMAGE = orionbcdb/copa-tokens-server
+DOCKERFILE = images/Dockerfile
 PKGS     = $(or $(PKG),$(shell env GO111MODULE=on $(GO) list ./...))
 TESTPKGS = $(shell env GO111MODULE=on $(GO) list -f \
 		   '{{ if or .TestGoFiles .XTestGoFiles }}{{ .ImportPath }}{{ end }}' \
@@ -83,3 +86,13 @@ test-coverage: test-coverage-tools
 		-coverprofile="$(COVERAGE_PROFILE)" $(TESTPKGS)
 	$(GO) tool cover -html=$(COVERAGE_PROFILE) -o $(COVERAGE_HTML)
 	$(GOCOV) convert $(COVERAGE_PROFILE) | $(GOCOVXML) > $(COVERAGE_XML)
+
+
+.PHONY: docker
+docker:
+	$(DOCKER) build -t $(DOCKER_IMAGE) --no-cache -f $(DOCKERFILE) .
+
+.PHONY: docker-arm
+docker-arm:
+	$(DOCKER) buildx build --platform linux/amd64 -f $(DOCKERFILE) -t $(DOCKER_IMAGE):linux-arm64 --load .
+	$(DOCKER) buildx build --platform linux/arm/v7 -f $(DOCKERFILE) -t $(DOCKER_IMAGE):linux-arm-v7 --load .

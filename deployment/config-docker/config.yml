@@ -1,0 +1,36 @@
+# The listen address and port of the network interface used for client communication.
+network:
+  # network.address denotes the listen address
+  address: 0.0.0.0
+  # network.port denotes the listen port
+  port: 6101
+
+# TLS configuration of incoming connections.
+tls:
+  enabled: false
+
+# logLevel can be debug, info, warn, err, and panic
+logLevel: info
+
+# Orion cluster setting
+orion:
+  replicas:
+    - id: "orion-server1"
+      endpoint: "http://orion1.net:6001"
+  caConfig:
+    rootCACertsPath:
+      - "/etc/copa-europe-tokens/crypto/CA/CA.pem"
+
+users:
+  admin:
+    userID: "admin"
+    certPath: "/etc/copa-europe-tokens/crypto/admin/admin.pem"
+    privateKeyPath: "/etc/copa-europe-tokens/crypto/admin/admin.key"
+  custodian:
+    userID: "custodian"
+    certPath: "/etc/copa-europe-tokens/crypto/custodian/custodian.pem"
+    privateKeyPath: "/etc/copa-europe-tokens/crypto/custodian/custodian.key"
+
+session:
+  txTimeout: 20s
+  queryTimeout: 10s
