@@ -2,6 +2,10 @@
 
 docker network create --driver bridge copa-net
 
+
+echo "=========================="
+echo "Starting the Orion server"
+
 # run the orion-server in a container
 docker run -dit --rm --name orion1.net --network copa-net \
     -v $(pwd)/deployment/crypto/:/etc/orion-server/crypto \
@@ -10,6 +14,10 @@ docker run -dit --rm --name orion1.net --network copa-net \
     -p 6001:6001 -p 7050:7050 orionbcdb/orion-server
 
 sleep 15
+
+
+echo "=========================="
+echo "Starting the COPA tokens server"
 
 # run the copa-tokens-server in a container
 docker run -dit --rm --name tokens1.net --network copa-net \
@@ -22,6 +30,15 @@ sleep 5
 # do curl on the copa-tokens-server
 curl http://127.0.0.1:6101/status
 echo
+
+
+echo "=========================="
+echo "Deploy a token type"
+
+curl -X POST http://127.0.0.1:6101/tokens/types/ \
+       -H 'Content-Type: application/json' \
+       -d '{"name":"my NFT","description":"my NFT description"}'
+
 
 curl http://127.0.0.1:6101/tokens/types/xxx
 echo
