@@ -75,16 +75,16 @@ function doCurl() {
   echo
 
   echo "=========================================="
-  echo "* Add user `bob`"
+  echo "* Add user 'bob'"
   echo "==========================================\n"
 
   curl -X POST http://127.0.0.1:6101/tokens/users \
        -H 'Content-Type: application/json' \
-       -d '{"identity":"bob","certificate":"aaaabbbbccccdddd","privilege":[]}'
+       -d '{"identity":"bob","certificate":"MIIBUjCB+QIUS4a6hyrE6cp4oRdzEdBwAmUUCWEwCgYIKoZIzj0EAwIwLDELMAkGA1UEBhMCSUwxDjAMBgNVBAgMBUhhaWZhMQ0wCwYDVQQKDARCQ0RCMB4XDTIyMDQwNjE4MTQwOVoXDTIzMDQwNjE4MTQwOVowLDELMAkGA1UEBhMCSUwxDjAMBgNVBAgMBUhhaWZhMQ0wCwYDVQQKDARCQ0RCMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+CgdUE4a8FvNiJQ17Aa91FKza8JznniSqSBtZ3S+cR5U+MJYntppKWdDj1SFvpjjBW159n9fdls3l3bNuZ//jDAKBggqhkjOPQQDAgNIADBFAiBUE42xLwZ4P7HgYiWeiRFPMrEAnWEOliU+pWJQ5ywPfwIhAIe2P+ote6zfYU7SJDwIAnjIaUI3oSy2x3zuZil3Kdle","privilege":[]}'
   echo
 
   echo "=========================================="
-  echo "* Get user `bob`"
+  echo "* Get user 'bob'"
   echo "==========================================\n"
 
   curl http://127.0.0.1:6101/tokens/users/bob
@@ -105,7 +105,9 @@ function doCurl() {
 
   curl -X POST http://127.0.0.1:6101/tokens/assets/submit \
          -H 'Content-Type: application/json' \
-         -d '{"tokenId":"VZ-S5ASzbzZII2Z7b4Xh_A.yyy","txEnvelope":"aaaabbbbccccdddd","txPayloadHash":"aaaabbbbccccdddd","signer":"bob","signature":"aaaabbbbccccdddd"}'
+         -d '{"tokenId":"VZ-S5ASzbzZII2Z7b4Xh_A.jaoa1ufiluatma9-ncjjOQ","txEnvelope":"CqECCgljdXN0b2RpYW4KA2JvYhIsbTQyVmd6cGM5MWRGbTdZUDhnamZRY2p6NFgzZlJ0NVRmQ1hBSXl2ZHdGND0a4AEaG3R0aWQuVlotUzVBU3pielpJSTJaN2I0WGhfQSIYChZqYW9hMXVmaWx1YXRtYTktbmNqak9RKqYBChZqYW9hMXVmaWx1YXRtYTktbmNqak9REnB7ImFzc2V0RGF0YUlkIjoiamFvYTF1ZmlsdWF0bWE5LW5jampPUSIsIm93bmVyIjoiYm9iIiwiYXNzZXREYXRhIjoiYm9iIHRva2VuIDEiLCJhc3NldE1ldGFkYXRhIjoidG9rZW4gZGV0YWlscyJ9GhoSDQoJY3VzdG9kaWFuEAESBwoDYm9iEAEYARJVCgljdXN0b2RpYW4SSDBGAiEAhiEPMiRquwECnf2OtmvVQrMwAym8zq4dZfFK/rb5huUCIQDBg11PZALyv/Q/t3ySfoxIk2Hj9K9nlRw/+3uyBzNJ8w==","txPayloadHash":"Bm0ztRrup1TpAgeQma7Q4X8QlRWBPvfldb9LnCbuHv0=","signer":"bob","signature":"badsigbadsig"}'
+  echo
+  echo
 }
 
 ## Parse mode
