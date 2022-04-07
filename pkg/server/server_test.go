@@ -177,7 +177,7 @@ func TestTokensServer_MainFlow(t *testing.T) {
 		err = json.NewDecoder(resp.Body).Decode(deployResp)
 		require.NoError(t, err)
 		t.Logf("token-type: %+v", deployResp)
-		require.Equal(t, typeIdUrl, constants.TokensTypesEndpoint+deployResp.TypeId)
+		require.Equal(t, typeIdUrl, constants.TokensTypesSubTree+deployResp.TypeId)
 	}
 
 	// Add 2 users
@@ -258,7 +258,7 @@ func TestTokensServer_MainFlow(t *testing.T) {
 
 	// Get the tokens
 	for _, tokenId := range []string{submitResponse1.TokenId, submitResponse2.TokenId, submitResponse3.TokenId, submitResponse4.TokenId, submitResponse5.TokenId} {
-		u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsEndpoint + tokenId})
+		u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsSubTree + tokenId})
 		resp, err = httpClient.Get(u.String())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -280,7 +280,7 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	}
 
 	// Transfer the tokens
-	for _, tokenId := range []string{submitResponse4.TokenId, submitResponse5.TokenId } {
+	for _, tokenId := range []string{submitResponse4.TokenId, submitResponse5.TokenId} {
 		request := &types.TransferRequest{
 			Owner:    "charlie",
 			NewOwner: "bob",
@@ -291,7 +291,7 @@ func TestTokensServer_MainFlow(t *testing.T) {
 
 	// Get the tokens
 	for _, tokenId := range []string{submitResponse1.TokenId, submitResponse2.TokenId, submitResponse3.TokenId} {
-		u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsEndpoint + tokenId})
+		u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsSubTree + tokenId})
 		resp, err = httpClient.Get(u.String())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -303,7 +303,7 @@ func TestTokensServer_MainFlow(t *testing.T) {
 
 	// Get the tokens
 	for _, tokenId := range []string{submitResponse4.TokenId, submitResponse5.TokenId} {
-		u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsEndpoint + tokenId})
+		u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsSubTree + tokenId})
 		resp, err = httpClient.Get(u.String())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -338,7 +338,7 @@ func deployTokenType(t *testing.T, httpClient *http.Client, baseURL *url.URL, de
 
 func mintToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, typeId string, mintRequest *types.MintRequest, signer crypto.Signer) *types.SubmitResponse {
 	// 1. Mint prepare
-	u := baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsPrepareMint + "/" + typeId})
+	u := baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsPrepareMint + typeId})
 	requestBytes, err := json.Marshal(mintRequest)
 	require.NoError(t, err)
 	reader := bytes.NewReader(requestBytes)
@@ -383,7 +383,7 @@ func mintToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, typeId s
 
 func transferToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, tokenId string, transferRequest *types.TransferRequest, signer crypto.Signer) *types.SubmitResponse {
 	// 1. Transfer prepare
-	u := baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsPrepareTransfer + "/" + tokenId})
+	u := baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsPrepareTransfer + tokenId})
 	requestBytes, err := json.Marshal(transferRequest)
 	require.NoError(t, err)
 	reader := bytes.NewReader(requestBytes)

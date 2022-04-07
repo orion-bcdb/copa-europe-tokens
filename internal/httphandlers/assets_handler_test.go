@@ -36,7 +36,7 @@ func TestAssetsHandler_Get(t *testing.T) {
 		require.NotNil(t, rr)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensAssetsEndpoint + "aAbBcCdDeEfFgG.xXyYzZ"}
+			Path: constants.TokensAssetsSubTree + "aAbBcCdDeEfFgG.xXyYzZ"}
 		req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
 		require.NoError(t, err)
 
@@ -99,7 +99,7 @@ func TestAssetsHandler_Get(t *testing.T) {
 			require.NotNil(t, rr)
 
 			reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-				Path: constants.TokensAssetsEndpoint + "aAbBcCdDeEfFgG.xXyYzZ"}
+				Path: constants.TokensAssetsSubTree + "aAbBcCdDeEfFgG.xXyYzZ"}
 			req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
 			require.NoError(t, err)
 
@@ -142,7 +142,7 @@ func TestAssetsHandler_Mint(t *testing.T) {
 		require.NotNil(t, txReader)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensAssetsPrepareMint + "/xxx"}
+			Path: constants.TokensAssetsPrepareMint + "xxx"}
 		req, err := http.NewRequest(http.MethodPost, reqUrl.String(), txReader)
 		require.NoError(t, err)
 
@@ -221,7 +221,7 @@ func TestAssetsHandler_Mint(t *testing.T) {
 			require.NotNil(t, txReader)
 
 			reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-				Path: constants.TokensAssetsPrepareMint + "/xxx"}
+				Path: constants.TokensAssetsPrepareMint + "xxx"}
 			req, err := http.NewRequest(http.MethodPost, reqUrl.String(), txReader)
 			require.NoError(t, err)
 
@@ -264,7 +264,7 @@ func TestAssetsHandler_Transfer(t *testing.T) {
 		require.NotNil(t, txReader)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensAssetsPrepareTransfer + "/xxx.yyy"}
+			Path: constants.TokensAssetsPrepareTransfer + "xxx.yyy"}
 		req, err := http.NewRequest(http.MethodPost, reqUrl.String(), txReader)
 		require.NoError(t, err)
 
@@ -344,7 +344,7 @@ func TestAssetsHandler_Transfer(t *testing.T) {
 			require.NotNil(t, txReader)
 
 			reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-				Path: constants.TokensAssetsPrepareTransfer + "/xxx.yyy"}
+				Path: constants.TokensAssetsPrepareTransfer + "xxx.yyy"}
 			req, err := http.NewRequest(http.MethodPost, reqUrl.String(), txReader)
 			require.NoError(t, err)
 

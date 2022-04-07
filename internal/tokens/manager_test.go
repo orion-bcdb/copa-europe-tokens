@@ -58,7 +58,7 @@ func TestTokensManager_Deploy(t *testing.T) {
 		assert.Equal(t, deployRequestMy.Name, deployResponseMy.Name)
 		expectedIdMy, _ := NameToID(deployRequestMy.Name)
 		assert.Equal(t, expectedIdMy, deployResponseMy.TypeId)
-		assert.Equal(t, constants.TokensTypesEndpoint+expectedIdMy, deployResponseMy.Url)
+		assert.Equal(t, constants.TokensTypesSubTree+expectedIdMy, deployResponseMy.Url)
 
 		deployRequestHis := &types.DeployRequest{
 			Name:        "his-NFT",
@@ -69,7 +69,7 @@ func TestTokensManager_Deploy(t *testing.T) {
 		assert.Equal(t, deployRequestHis.Name, deployResponseHis.Name)
 		expectedIdHis, _ := NameToID(deployRequestHis.Name)
 		assert.Equal(t, expectedIdHis, deployResponseHis.TypeId)
-		assert.Equal(t, constants.TokensTypesEndpoint+expectedIdHis, deployResponseHis.Url)
+		assert.Equal(t, constants.TokensTypesSubTree+expectedIdHis, deployResponseHis.Url)
 	})
 
 	t.Run("error: deploy again", func(t *testing.T) {

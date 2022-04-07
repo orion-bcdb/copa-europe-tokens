@@ -5,19 +5,21 @@ package constants
 
 const (
 	StatusEndpoint = "/status"
-	TokensEndpoint = "/tokens"
 
-	TokensTypesEndpoint = "/tokens/types/"
+	TokensTypesEndpoint = "/tokens/types"
+	TokensTypesSubTree  = "/tokens/types/"
 	TokensTypesQuery    = "/tokens/types/{typeId}"
 
-	TokensAssetsEndpoint             = "/tokens/assets/"
-	TokensAssetsPrepareMint          = "/tokens/assets/prepare-mint"
+	TokensAssetsEndpoint             = "/tokens/assets"
+	TokensAssetsSubTree              = "/tokens/assets/"
+	TokensAssetsPrepareMint          = "/tokens/assets/prepare-mint/"
 	TokensAssetsPrepareMintMatch     = "/tokens/assets/prepare-mint/{typeId}"
-	TokensAssetsPrepareTransfer      = "/tokens/assets/prepare-transfer"
+	TokensAssetsPrepareTransfer      = "/tokens/assets/prepare-transfer/"
 	TokensAssetsPrepareTransferMatch = "/tokens/assets/prepare-transfer/{tokenId}"
 	TokensAssetsSubmit               = "/tokens/assets/submit"
 	TokensAssetsQuery                = "/tokens/assets/{tokenId}"
 
-	TokensUsersEndpoint = "/tokens/users/"
+	TokensUsersEndpoint = "/tokens/users"
+	TokensUsersSubTree  = "/tokens/users/"
 	TokensUsersMatch    = "/tokens/users/{userId}"
 )
