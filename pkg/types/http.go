@@ -59,7 +59,7 @@ type SubmitRequest struct {
 	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 	Signer        string `json:"signer"`
-	Signature     string `json:"ownerSignature"` //base64 (std, padded) encoding of bytes
+	Signature     string `json:"signature"` //base64 (std, padded) encoding of bytes
 }
 
 type SubmitResponse struct {
@@ -69,8 +69,8 @@ type SubmitResponse struct {
 }
 
 type TokenRecord struct {
-	AssetDataId   string
-	Owner         string
+	AssetDataId   string `json:"assetDataId"`
+	Owner         string `json:"owner"`
 	AssetData     string `json:"assetData"`
 	AssetMetadata string `json:"assetMetadata"`
 }
