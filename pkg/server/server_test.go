@@ -16,6 +16,7 @@ import (
 
 	"github.com/copa-europe-tokens/pkg/config"
 	"github.com/copa-europe-tokens/pkg/constants"
+	tokenscrypto "github.com/copa-europe-tokens/pkg/crypto"
 	"github.com/copa-europe-tokens/pkg/types"
 	"github.com/golang/protobuf/proto"
 	sdkconfig "github.com/hyperledger-labs/orion-sdk-go/pkg/config"
@@ -215,12 +216,15 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	// Mint some content tokens
+	_, bobKeyPath := c.GetUserCertKeyPath("bob")
+	hashSignerBob, err := tokenscrypto.NewSigner("bob", bobKeyPath)
+	require.NoError(t, err)
 	mintRequest1 := &types.MintRequest{
 		Owner:         "bob",
 		AssetData:     "Title: game 1",
 		AssetMetadata: "Ravens vs. Chargers",
 	}
-	submitResponse1 := mintToken(t, httpClient, baseURL, deployResp1.TypeId, mintRequest1, signerBob)
+	submitResponse1 := mintToken(t, httpClient, baseURL, deployResp1.TypeId, mintRequest1, hashSignerBob)
 	t.Logf("Minted: tokenId: %s, txId: %s", submitResponse1.TokenId, submitResponse1.TxId)
 
 	mintRequest2 := &types.MintRequest{
@@ -228,7 +232,7 @@ func TestTokensServer_MainFlow(t *testing.T) {
 		AssetData:     "Title: game 2",
 		AssetMetadata: "Patriots vs. Steelers",
 	}
-	submitResponse2 := mintToken(t, httpClient, baseURL, deployResp1.TypeId, mintRequest2, signerBob)
+	submitResponse2 := mintToken(t, httpClient, baseURL, deployResp1.TypeId, mintRequest2, hashSignerBob)
 	t.Logf("Minted: tokenId: %s, txId: %s", submitResponse2.TokenId, submitResponse2.TxId)
 
 	mintRequest3 := &types.MintRequest{
@@ -236,16 +240,19 @@ func TestTokensServer_MainFlow(t *testing.T) {
 		AssetData:     "Title: game 3",
 		AssetMetadata: "Jets vs. Browns",
 	}
-	submitResponse3 := mintToken(t, httpClient, baseURL, deployResp1.TypeId, mintRequest3, signerBob)
+	submitResponse3 := mintToken(t, httpClient, baseURL, deployResp1.TypeId, mintRequest3, hashSignerBob)
 	t.Logf("Minted: tokenId: %s, txId: %s", submitResponse3.TokenId, submitResponse3.TxId)
 
-	// Mint some right tokens
+	// Mint some rights tokens
+	_, charlieKeyPath := c.GetUserCertKeyPath("charlie")
+	hashSignerCharlie, err := tokenscrypto.NewSigner("charlie", charlieKeyPath)
+	require.NoError(t, err)
 	mintRequest4 := &types.MintRequest{
 		Owner:         "charlie",
 		AssetData:     "Lease: No. 1: " + submitResponse1.TokenId,
 		AssetMetadata: "Expire: 28/12/2023",
 	}
-	submitResponse4 := mintToken(t, httpClient, baseURL, deployResp2.TypeId, mintRequest4, signerCharlie)
+	submitResponse4 := mintToken(t, httpClient, baseURL, deployResp2.TypeId, mintRequest4, hashSignerCharlie)
 	t.Logf("Minted: tokenId: %s, txId: %s", submitResponse4.TokenId, submitResponse4.TxId)
 
 	mintRequest5 := &types.MintRequest{
@@ -253,7 +260,7 @@ func TestTokensServer_MainFlow(t *testing.T) {
 		AssetData:     "Lease: No. 2: " + submitResponse2.TokenId,
 		AssetMetadata: "Expire: 28/12/2024",
 	}
-	submitResponse5 := mintToken(t, httpClient, baseURL, deployResp2.TypeId, mintRequest5, signerCharlie)
+	submitResponse5 := mintToken(t, httpClient, baseURL, deployResp2.TypeId, mintRequest5, hashSignerCharlie)
 	t.Logf("Minted: tokenId: %s, txId: %s", submitResponse5.TokenId, submitResponse5.TxId)
 
 	// Get the tokens
@@ -336,7 +343,7 @@ func deployTokenType(t *testing.T, httpClient *http.Client, baseURL *url.URL, de
 	return deployResp2
 }
 
-func mintToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, typeId string, mintRequest *types.MintRequest, signer crypto.Signer) *types.SubmitResponse {
+func mintToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, typeId string, mintRequest *types.MintRequest, hashSigner tokenscrypto.Signer) *types.SubmitResponse {
 	// 1. Mint prepare
 	u := baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsPrepareMint + typeId})
 	requestBytes, err := json.Marshal(mintRequest)
@@ -350,13 +357,11 @@ func mintToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, typeId s
 	err = json.NewDecoder(resp.Body).Decode(mintResponse)
 	require.NoError(t, err)
 
-	// 2. Sign by owner
-	txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
+	// 2. Sign by owner, using a Hash signer service that does not know Orion types
+	hashBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxPayloadHash)
 	require.NoError(t, err)
-	txEnv := &oriontypes.DataTxEnvelope{}
-	err = proto.Unmarshal(txEnvBytes, txEnv)
+	sig, err := hashSigner.SignHash(hashBytes)
 	require.NoError(t, err)
-	sig := testutils.SignatureFromTx(t, signer, txEnv.Payload)
 	require.NotNil(t, sig)
 
 	// 3. Submit

@@ -153,6 +153,64 @@ func TestTokensManager_GetTokenType(t *testing.T) {
 		assert.IsType(t, &ErrNotFound{}, err)
 		assert.Nil(t, deployResponse)
 	})
+
+}
+
+func TestTokensManager_GetTokenTypes(t *testing.T) {
+	env := newTestEnv(t)
+
+	manager, err := NewManager(env.conf, env.lg)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	stat, err := manager.GetStatus()
+	require.NoError(t, err)
+	require.Contains(t, stat, "connected:")
+
+	tokenTypes, err := manager.GetTokenTypes()
+	require.NoError(t, err)
+	require.Len(t, tokenTypes, 0)
+
+	deployRequestMy := &types.DeployRequest{
+		Name:        "my-NFT",
+		Description: "my NFT for testing",
+	}
+
+	deployResponseMy, err := manager.DeployTokenType(deployRequestMy)
+	t.Logf("my %s", deployResponseMy.TypeId)
+	assert.NoError(t, err)
+
+	deployRequestHis := &types.DeployRequest{
+		Name:        "his-NFT",
+		Description: "", //empty description is fine
+	}
+	deployResponseHis, err := manager.DeployTokenType(deployRequestHis)
+	assert.NoError(t, err)
+	t.Logf("his %s", deployResponseHis.TypeId)
+
+	deployResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+	assert.NoError(t, err)
+	assertEqualDeployResponse(t, deployResponseMy, deployResponse)
+
+	deployResponse, err = manager.GetTokenType(deployResponseHis.TypeId)
+	assert.NoError(t, err)
+	assertEqualDeployResponse(t, deployResponseHis, deployResponse)
+
+	tokenTypes, err = manager.GetTokenTypes()
+	require.NoError(t, err)
+	t.Logf("%v", tokenTypes)
+	require.Len(t, tokenTypes, 2)
+
+	for _, dy := range tokenTypes {
+		found := false
+		for _, dx := range []*types.DeployResponse{deployResponseMy, deployResponseHis} {
+			if dx.Name == dy.Name {
+				assertEqualDeployResponse(t, dx, dy)
+				found = true
+			}
+		}
+		require.True(t, found)
+	}
 }
 
 func TestTokensManager_MintToken(t *testing.T) {
@@ -551,6 +609,120 @@ func TestTokensManager_TransferToken(t *testing.T) {
 		submitResponse, err := manager.SubmitTx(submitRequest)
 		assert.Contains(t, err.Error(), "is not valid, flag: INVALID_NO_PERMISSION, reason: not all required users in [alice,bob] have signed the transaction to write/delete key [sVnBPZovzX2wvtnOxxg1Sg] present in the database [ttid.kdcFXEExc8FvQTDDumKyUw]")
 		require.Nil(t, submitResponse)
+	})
+}
+
+func TestTokensManager_GetTokensByOwner(t *testing.T) {
+	env := newTestEnv(t)
+
+	manager, err := NewManager(env.conf, env.lg)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	stat, err := manager.GetStatus()
+	require.NoError(t, err)
+	require.Contains(t, stat, "connected:")
+
+	deployRequest := &types.DeployRequest{
+		Name:        "my-NFT",
+		Description: "my NFT for testing",
+	}
+
+	deployResponse, err := manager.DeployTokenType(deployRequest)
+	assert.NoError(t, err)
+
+	certBob, signerBob := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
+	err = manager.AddUser(&types.UserRecord{
+		Identity:    "bob",
+		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
+		Privilege:   nil,
+	})
+	assert.NoError(t, err)
+
+	certCharlie, signerCharlie := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "charlie")
+	err = manager.AddUser(&types.UserRecord{
+		Identity:    "charlie",
+		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
+		Privilege:   nil,
+	})
+	assert.NoError(t, err)
+
+	var tokenIDs []string
+	for i := 1; i <= 5; i++ {
+		mintRequest := &types.MintRequest{
+			Owner:         "bob",
+			AssetData:     fmt.Sprintf("bob's asset %d", i),
+			AssetMetadata: "bob's asset metadata",
+		}
+		mintResponse, err := manager.PrepareMint(deployResponse.TypeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       mintResponse.TokenId,
+			TxEnvelope:    mintResponse.TxEnvelope,
+			TxPayloadHash: mintResponse.TxPayloadHash,
+			Signer:        "bob",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.NoError(t, err)
+		tokenIDs = append(tokenIDs, submitResponse.TokenId)
+	}
+
+	for i := 1; i <= 6; i++ {
+		mintRequest := &types.MintRequest{
+			Owner:         "charlie",
+			AssetData:     fmt.Sprintf("charlie's asset %d", i),
+			AssetMetadata: "charlie's asset metadata",
+		}
+		mintResponse, err := manager.PrepareMint(deployResponse.TypeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerCharlie, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       mintResponse.TokenId,
+			TxEnvelope:    mintResponse.TxEnvelope,
+			TxPayloadHash: mintResponse.TxPayloadHash,
+			Signer:        "charlie",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.NoError(t, err)
+		tokenIDs = append(tokenIDs, submitResponse.TokenId)
+	}
+
+	t.Run("success", func(t *testing.T) {
+		records, err := manager.GetTokensByOwner(deployResponse.TypeId, "bob")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 5)
+
+		records, err = manager.GetTokensByOwner(deployResponse.TypeId, "charlie")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 6)
+
 	})
 }
 
