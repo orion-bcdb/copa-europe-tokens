@@ -36,11 +36,13 @@ type Operations interface {
 	GetStatus() (string, error)
 	DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error)
 	GetTokenType(tokenTypeId string) (*types.DeployResponse, error)
+	GetTokenTypes() ([]*types.DeployResponse, error)
 
 	PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error)
 	PrepareTransfer(tokenId string, transferRequest *types.TransferRequest) (*types.TransferResponse, error)
 	SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error)
 	GetToken(tokenId string) (*types.TokenRecord, error)
+	GetTokensByOwner(tokenTypeId string, owner string) ([]*types.TokenRecord, error)
 
 	AddUser(userRecord *types.UserRecord) error
 	UpdateUser(userRecord *types.UserRecord) error
@@ -588,6 +590,66 @@ func (m *Manager) GetToken(tokenId string) (*types.TokenRecord, error) {
 	m.lg.Debugf("Token record: %v; metadata: %+v", record, meta)
 
 	return record, nil
+}
+
+func (m *Manager) GetTokensByOwner(tokenTypeId string, owner string) ([]*types.TokenRecord, error) {
+	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
+	if _, ok := m.tokenTypesDBs[tokenDBName]; !ok {
+		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
+	}
+
+	jq, err := m.custodianSession.JSONQuery()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create JSONQuery")
+	}
+
+	query := fmt.Sprintf(`{"selector": {"owner": {"$eq": "%s"}}}`, owner)
+	results, err := jq.Execute(tokenDBName, query)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to execute JSONQuery")
+	}
+
+	var records []*types.TokenRecord
+	for _, res := range results {
+		record := &types.TokenRecord{}
+		err = json.Unmarshal(res.GetValue(), record)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
+		}
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func (m *Manager) GetTokenTypes() ([]*types.DeployResponse, error) {
+	jq, err := m.custodianSession.JSONQuery()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create JSONQuery")
+	}
+
+	query := `{"selector": {"typeId": {"$lte": "~"}}}` //base64 chars are always smaller
+	results, err := jq.Execute(TypesDBName, query)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to execute JSONQuery")
+	}
+
+	m.lg.Debugf("Num. results: %d", len(results))
+
+
+	var records []*types.DeployResponse
+	for i, res := range results {
+		record := &types.DeployResponse{}
+		err = json.Unmarshal(res.GetValue(), record)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
+		}
+		m.lg.Debugf("result %d: Key: %s | Record: %+v | Raw-Value: %s", i,res.GetKey(), record, string(res.GetValue()) )
+		record.Url = constants.TokensTypesSubTree + record.TypeId
+		records = append(records, record)
+	}
+
+	return records, nil
 }
 
 func (m *Manager) AddUser(userRecord *types.UserRecord) error {
