@@ -36,6 +36,7 @@ func NewTokensServer(conf *config.Configuration, lg *logger.SugarLogger) (*Token
 	mux.Handle(constants.StatusEndpoint, httphandlers.NewStatusHandler(tokenManager, lg))
 	mux.Handle(constants.TokensTypesEndpoint, httphandlers.NewDeployHandler(tokenManager, lg))
 	mux.Handle(constants.TokensTypesSubTree, httphandlers.NewDeployHandler(tokenManager, lg))
+	mux.Handle(constants.TokensAssetsEndpoint, httphandlers.NewAssetsHandler(tokenManager, lg))
 	mux.Handle(constants.TokensAssetsSubTree, httphandlers.NewAssetsHandler(tokenManager, lg))
 	mux.Handle(constants.TokensUsersEndpoint, httphandlers.NewUserHandler(tokenManager, lg))
 	mux.Handle(constants.TokensUsersSubTree, httphandlers.NewUserHandler(tokenManager, lg))

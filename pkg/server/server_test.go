@@ -320,6 +320,51 @@ func TestTokensServer_MainFlow(t *testing.T) {
 		require.Equal(t, "bob", tokenRecord.Owner)
 	}
 
+	// Get tokens by owner
+	u = baseURL.ResolveReference(&url.URL{
+		Path:     constants.TokensAssetsEndpoint,
+		RawQuery: "owner=bob&type=" + deployResp2.TypeId,
+	})
+	resp, err = httpClient.Get(u.String())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	tokenRecords := []*types.TokenRecord{}
+	err = json.NewDecoder(resp.Body).Decode(&tokenRecords)
+	require.NoError(t, err)
+	require.Len(t, tokenRecords, 2)
+	for _, tr := range tokenRecords {
+		require.Equal(t, "bob", tr.Owner)
+	}
+
+	// Get tokens by owner
+	u = baseURL.ResolveReference(&url.URL{
+		Path:     constants.TokensAssetsEndpoint,
+		RawQuery: "owner=charlie&type=" + deployResp1.TypeId,
+	})
+	resp, err = httpClient.Get(u.String())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	tokenRecords = []*types.TokenRecord{}
+	err = json.NewDecoder(resp.Body).Decode(&tokenRecords)
+	require.NoError(t, err)
+	require.Len(t, tokenRecords, 3)
+	for _, tr := range tokenRecords {
+		require.Equal(t, "charlie", tr.Owner)
+	}
+
+	// Get tokens by owner
+	u = baseURL.ResolveReference(&url.URL{
+		Path:     constants.TokensAssetsEndpoint,
+		RawQuery: "owner=bob&type=" + deployResp1.TypeId,
+	})
+	resp, err = httpClient.Get(u.String())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	tokenRecords = []*types.TokenRecord{}
+	err = json.NewDecoder(resp.Body).Decode(&tokenRecords)
+	require.NoError(t, err)
+	require.Len(t, tokenRecords, 0)
+
 	wg.Add(1)
 	err = tokensServer.Stop()
 	require.NoError(t, err)
