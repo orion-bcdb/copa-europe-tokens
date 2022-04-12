@@ -1,3 +1,6 @@
+// Copyright IBM Corp. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package tokens
 
 import (
@@ -722,8 +725,26 @@ func TestTokensManager_GetTokensByOwner(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
-
 	})
+
+	t.Run("success: manager restart", func(t *testing.T) {
+		err = manager.Close()
+		require.NoError(t, err)
+		manager, err = NewManager(env.conf, env.lg)
+		require.NoError(t, err)
+		require.NotNil(t, manager)
+
+		records, err := manager.GetTokensByOwner(deployResponse.TypeId, "bob")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 5)
+
+		records, err = manager.GetTokensByOwner(deployResponse.TypeId, "charlie")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 6)
+	})
+
 }
 
 func TestManager_Users(t *testing.T) {
