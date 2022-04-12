@@ -102,7 +102,16 @@ func NewManager(config *config.Configuration, lg *logger.SugarLogger) (*Manager,
 		return nil, err
 	}
 
-	//TODO read all token types to the tokenTypesDBs map
+	tokenTypes, err := m.GetTokenTypes()
+	if err != nil {
+		return nil, err
+	}
+	m.lg.Debugf("Found token types: %+v", tokenTypes)
+	for _, tt := range tokenTypes {
+		dbName := TokenTypeDBNamePrefix + tt.TypeId
+		m.tokenTypesDBs[dbName] = true
+	}
+	m.lg.Debugf("Found token types: %v", m.tokenTypesDBs)
 
 	m.lg.Info("Connected to Orion")
 
@@ -634,17 +643,13 @@ func (m *Manager) GetTokenTypes() ([]*types.DeployResponse, error) {
 		return nil, errors.Wrap(err, "failed to execute JSONQuery")
 	}
 
-	m.lg.Debugf("Num. results: %d", len(results))
-
-
 	var records []*types.DeployResponse
-	for i, res := range results {
+	for _, res := range results {
 		record := &types.DeployResponse{}
 		err = json.Unmarshal(res.GetValue(), record)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
 		}
-		m.lg.Debugf("result %d: Key: %s | Record: %+v | Raw-Value: %s", i,res.GetKey(), record, string(res.GetValue()) )
 		record.Url = constants.TokensTypesSubTree + record.TypeId
 		records = append(records, record)
 	}
