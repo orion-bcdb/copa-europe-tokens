@@ -1,4 +1,4 @@
-ARG GO_VER=1.16.5
+ARG GO_VER=1.16.9
 ARG ALPINE_VER=3.13
 
 FROM alpine:${ALPINE_VER} as copa-tokens-base
