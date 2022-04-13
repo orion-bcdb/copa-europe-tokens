@@ -186,7 +186,7 @@ func TestDeployHandler_GetTokenType(t *testing.T) {
 		require.NotNil(t, rr)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensTypesSubTree +  "aAbBcCdDeEfFgG"}
+			Path: constants.TokensTypesSubTree + "aAbBcCdDeEfFgG"}
 		req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
 		require.NoError(t, err)
 
@@ -254,9 +254,25 @@ func TestDeployHandler_GetTokenType(t *testing.T) {
 	})
 }
 
-func TestDeployHandler_ListTokenType(t *testing.T) {
-	t.Run("not implemented", func(t *testing.T) {
+func TestDeployHandler_ListTokenTypes(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		expectedTypes := []*types.DeployResponse{
+			{
+				TypeId:      "xXyYzZ09-_",
+				Name:        "hisNFT",
+				Description: "it is my NFT",
+				Url:         "/tokens/types/xXyYzZ09-_",
+			},
+			{
+				TypeId:      "aAbBcCdDeEfFgG",
+				Name:        "myNFT",
+				Description: "it is my NFT",
+				Url:         "/tokens/types/aAbBcCdDeEfFgG",
+			},
+		}
+
 		mockManager := &mocks.Operations{}
+		mockManager.GetTokenTypesReturns(expectedTypes, nil)
 
 		h := NewDeployHandler(mockManager, testLogger(t, "debug"))
 		require.NotNil(t, h)
@@ -269,8 +285,81 @@ func TestDeployHandler_ListTokenType(t *testing.T) {
 		require.NoError(t, err)
 
 		h.ServeHTTP(rr, req)
-		require.Equal(t, http.StatusNotImplemented, rr.Code)
+		require.Equal(t, http.StatusOK, rr.Code)
+		var tokenTypes []*types.DeployResponse
+		err = json.NewDecoder(rr.Body).Decode(&tokenTypes)
+		require.NoError(t, err)
+		require.Len(t, tokenTypes, 2)
+
+		for _, expectedTT := range expectedTypes {
+			found := false
+			for _, actualTT := range tokenTypes {
+				if *expectedTT == *actualTT {
+					found = true
+					break
+				}
+			}
+			require.True(t, found, "exp not found: %v", expectedTT)
+		}
 	})
+
+	type testCase struct {
+		name           string
+		mockFactory    func() *mocks.Operations
+		expectedStatus int
+		expectedErr    *types.HttpResponseErr
+	}
+	for _, tt := range []testCase{
+		{
+			name: "error: invalid",
+			mockFactory: func() *mocks.Operations {
+				mockManager := &mocks.Operations{}
+				mockManager.GetTokenTypesReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				return mockManager
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedErr:    &types.HttpResponseErr{ErrMsg: "oops invalid"},
+		},
+		{
+			name: "error: not found",
+			mockFactory: func() *mocks.Operations {
+				mockManager := &mocks.Operations{}
+				mockManager.GetTokenTypesReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				return mockManager
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedErr:    &types.HttpResponseErr{ErrMsg: "oops not found"},
+		},
+		{
+			name: "error: internal",
+			mockFactory: func() *mocks.Operations {
+				mockManager := &mocks.Operations{}
+				mockManager.GetTokenTypesReturns(nil, errors.New("oops internal"))
+				return mockManager
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedErr:    &types.HttpResponseErr{ErrMsg: "oops internal"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := NewDeployHandler(tt.mockFactory(), testLogger(t, "debug"))
+			require.NotNil(t, h)
+
+			rr := httptest.NewRecorder()
+			require.NotNil(t, rr)
+
+			reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091", Path: constants.TokensTypesEndpoint}
+			req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
+			require.NoError(t, err)
+
+			h.ServeHTTP(rr, req)
+			require.Equal(t, tt.expectedStatus, rr.Code)
+			resp := &types.HttpResponseErr{}
+			err = json.NewDecoder(rr.Body).Decode(resp)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedErr, resp)
+		})
+	}
 }
 
 func testLogger(t *testing.T, level string) *logger.SugarLogger {
