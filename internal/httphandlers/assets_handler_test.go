@@ -113,6 +113,154 @@ func TestAssetsHandler_Get(t *testing.T) {
 	}
 }
 
+func TestAssetsHandler_GetTokensByOwner(t *testing.T) {
+	for _, query := range []string{
+		"type=abcbdef&owner=bob",
+		"type=abAB01_-&owner=the~dude",
+		"owner=bob&type=abcbdef",
+	} {
+		t.Run("success: "+query, func(t *testing.T) {
+			mockManager := &mocks.Operations{}
+			mockManager.GetTokensByOwnerReturns([]*types.TokenRecord{
+				{
+					AssetDataId:   "xXyYzZ",
+					Owner:         "bob",
+					AssetData:     "bob's data",
+					AssetMetadata: "metadata",
+				},
+				{
+					AssetDataId:   "uUvVwW",
+					Owner:         "charlie",
+					AssetData:     "charlie's data",
+					AssetMetadata: "metadata",
+				},
+			}, nil)
+
+			h := NewAssetsHandler(mockManager, testLogger(t, "debug"))
+			require.NotNil(t, h)
+
+			rr := httptest.NewRecorder()
+			require.NotNil(t, rr)
+
+			reqUrl := &url.URL{
+				Scheme:   "http",
+				Host:     "server1.example.com:6091",
+				Path:     constants.TokensAssetsEndpoint,
+				RawQuery: query,
+			}
+			req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
+			require.NoError(t, err)
+
+			h.ServeHTTP(rr, req)
+			if http.StatusOK != rr.Code {
+				t.Log(rr.Body.String())
+			}
+			require.Equal(t, http.StatusOK, rr.Code)
+			var resp []*types.TokenRecord
+			err = json.NewDecoder(rr.Body).Decode(&resp)
+			require.NoError(t, err)
+			require.Len(t, resp, 2)
+			require.Equal(t, &types.TokenRecord{
+				AssetDataId:   "xXyYzZ",
+				Owner:         "bob",
+				AssetData:     "bob's data",
+				AssetMetadata: "metadata",
+			}, resp[0])
+			require.Equal(t, &types.TokenRecord{
+				AssetDataId:   "uUvVwW",
+				Owner:         "charlie",
+				AssetData:     "charlie's data",
+				AssetMetadata: "metadata",
+			}, resp[1])
+		})
+	}
+	t.Run("error: missing parameter", func(t *testing.T) {
+		mockManager := &mocks.Operations{}
+
+		h := NewAssetsHandler(mockManager, testLogger(t, "debug"))
+		require.NotNil(t, h)
+
+		for _, query := range []string{"type=abcbdef", "owner=abcbdef", ""} {
+
+			rr := httptest.NewRecorder()
+			require.NotNil(t, rr)
+
+			reqUrl := &url.URL{
+				Scheme:   "http",
+				Host:     "server1.example.com:6091",
+				Path:     constants.TokensAssetsEndpoint,
+				RawQuery: query,
+			}
+			req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
+			require.NoError(t, err)
+
+			h.ServeHTTP(rr, req)
+			require.Equal(t, http.StatusNotFound, rr.Code)
+		}
+	})
+
+	type testCase struct {
+		name           string
+		mockFactory    func() *mocks.Operations
+		expectedStatus int
+		expectedErr    *types.HttpResponseErr
+	}
+	for _, tt := range []testCase{
+		{
+			name: "error: invalid",
+			mockFactory: func() *mocks.Operations {
+				mockManager := &mocks.Operations{}
+				mockManager.GetTokensByOwnerReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				return mockManager
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedErr:    &types.HttpResponseErr{ErrMsg: "oops invalid"},
+		},
+		{
+			name: "error: not found",
+			mockFactory: func() *mocks.Operations {
+				mockManager := &mocks.Operations{}
+				mockManager.GetTokensByOwnerReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				return mockManager
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedErr:    &types.HttpResponseErr{ErrMsg: "oops not found"},
+		},
+		{
+			name: "error: internal",
+			mockFactory: func() *mocks.Operations {
+				mockManager := &mocks.Operations{}
+				mockManager.GetTokensByOwnerReturns(nil, errors.New("oops internal"))
+				return mockManager
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedErr:    &types.HttpResponseErr{ErrMsg: "oops internal"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := NewAssetsHandler(tt.mockFactory(), testLogger(t, "debug"))
+			require.NotNil(t, h)
+
+			rr := httptest.NewRecorder()
+			require.NotNil(t, rr)
+
+			reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
+				Path:     constants.TokensAssetsEndpoint,
+				RawQuery: "type=aAbBcCdDeEfFgG&owner=bob",
+			}
+			req, err := http.NewRequest(http.MethodGet, reqUrl.String(), nil)
+			require.NoError(t, err)
+
+			h.ServeHTTP(rr, req)
+			require.Equal(t, tt.expectedStatus, rr.Code)
+			resp := &types.HttpResponseErr{}
+			err = json.NewDecoder(rr.Body).Decode(resp)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedErr, resp)
+		})
+	}
+}
+
 func TestAssetsHandler_Mint(t *testing.T) {
 	request := &types.MintRequest{
 		Owner:         "bob",

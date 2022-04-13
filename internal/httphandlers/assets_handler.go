@@ -27,6 +27,9 @@ func NewAssetsHandler(manager tokens.Operations, lg *logger.SugarLogger) *assets
 		lg:      lg,
 	}
 
+	// GET /tokens/assets/?type=[token-type-id],owner=[user-id]
+	handler.router.HandleFunc(constants.TokensAssetsEndpoint, handler.queryAssetByOwner).Methods(http.MethodGet).Queries("type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}")
+	// GET /tokens/assets/[token-id]
 	handler.router.HandleFunc(constants.TokensAssetsQuery, handler.queryAsset).Methods(http.MethodGet)
 	handler.router.HandleFunc(constants.TokensAssetsPrepareMintMatch, handler.prepareMint).Methods(http.MethodPost)
 	handler.router.HandleFunc(constants.TokensAssetsPrepareTransferMatch, handler.prepareTransfer).Methods(http.MethodPost)
@@ -58,6 +61,38 @@ func (d *assetsHandler) queryAsset(response http.ResponseWriter, request *http.R
 	}
 
 	SendHTTPResponse(response, http.StatusOK, tokenRecord, d.lg)
+}
+
+func (d *assetsHandler) queryAssetByOwner(response http.ResponseWriter, request *http.Request) {
+	params := mux.Vars(request)
+	typeId := params["typeId"]
+	ownerId := params["ownerId"]
+
+	if typeId == "" {
+		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: "missing typeId"}, d.lg)
+		return
+	}
+
+	if ownerId == "" {
+		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: "missing owner"}, d.lg)
+		return
+	}
+
+	tokenRecords, err := d.manager.GetTokensByOwner(typeId, ownerId)
+	if err != nil {
+		switch err.(type) {
+		case *tokens.ErrInvalid:
+			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		case *tokens.ErrNotFound:
+			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		default:
+			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		}
+
+		return
+	}
+
+	SendHTTPResponse(response, http.StatusOK, tokenRecords, d.lg)
 }
 
 func (d *assetsHandler) prepareMint(response http.ResponseWriter, request *http.Request) {
