@@ -92,7 +92,7 @@ test-coverage: test-coverage-tools
 docker:
 	$(DOCKER) build -t $(DOCKER_IMAGE) --no-cache -f $(DOCKERFILE) .
 
-.PHONY: docker-arm
-docker-arm:
-	$(DOCKER) buildx build --platform linux/amd64 -f $(DOCKERFILE) -t $(DOCKER_IMAGE):linux-arm64 --load .
-	$(DOCKER) buildx build --platform linux/arm/v7 -f $(DOCKERFILE) -t $(DOCKER_IMAGE):linux-arm-v7 --load .
+.PHONY: docker-xplatform
+docker-xplatform:
+	$(DOCKER) buildx build --platform linux/arm64 -f $(DOCKERFILE) -t $(DOCKER_IMAGE) --push .
+	$(DOCKER) buildx build --platform linux/arm/v7 -f $(DOCKERFILE) -t $(DOCKER_IMAGE) --push .
