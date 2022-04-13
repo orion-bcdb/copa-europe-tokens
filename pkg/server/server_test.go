@@ -168,7 +168,7 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	deployResp2 := deployTokenType(t, httpClient, baseURL, deployReq2)
 	t.Logf("Deployed token-type: %+v", deployResp2)
 
-	// Get the token types
+	// Get the token types one by one
 	for _, typeIdUrl := range []string{deployResp1.Url, deployResp2.Url} {
 		u = baseURL.ResolveReference(&url.URL{Path: typeIdUrl})
 		resp, err = httpClient.Get(u.String())
@@ -179,6 +179,26 @@ func TestTokensServer_MainFlow(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("token-type: %+v", deployResp)
 		require.Equal(t, typeIdUrl, constants.TokensTypesSubTree+deployResp.TypeId)
+	}
+
+	// Get all token types
+	u = baseURL.ResolveReference(&url.URL{Path: constants.TokensTypesEndpoint})
+	resp, err = httpClient.Get(u.String())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var tokenTypes []*types.DeployResponse
+	err = json.NewDecoder(resp.Body).Decode(&tokenTypes)
+	require.NoError(t, err)
+	require.Len(t, tokenTypes, 2)
+	for _, expectedTT := range []*types.DeployResponse{deployResp1, deployResp2} {
+		found := false
+		for _, actualTT := range tokenTypes {
+			if *expectedTT == *actualTT {
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "exp not found: %v", expectedTT)
 	}
 
 	// Add 2 users

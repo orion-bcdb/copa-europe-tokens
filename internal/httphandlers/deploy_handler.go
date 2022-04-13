@@ -39,8 +39,21 @@ func (d *deployHandler) ServeHTTP(response http.ResponseWriter, request *http.Re
 }
 
 func (d *deployHandler) listTypes(response http.ResponseWriter, request *http.Request) {
-	//TODO
-	SendHTTPResponse(response, http.StatusNotImplemented, &types.HttpResponseErr{ErrMsg: "not implemented yet"}, d.lg)
+	tokenTypes, err := d.manager.GetTokenTypes()
+	if err != nil {
+		switch err.(type) {
+		case *tokens.ErrInvalid:
+			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		case *tokens.ErrNotFound:
+			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		default:
+			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		}
+
+		return
+	}
+
+	SendHTTPResponse(response, http.StatusOK, tokenTypes, d.lg)
 }
 
 func (d *deployHandler) queryType(response http.ResponseWriter, request *http.Request) {
