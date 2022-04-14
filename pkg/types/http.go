@@ -55,7 +55,7 @@ type TransferResponse struct {
 }
 
 type SubmitRequest struct {
-	TokenId       string `json:"TokenId"`
+	TokenId       string `json:"tokenId"`
 	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 	Signer        string `json:"signer"`
@@ -63,7 +63,7 @@ type SubmitRequest struct {
 }
 
 type SubmitResponse struct {
-	TokenId   string `json:"TokenId"`
+	TokenId   string `json:"tokenId"`
 	TxId      string `json:"txId"`
 	TxReceipt string `json:"txReceipt"`
 }
