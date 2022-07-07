@@ -607,13 +607,13 @@ func (m *Manager) GetTokensByOwner(tokenTypeId string, owner string) ([]*types.T
 		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
 	}
 
-	jq, err := m.custodianSession.JSONQuery()
+	jq, err := m.custodianSession.Query()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create JSONQuery")
 	}
 
 	query := fmt.Sprintf(`{"selector": {"owner": {"$eq": "%s"}}}`, owner)
-	results, err := jq.Execute(tokenDBName, query)
+	results, err := jq.ExecuteJSONQuery(tokenDBName, query)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to execute JSONQuery")
 	}
@@ -632,13 +632,13 @@ func (m *Manager) GetTokensByOwner(tokenTypeId string, owner string) ([]*types.T
 }
 
 func (m *Manager) GetTokenTypes() ([]*types.DeployResponse, error) {
-	jq, err := m.custodianSession.JSONQuery()
+	jq, err := m.custodianSession.Query()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create JSONQuery")
 	}
 
 	query := `{"selector": {"typeId": {"$lte": "~"}}}` //base64 chars are always smaller
-	results, err := jq.Execute(TypesDBName, query)
+	results, err := jq.ExecuteJSONQuery(TypesDBName, query)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to execute JSONQuery")
 	}
