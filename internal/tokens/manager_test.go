@@ -36,7 +36,7 @@ func TestNewTokensManager(t *testing.T) {
 
 	stat, err := manager.GetStatus()
 	require.NoError(t, err)
-	require.Regexp(t, "connected: {Id: node-1, Address: 127.0.0.1, Port: 7581, Cert-hash: [0-9a-fA-F]{8,8}}", stat)
+	require.Regexp(t, "connected: {Id: node-1, Address: 127.0.0.1, Port: 7581, Cert-hash: [0-9a-fA-F]+", stat)
 }
 
 func TestTokensManager_Deploy(t *testing.T) {

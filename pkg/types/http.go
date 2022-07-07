@@ -19,12 +19,14 @@ type StatusResponse struct {
 type DeployRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Class       string `json:"class"`
 }
 
 type DeployResponse struct {
 	TypeId      string `json:"typeId"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Class       string `json:"class"`
 	Url         string `json:"url"`
 }
 
@@ -79,4 +81,26 @@ type UserRecord struct {
 	Identity    string   `json:"identity"`    //a unique identifier
 	Certificate string   `json:"certificate"` //base64 (std, padded) encoding of bytes
 	Privilege   []string `json:"privilege"`   //a list of token types, or empty for all
+}
+
+type AnnotationRegisterRequest struct {
+	Owner              string `json:"owner"`
+	Link               string `json:"link"`
+	AnnotationData     string `json:"annotationData"`
+	AnnotationMetadata string `json:"annotationMetadata"`
+}
+
+type AnnotationRegisterResponse struct {
+	AnnotationId  string `json:"annotationId"`
+	Owner         string `json:"owner"`
+	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
+}
+
+type AnnotationRecord struct {
+	AnnotationDataId   string `json:"annotationDataId"`
+	Owner              string `json:"owner"`
+	Link               string `json:"link"`
+	AnnotationData     string `json:"annotationData"`
+	AnnotationMetadata string `json:"annotationMetadata"`
 }

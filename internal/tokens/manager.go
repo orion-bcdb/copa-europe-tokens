@@ -67,6 +67,7 @@ type TokenDescription struct {
 	TypeId      string `json:"typeId"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Class       string `json:"class"`
 	Url         string `json:"url,omitempty"`
 }
 
@@ -156,9 +157,21 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 		return nil, errors.Wrap(err, "failed to compute hash of token type name")
 	}
 	tokenDBName := TokenTypeDBNamePrefix + tokenTypeIDBase64
+
+	switch deployRequest.Class {
+	case "": //backward compatibility
+		deployRequest.Class = constants.TokenClass_NFT
+	case constants.TokenClass_NFT:
+	case constants.TokenClass_FUNGIBLE:
+	case constants.TokenClass_ANNOTATIONS:
+	default:
+		return nil, &ErrInvalid{ErrMsg: "unsupported token class: " + deployRequest.Class}
+	}
+
 	tokenDesc := &TokenDescription{
 		TypeId:      tokenTypeIDBase64,
 		Name:        deployRequest.Name,
+		Class:       deployRequest.Class,
 		Description: deployRequest.Description,
 	}
 
@@ -214,43 +227,19 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 
 	m.lg.Infof("Saved token description: %+v; txID: %s, receipt: %+v", tokenDesc, txID, receiptEnv.GetResponse().GetReceipt())
 
-	// create the token DB
-	dBsTx, err := m.adminSession.DBsTx()
-	if err != nil {
-		userTx.Abort()
-		return nil, errors.Wrap(err, "failed to create DBsTx")
+	switch deployRequest.Class {
+	case constants.TokenClass_NFT:
+		err = m.deployNFT(deployRequest, tokenDBName, txID, receiptEnv)
+	//TODO annotations, fungible
+
+	default:
+		err = errors.New("not implemented")
 	}
 
-	exists, err := dBsTx.Exists(tokenDBName)
 	if err != nil {
 		userTx.Abort()
-		return nil, errors.Wrap(err, "failed to query DB existence")
+		return nil, err
 	}
-	if exists {
-		userTx.Abort()
-		dBsTx.Abort()
-		return nil, errors.Errorf("failed to deploy token: custodian does not have privilege, but token database exists: %s", tokenDBName)
-	}
-
-	index := make(map[string]oriontypes.IndexAttributeType)
-	index["owner"] = oriontypes.IndexAttributeType_STRING
-	err = dBsTx.CreateDB(tokenDBName, index)
-	if err != nil {
-		dBsTx.Abort()
-		return nil, errors.Wrap(err, "failed to build DBsTx")
-	}
-
-	txID, receiptEnv, err = dBsTx.Commit(true)
-	if err != nil {
-		userTx.Abort()
-		m.lg.Errorf("Failed to deploy: commit failed: %s", err.Error())
-		if strings.Contains(err.Error(), fmt.Sprintf("[%s] already exists", tokenDBName)) {
-			return nil, &ErrExist{ErrMsg: "token type already exists"}
-		}
-		return nil, errors.Wrap(err, "failed to deploy token type")
-	}
-
-	m.lg.Infof("Database created: %s, for token-name: %s; txID: %s, receipt: %+v", tokenDBName, deployRequest.Name, txID, receiptEnv.GetResponse().GetReceipt())
 
 	// Add privilege to custodian
 	custodian.Privilege.DbPermission[tokenDBName] = oriontypes.Privilege_ReadWrite
@@ -272,9 +261,47 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 	return &types.DeployResponse{
 		TypeId:      tokenTypeIDBase64,
 		Name:        deployRequest.Name,
+		Class:       deployRequest.Class,
 		Description: deployRequest.Description,
 		Url:         constants.TokensTypesSubTree + tokenTypeIDBase64,
 	}, nil
+}
+
+func (m *Manager) deployNFT(deployRequest *types.DeployRequest, tokenDBName string, txID string, receiptEnv *oriontypes.TxReceiptResponseEnvelope) error {
+	dBsTx, err := m.adminSession.DBsTx()
+	if err != nil {
+		return errors.Wrap(err, "failed to create DBsTx")
+	}
+
+	exists, err := dBsTx.Exists(tokenDBName)
+	if err != nil {
+		dBsTx.Abort()
+		return errors.Wrap(err, "failed to query DB existence")
+	}
+	if exists {
+		dBsTx.Abort()
+		return errors.Errorf("failed to deploy token: custodian does not have privilege, but token database exists: %s", tokenDBName)
+	}
+
+	index := make(map[string]oriontypes.IndexAttributeType)
+	index["owner"] = oriontypes.IndexAttributeType_STRING
+	err = dBsTx.CreateDB(tokenDBName, index)
+	if err != nil {
+		dBsTx.Abort()
+		return errors.Wrap(err, "failed to build DBsTx")
+	}
+
+	txID, receiptEnv, err = dBsTx.Commit(true)
+	if err != nil {
+		m.lg.Errorf("Failed to deploy: commit failed: %s", err.Error())
+		if strings.Contains(err.Error(), fmt.Sprintf("[%s] already exists", tokenDBName)) {
+			return &ErrExist{ErrMsg: "token type already exists"}
+		}
+		return errors.Wrap(err, "failed to deploy token type")
+	}
+
+	m.lg.Infof("Database created: %s, for token-name: %s; token-class: %s txID: %s, receipt: %+v", tokenDBName, deployRequest.Name, deployRequest.Class, txID, receiptEnv.GetResponse().GetReceipt())
+	return nil
 }
 
 func (m *Manager) GetTokenType(tokenTypeId string) (*types.DeployResponse, error) {
