@@ -1,34 +1,58 @@
 package tokens
 
-type ErrExist struct {
-	ErrMsg string
+import (
+	"fmt"
+	"net/http"
+)
+
+type TokenHttpErr struct {
+	ErrMsg     string
+	StatusCode int
 }
 
-func (e *ErrExist) Error() string {
+func (e *TokenHttpErr) Error() string {
 	return e.ErrMsg
 }
 
-type ErrInvalid struct {
-	ErrMsg string
+func (e *TokenHttpErr) String() string {
+	return fmt.Sprintf("[%d: %s] %s", e.StatusCode, http.StatusText(e.StatusCode), e.ErrMsg)
 }
 
-func (e *ErrInvalid) Error() string {
-	return e.ErrMsg
+func newTokenErr(statusCode int, format string, a ...interface{}) *TokenHttpErr {
+	return &TokenHttpErr{
+		ErrMsg:     fmt.Sprintf(format, a...),
+		StatusCode: statusCode,
+	}
 }
 
-type ErrNotFound struct {
-	ErrMsg string
+func NewErrExist(format string, a ...interface{}) *TokenHttpErr {
+	return newTokenErr(http.StatusConflict, format, a...)
 }
 
-func (e *ErrNotFound) Error() string {
-	return e.ErrMsg
+func WrapErrExist(err error) *TokenHttpErr {
+	return NewErrExist(err.Error())
 }
 
-
-type ErrPermission struct {
-	ErrMsg string
+func NewErrInvalid(format string, a ...interface{}) *TokenHttpErr {
+	return newTokenErr(http.StatusBadRequest, format, a...)
 }
 
-func (e *ErrPermission) Error() string {
-	return e.ErrMsg
+func WrapErrInvalid(err error) *TokenHttpErr {
+	return NewErrInvalid(err.Error())
+}
+
+func NewErrNotFound(format string, a ...interface{}) *TokenHttpErr {
+	return newTokenErr(http.StatusNotFound, format, a...)
+}
+
+func WrapErrNotFound(err error) *TokenHttpErr {
+	return NewErrNotFound(err.Error())
+}
+
+func NewErrPermission(format string, a ...interface{}) *TokenHttpErr {
+	return newTokenErr(http.StatusForbidden, format, a...)
+}
+
+func WrapErrPermission(err error) *TokenHttpErr {
+	return NewErrPermission(err.Error())
 }

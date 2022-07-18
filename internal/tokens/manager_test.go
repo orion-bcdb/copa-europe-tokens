@@ -4,11 +4,16 @@
 package tokens
 
 import (
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+	tokencrypto "github.com/copa-europe-tokens/pkg/crypto"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path"
+	"reflect"
+	"regexp"
 	"sort"
 	"testing"
 	"time"
@@ -16,12 +21,10 @@ import (
 	"github.com/copa-europe-tokens/pkg/config"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/golang/protobuf/proto"
 	sdkconfig "github.com/hyperledger-labs/orion-sdk-go/pkg/config"
 	"github.com/hyperledger-labs/orion-server/pkg/crypto"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
 	"github.com/hyperledger-labs/orion-server/pkg/server/testutils"
-	oriontypes "github.com/hyperledger-labs/orion-server/pkg/types"
 	"github.com/hyperledger-labs/orion-server/test/setup"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,26 +32,36 @@ import (
 
 func TestNewTokensManager(t *testing.T) {
 	env := newTestEnv(t)
+	require.NotNil(t, env)
+}
 
-	manager, err := NewManager(env.conf, env.lg)
-	require.NoError(t, err)
-	require.NotNil(t, manager)
+func assertTokenHttpErr(t *testing.T, expectedStatus int, actualResponse interface{}, actualErr error) bool {
+	if !assert.Nil(t, actualResponse, "Response %+v, Error: %v", actualResponse, actualErr) {
+		return false
+	}
 
-	stat, err := manager.GetStatus()
-	require.NoError(t, err)
-	require.Regexp(t, "connected: {Id: node-1, Address: 127.0.0.1, Port: 7581, Cert-hash: [0-9a-fA-F]+", stat)
+	if !assert.Error(t, actualErr) {
+		return false
+	}
+
+	tknErr, ok := actualErr.(*TokenHttpErr)
+	if !ok {
+		return assert.Fail(t, fmt.Sprintf("Error expected to implement TokenHttpErr, but was %v.",
+			reflect.TypeOf(actualErr)), "Error: %v", actualErr)
+	}
+	return assert.Equal(t, expectedStatus, tknErr.StatusCode, "Error: %v", actualErr)
+}
+
+func assertTokenHttpErrMessage(t *testing.T, expectedStatus int, expectedMessage string, actualResponse interface{}, actualErr error) bool {
+	if !assertTokenHttpErr(t, expectedStatus, actualResponse, actualErr) {
+		return false
+	}
+
+	return assert.EqualError(t, actualErr, expectedMessage)
 }
 
 func TestTokensManager_Deploy(t *testing.T) {
 	env := newTestEnv(t)
-
-	manager, err := NewManager(env.conf, env.lg)
-	require.NoError(t, err)
-	require.NotNil(t, manager)
-
-	stat, err := manager.GetStatus()
-	require.NoError(t, err)
-	require.Contains(t, stat, "connected:")
 
 	deployRequestMy := &types.DeployRequest{
 		Name:        "my-NFT",
@@ -56,7 +69,7 @@ func TestTokensManager_Deploy(t *testing.T) {
 	}
 
 	t.Run("success: NFT", func(t *testing.T) {
-		deployResponseMy, err := manager.DeployTokenType(deployRequestMy)
+		deployResponseMy, err := env.manager.DeployTokenType(deployRequestMy)
 		assert.NoError(t, err)
 		assert.Equal(t, deployRequestMy.Name, deployResponseMy.Name)
 		expectedIdMy, _ := NameToID(deployRequestMy.Name)
@@ -68,7 +81,7 @@ func TestTokensManager_Deploy(t *testing.T) {
 			Description: "", //empty description is fine
 			Class:       constants.TokenClass_NFT,
 		}
-		deployResponseHis, err := manager.DeployTokenType(deployRequestHis)
+		deployResponseHis, err := env.manager.DeployTokenType(deployRequestHis)
 		assert.NoError(t, err)
 		assert.Equal(t, deployRequestHis.Name, deployResponseHis.Name)
 		expectedIdHis, _ := NameToID(deployRequestHis.Name)
@@ -82,7 +95,7 @@ func TestTokensManager_Deploy(t *testing.T) {
 			Description: "annotations aon my NFTs",
 			Class:       constants.TokenClass_ANNOTATIONS,
 		}
-		deployResponseAnnt, err := manager.DeployTokenType(deployRequestAnnt)
+		deployResponseAnnt, err := env.manager.DeployTokenType(deployRequestAnnt)
 		assert.NoError(t, err)
 		assert.Equal(t, deployRequestAnnt.Name, deployResponseAnnt.Name)
 		expectedIdHis, _ := NameToID(deployRequestAnnt.Name)
@@ -91,7 +104,7 @@ func TestTokensManager_Deploy(t *testing.T) {
 	})
 
 	t.Run("error: deploy again", func(t *testing.T) {
-		deployResponseBad, err := manager.DeployTokenType(deployRequestMy)
+		deployResponseBad, err := env.manager.DeployTokenType(deployRequestMy)
 		assert.Error(t, err)
 		assert.EqualError(t, err, "token type already exists")
 		assert.Nil(t, deployResponseBad)
@@ -102,7 +115,7 @@ func TestTokensManager_Deploy(t *testing.T) {
 			Name:        "",
 			Description: "",
 		}
-		deployResponseBad, err := manager.DeployTokenType(deployRequestEmpty)
+		deployResponseBad, err := env.manager.DeployTokenType(deployRequestEmpty)
 		assert.EqualError(t, err, "token type name is empty")
 		assert.Nil(t, deployResponseBad)
 	})
@@ -112,74 +125,67 @@ func TestTokensManager_Deploy(t *testing.T) {
 			Name:  "wrong class",
 			Class: "no-such-class",
 		}
-		deployResponseBad, err := manager.DeployTokenType(deployRequestEmpty)
+		deployResponseBad, err := env.manager.DeployTokenType(deployRequestEmpty)
 		assert.EqualError(t, err, "unsupported token class: no-such-class")
 		assert.Nil(t, deployResponseBad)
+	})
+
+	t.Run("error: not supported class", func(t *testing.T) {
+		deployRequestEmpty := &types.DeployRequest{
+			Name:  "wrong class",
+			Class: constants.TokenClass_FUNGIBLE,
+		}
+		deployResponseBad, err := env.manager.DeployTokenType(deployRequestEmpty)
+		assertTokenHttpErr(t, http.StatusBadRequest, deployResponseBad, err)
 	})
 }
 
 func TestTokensManager_GetTokenType(t *testing.T) {
 	env := newTestEnv(t)
 
-	manager, err := NewManager(env.conf, env.lg)
-	require.NoError(t, err)
-	require.NotNil(t, manager)
-
-	stat, err := manager.GetStatus()
-	require.NoError(t, err)
-	require.Contains(t, stat, "connected:")
-
 	deployRequestMy := &types.DeployRequest{
 		Name:        "my-NFT",
 		Description: "my NFT for testing",
 	}
 
-	deployResponseMy, err := manager.DeployTokenType(deployRequestMy)
+	deployResponseMy, err := env.manager.DeployTokenType(deployRequestMy)
 	assert.NoError(t, err)
 
 	deployRequestHis := &types.DeployRequest{
 		Name:        "his-NFT",
 		Description: "", //empty description is fine
 	}
-	deployResponseHis, err := manager.DeployTokenType(deployRequestHis)
+	deployResponseHis, err := env.manager.DeployTokenType(deployRequestHis)
 	assert.NoError(t, err)
 
 	t.Run("success", func(t *testing.T) {
-		deployResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		deployResponse, err := env.manager.GetTokenType(deployResponseMy.TypeId)
 		assert.NoError(t, err)
-		assertEqualDeployResponse(t, deployResponseMy, deployResponse)
+		assertEqualGetTokenType(t, deployResponseMy, deployResponse)
 
-		deployResponse, err = manager.GetTokenType(deployResponseHis.TypeId)
+		deployResponse, err = env.manager.GetTokenType(deployResponseHis.TypeId)
 		assert.NoError(t, err)
-		assertEqualDeployResponse(t, deployResponseHis, deployResponse)
+		assertEqualGetTokenType(t, deployResponseHis, deployResponse)
 	})
 
 	t.Run("error: empty", func(t *testing.T) {
-		deployResponse, err := manager.GetTokenType("")
-		assert.EqualError(t, err, "token type ID is empty")
-		assert.IsType(t, &ErrInvalid{}, err)
-		assert.Nil(t, deployResponse)
+		deployResponse, err := env.manager.GetTokenType("")
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "token type ID is empty", deployResponse, err)
 	})
 
 	t.Run("error: too long", func(t *testing.T) {
-		deployResponse, err := manager.GetTokenType("12345678123456781234567812345678")
-		assert.EqualError(t, err, "token type ID is too long")
-		assert.IsType(t, &ErrInvalid{}, err)
-		assert.Nil(t, deployResponse)
+		deployResponse, err := env.manager.GetTokenType("12345678123456781234567812345678")
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "token type ID is too long", deployResponse, err)
 	})
 
 	t.Run("error: not base64url", func(t *testing.T) {
-		deployResponse, err := manager.GetTokenType("123~")
-		assert.EqualError(t, err, "token type ID is not in base64url")
-		assert.IsType(t, &ErrInvalid{}, err)
-		assert.Nil(t, deployResponse)
+		deployResponse, err := env.manager.GetTokenType("123~")
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "token type ID is not in base64url", deployResponse, err)
 	})
 
 	t.Run("error: not found", func(t *testing.T) {
-		deployResponse, err := manager.GetTokenType("1234")
-		assert.EqualError(t, err, "not found")
-		assert.IsType(t, &ErrNotFound{}, err)
-		assert.Nil(t, deployResponse)
+		deployResponse, err := env.manager.GetTokenType("1234")
+		assertTokenHttpErr(t, http.StatusNotFound, deployResponse, err)
 	})
 
 }
@@ -187,15 +193,7 @@ func TestTokensManager_GetTokenType(t *testing.T) {
 func TestTokensManager_GetTokenTypes(t *testing.T) {
 	env := newTestEnv(t)
 
-	manager, err := NewManager(env.conf, env.lg)
-	require.NoError(t, err)
-	require.NotNil(t, manager)
-
-	stat, err := manager.GetStatus()
-	require.NoError(t, err)
-	require.Contains(t, stat, "connected:")
-
-	tokenTypes, err := manager.GetTokenTypes()
+	tokenTypes, err := env.manager.GetTokenTypes()
 	require.NoError(t, err)
 	require.Len(t, tokenTypes, 0)
 
@@ -204,7 +202,7 @@ func TestTokensManager_GetTokenTypes(t *testing.T) {
 		Description: "my NFT for testing",
 	}
 
-	deployResponseMy, err := manager.DeployTokenType(deployRequestMy)
+	deployResponseMy, err := env.manager.DeployTokenType(deployRequestMy)
 	t.Logf("my %s", deployResponseMy.TypeId)
 	assert.NoError(t, err)
 
@@ -212,19 +210,19 @@ func TestTokensManager_GetTokenTypes(t *testing.T) {
 		Name:        "his-NFT",
 		Description: "", //empty description is fine
 	}
-	deployResponseHis, err := manager.DeployTokenType(deployRequestHis)
+	deployResponseHis, err := env.manager.DeployTokenType(deployRequestHis)
 	assert.NoError(t, err)
 	t.Logf("his %s", deployResponseHis.TypeId)
 
-	deployResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+	deployResponse, err := env.manager.GetTokenType(deployResponseMy.TypeId)
 	assert.NoError(t, err)
-	assertEqualDeployResponse(t, deployResponseMy, deployResponse)
+	assertEqualGetTokenType(t, deployResponseMy, deployResponse)
 
-	deployResponse, err = manager.GetTokenType(deployResponseHis.TypeId)
+	deployResponse, err = env.manager.GetTokenType(deployResponseHis.TypeId)
 	assert.NoError(t, err)
-	assertEqualDeployResponse(t, deployResponseHis, deployResponse)
+	assertEqualGetTokenType(t, deployResponseHis, deployResponse)
 
-	tokenTypes, err = manager.GetTokenTypes()
+	tokenTypes, err = env.manager.GetTokenTypes()
 	require.NoError(t, err)
 	t.Logf("%v", tokenTypes)
 	require.Len(t, tokenTypes, 2)
@@ -232,8 +230,8 @@ func TestTokensManager_GetTokenTypes(t *testing.T) {
 	for _, dy := range tokenTypes {
 		found := false
 		for _, dx := range []*types.DeployResponse{deployResponseMy, deployResponseHis} {
-			if dx.Name == dy.Name {
-				assertEqualDeployResponse(t, dx, dy)
+			if dx.Name == dy["name"] {
+				assertEqualGetTokenType(t, dx, dy)
 				found = true
 			}
 		}
@@ -244,68 +242,35 @@ func TestTokensManager_GetTokenTypes(t *testing.T) {
 func TestTokensManager_MintToken(t *testing.T) {
 	env := newTestEnv(t)
 
-	manager, err := NewManager(env.conf, env.lg)
-	require.NoError(t, err)
-	require.NotNil(t, manager)
-
-	stat, err := manager.GetStatus()
-	require.NoError(t, err)
-	require.Contains(t, stat, "connected:")
-
 	deployRequest := &types.DeployRequest{
 		Name:        "my-NFT",
 		Description: "my NFT for testing",
 	}
 
-	deployResponseMy, err := manager.DeployTokenType(deployRequest)
+	deployResponseMy, err := env.manager.DeployTokenType(deployRequest)
 	assert.NoError(t, err)
 
-	t.Run("success: owner is user bob", func(t *testing.T) {
-		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
-		assert.NoError(t, err)
-		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+	env.updateUsers()
 
-		certBob, signerBob := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
-		err = manager.AddUser(&types.UserRecord{
-			Identity:    "bob",
-			Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
-			Privilege:   nil,
-		})
+	t.Run("success: owner is user bob", func(t *testing.T) {
+		getResponse, err := env.manager.GetTokenType(deployResponseMy.TypeId)
 		assert.NoError(t, err)
+		assertEqualGetTokenType(t, deployResponseMy, getResponse)
 
 		mintRequest := &types.MintRequest{
 			Owner:         "bob",
 			AssetData:     "bob's asset",
 			AssetMetadata: "bob's asset meta",
 		}
-		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
+		mintResponse, err := env.manager.PrepareMint(getResponse["typeId"], mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
-		require.NoError(t, err)
-		txEnv := &oriontypes.DataTxEnvelope{}
-		err = proto.Unmarshal(txEnvBytes, txEnv)
-		require.NoError(t, err)
-
-		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
-		require.NotNil(t, sig)
-
-		submitRequest := &types.SubmitRequest{
-			TokenId:       mintResponse.TokenId,
-			TxEnvelope:    mintResponse.TxEnvelope,
-			TxPayloadHash: mintResponse.TxPayloadHash,
-			Signer:        "bob",
-			Signature:     base64.StdEncoding.EncodeToString(sig),
-		}
-
-		submitResponse, err := manager.SubmitTx(submitRequest)
-		require.NoError(t, err)
-		require.NotNil(t, submitResponse)
-		require.Equal(t, submitRequest.TokenId, submitResponse.TokenId)
+		submitResponse := env.requireSignAndSubmit("bob", mintResponse)
+		require.Equal(t, mintResponse.TokenId, submitResponse.TxContext)
 
 		// Get this token
-		tokenRecord, err := manager.GetToken(mintResponse.TokenId)
+		tokenRecord, err := env.manager.GetToken(mintResponse.TokenId)
 		require.NoError(t, err)
 		require.Equal(t, mintRequest.Owner, tokenRecord.Owner)
 		require.Equal(t, mintRequest.AssetData, tokenRecord.AssetData)
@@ -316,148 +281,91 @@ func TestTokensManager_MintToken(t *testing.T) {
 	})
 
 	t.Run("error: owner is custodian or admin", func(t *testing.T) {
-		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		getResponse, err := env.manager.GetTokenType(deployResponseMy.TypeId)
 		assert.NoError(t, err)
-		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+		assertEqualGetTokenType(t, deployResponseMy, getResponse)
 
 		mintRequest := &types.MintRequest{
 			Owner:         "alice",
 			AssetData:     "my asset",
 			AssetMetadata: "my asset meta",
 		}
-		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
-		require.EqualError(t, err, "owner cannot be the custodian: alice")
-		require.IsType(t, &ErrInvalid{}, err)
-		require.Nil(t, mintResponse)
+		mintResponse, err := env.manager.PrepareMint(getResponse["typeId"], mintRequest)
+		assertTokenHttpErr(t, http.StatusBadRequest, mintResponse, err)
 
 		mintRequest = &types.MintRequest{
 			Owner:         "admin",
 			AssetData:     "my asset",
 			AssetMetadata: "my asset meta",
 		}
-		mintResponse, err = manager.PrepareMint(getResponse.TypeId, mintRequest)
-		require.EqualError(t, err, "owner cannot be the admin: admin")
-		require.IsType(t, &ErrInvalid{}, err)
-		require.Nil(t, mintResponse)
+		mintResponse, err = env.manager.PrepareMint(getResponse["typeId"], mintRequest)
+		assertTokenHttpErr(t, http.StatusBadRequest, mintResponse, err)
 	})
 
 	t.Run("error: token already exists", func(t *testing.T) {
-		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		getResponse, err := env.manager.GetTokenType(deployResponseMy.TypeId)
 		assert.NoError(t, err)
-		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+		assertEqualGetTokenType(t, deployResponseMy, getResponse)
 
 		mintRequest := &types.MintRequest{
 			Owner:         "charlie",
 			AssetData:     "bob's asset",
 			AssetMetadata: "bob's asset meta",
 		}
-		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
-		require.EqualError(t, err, "token already exists")
-		require.IsType(t, &ErrExist{}, err)
-		require.Nil(t, mintResponse)
+		mintResponse, err := env.manager.PrepareMint(getResponse["typeId"], mintRequest)
+		assertTokenHttpErrMessage(t, http.StatusConflict, "token already exists", mintResponse, err)
 	})
 
 	t.Run("error: not a user", func(t *testing.T) {
-		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		getResponse, err := env.manager.GetTokenType(deployResponseMy.TypeId)
 		assert.NoError(t, err)
-		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+		assertEqualGetTokenType(t, deployResponseMy, getResponse)
 
 		mintRequest := &types.MintRequest{
-			Owner:         "charlie",
-			AssetData:     "charlie's asset",
-			AssetMetadata: "charlie's asset meta",
+			Owner:         "dave",
+			AssetData:     "dave's asset",
+			AssetMetadata: "dave's asset meta",
 		}
-		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
+		mintResponse, err := env.manager.PrepareMint(getResponse["typeId"], mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
-		require.NoError(t, err)
-		txEnv := &oriontypes.DataTxEnvelope{}
-		err = proto.Unmarshal(txEnvBytes, txEnv)
-		require.NoError(t, err)
+		err = env.manager.RemoveUser("dave")
+		require.Nil(t, err)
 
-		_, keyPath := env.cluster.GetUserCertKeyPath("charlie")
-		aliceSigner, err := crypto.NewSigner(&crypto.SignerOptions{
-			Identity:    "charlie",
-			KeyFilePath: keyPath,
-		})
-		require.NoError(t, err)
-
-		sig := testutils.SignatureFromTx(t, aliceSigner, txEnv.Payload)
-		require.NotNil(t, sig)
-
-		submitRequest := &types.SubmitRequest{
-			TokenId:       mintResponse.TokenId,
-			TxEnvelope:    mintResponse.TxEnvelope,
-			TxPayloadHash: mintResponse.TxPayloadHash,
-			Signer:        "charlie",
-			Signature:     base64.StdEncoding.EncodeToString(sig),
-		}
-
-		submitResponse, err := manager.SubmitTx(submitRequest)
-		require.EqualError(t, err, "failed to submit transaction, server returned: status: 401 Unauthorized, message: signature verification failed")
-		require.IsType(t, &ErrPermission{}, err)
-		require.Nil(t, submitResponse)
+		submitResponse, err := env.signAndSubmit("dave", mintResponse)
+		assertTokenHttpErrMessage(t, http.StatusForbidden,
+			"failed to submit transaction, server returned: status: 401 Unauthorized, message: signature verification failed",
+			submitResponse, err)
 	})
 
 	t.Run("error: get parameters", func(t *testing.T) {
-		tokenRecord, err := manager.GetToken("")
-		require.EqualError(t, err, "invalid tokenId")
-		require.IsType(t, &ErrInvalid{}, err)
-		require.Nil(t, tokenRecord)
+		tokenRecord, err := env.manager.GetToken("")
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid tokenId", tokenRecord, err)
 
-		tokenRecord, err = manager.GetToken("xxx")
-		require.EqualError(t, err, "invalid tokenId")
-		require.IsType(t, &ErrInvalid{}, err)
-		require.Nil(t, tokenRecord)
+		tokenRecord, err = env.manager.GetToken("xxx")
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid tokenId", tokenRecord, err)
 
-		tokenRecord, err = manager.GetToken("xxx.yyy.zzz")
-		require.EqualError(t, err, "invalid tokenId")
-		require.IsType(t, &ErrInvalid{}, err)
-		require.Nil(t, tokenRecord)
+		tokenRecord, err = env.manager.GetToken("xxx.yyy.zzz")
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid tokenId", tokenRecord, err)
 
-		tokenRecord, err = manager.GetToken("token-not-deployed.xxx")
-		require.EqualError(t, err, "token type not found: token-not-deployed")
-		require.IsType(t, &ErrNotFound{}, err)
-		require.Nil(t, tokenRecord)
+		tokenRecord, err = env.manager.GetToken("token-not-deployed.xxx")
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "token type not found: token-not-deployed", tokenRecord, err)
 	})
 }
 
 func TestTokensManager_TransferToken(t *testing.T) {
 	env := newTestEnv(t)
 
-	manager, err := NewManager(env.conf, env.lg)
-	require.NoError(t, err)
-	require.NotNil(t, manager)
-
-	stat, err := manager.GetStatus()
-	require.NoError(t, err)
-	require.Contains(t, stat, "connected:")
-
 	deployRequest := &types.DeployRequest{
 		Name:        "my-NFT",
 		Description: "my NFT for testing",
 	}
 
-	deployResponse, err := manager.DeployTokenType(deployRequest)
+	deployResponse, err := env.manager.DeployTokenType(deployRequest)
 	assert.NoError(t, err)
 
-	certBob, signerBob := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
-	err = manager.AddUser(&types.UserRecord{
-		Identity:    "bob",
-		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
-		Privilege:   nil,
-	})
-	assert.NoError(t, err)
-
-	certCharlie, signerCharlie := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "charlie")
-	err = manager.AddUser(&types.UserRecord{
-		Identity:    "charlie",
-		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
-		Privilege:   nil,
-	})
-	assert.NoError(t, err)
+	env.updateUsers()
 
 	var tokenIDs []string
 	for i := 1; i <= 5; i++ {
@@ -466,30 +374,12 @@ func TestTokensManager_TransferToken(t *testing.T) {
 			AssetData:     fmt.Sprintf("bob's asset %d", i),
 			AssetMetadata: "bob's asset metadata",
 		}
-		mintResponse, err := manager.PrepareMint(deployResponse.TypeId, mintRequest)
+		mintResponse, err := env.manager.PrepareMint(deployResponse.TypeId, mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
-		require.NoError(t, err)
-		txEnv := &oriontypes.DataTxEnvelope{}
-		err = proto.Unmarshal(txEnvBytes, txEnv)
-		require.NoError(t, err)
-
-		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
-		require.NotNil(t, sig)
-
-		submitRequest := &types.SubmitRequest{
-			TokenId:       mintResponse.TokenId,
-			TxEnvelope:    mintResponse.TxEnvelope,
-			TxPayloadHash: mintResponse.TxPayloadHash,
-			Signer:        "bob",
-			Signature:     base64.StdEncoding.EncodeToString(sig),
-		}
-
-		submitResponse, err := manager.SubmitTx(submitRequest)
-		require.NoError(t, err)
-		tokenIDs = append(tokenIDs, submitResponse.TokenId)
+		submitResponse := env.requireSignAndSubmit("bob", mintResponse)
+		tokenIDs = append(tokenIDs, submitResponse.TxContext)
 	}
 
 	t.Run("success: bob to charlie", func(t *testing.T) {
@@ -497,33 +387,14 @@ func TestTokensManager_TransferToken(t *testing.T) {
 			Owner:    "bob",
 			NewOwner: "charlie",
 		}
-		transferResponse, err := manager.PrepareTransfer(tokenIDs[0], transferRequest)
+		transferResponse, err := env.manager.PrepareTransfer(tokenIDs[0], transferRequest)
 		require.NoError(t, err)
 		require.NotNil(t, transferResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxEnvelope)
-		require.NoError(t, err)
-		txEnv := &oriontypes.DataTxEnvelope{}
-		err = proto.Unmarshal(txEnvBytes, txEnv)
-		require.NoError(t, err)
-
-		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
-		require.NotNil(t, sig)
-
-		submitRequest := &types.SubmitRequest{
-			TokenId:       transferResponse.TokenId,
-			TxEnvelope:    transferResponse.TxEnvelope,
-			TxPayloadHash: transferResponse.TxPayloadHash,
-			Signer:        "bob",
-			Signature:     base64.StdEncoding.EncodeToString(sig),
-		}
-
-		submitResponse, err := manager.SubmitTx(submitRequest)
-		require.NoError(t, err)
-		require.NotNil(t, submitResponse)
+		env.requireSignAndSubmit("bob", transferResponse)
 
 		// Get this token
-		tokenRecord, err := manager.GetToken(tokenIDs[0])
+		tokenRecord, err := env.manager.GetToken(tokenIDs[0])
 		require.NoError(t, err)
 		require.Equal(t, transferRequest.NewOwner, tokenRecord.Owner)
 	})
@@ -533,25 +404,22 @@ func TestTokensManager_TransferToken(t *testing.T) {
 			Owner:    "bob",
 			NewOwner: "alice", //custodian
 		}
-		transferResponse, err := manager.PrepareTransfer(tokenIDs[1], transferRequest)
-		require.EqualError(t, err, "new owner cannot be the custodian: alice")
-		require.Nil(t, transferResponse)
+		transferResponse, err := env.manager.PrepareTransfer(tokenIDs[1], transferRequest)
+		assertTokenHttpErr(t, http.StatusBadRequest, transferResponse, err)
 
 		transferRequest = &types.TransferRequest{
 			Owner:    "bob",
 			NewOwner: "admin", //admin
 		}
-		transferResponse, err = manager.PrepareTransfer(tokenIDs[1], transferRequest)
-		require.EqualError(t, err, "new owner cannot be the admin: admin")
-		require.Nil(t, transferResponse)
+		transferResponse, err = env.manager.PrepareTransfer(tokenIDs[1], transferRequest)
+		assertTokenHttpErr(t, http.StatusBadRequest, transferResponse, err)
 
 		transferRequest = &types.TransferRequest{
 			Owner:    "bob",
 			NewOwner: "admin", //admin
 		}
-		transferResponse, err = manager.PrepareTransfer(tokenIDs[1], transferRequest)
-		require.EqualError(t, err, "new owner cannot be the admin: admin")
-		require.Nil(t, transferResponse)
+		transferResponse, err = env.manager.PrepareTransfer(tokenIDs[1], transferRequest)
+		assertTokenHttpErr(t, http.StatusBadRequest, transferResponse, err)
 	})
 
 	t.Run("error: token type does not exists", func(t *testing.T) {
@@ -559,10 +427,9 @@ func TestTokensManager_TransferToken(t *testing.T) {
 			Owner:    "bob",
 			NewOwner: "charlie",
 		}
-		transferResponse, err := manager.PrepareTransfer("aaaaabbbbbcccccdddddee.uuuuuvvvvvwwwwwxxxxxzz", transferRequest)
-		require.EqualError(t, err, "token type not found: aaaaabbbbbcccccdddddee")
-		require.IsType(t, &ErrNotFound{}, err)
-		require.Nil(t, transferResponse)
+		transferResponse, err := env.manager.PrepareTransfer("aaaaabbbbbcccccdddddee.uuuuuvvvvvwwwwwxxxxxzz", transferRequest)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "token type not found: aaaaabbbbbcccccdddddee", transferResponse, err)
+
 	})
 
 	t.Run("error: token does not exists", func(t *testing.T) {
@@ -570,10 +437,8 @@ func TestTokensManager_TransferToken(t *testing.T) {
 			Owner:    "bob",
 			NewOwner: "charlie",
 		}
-		transferResponse, err := manager.PrepareTransfer(deployResponse.TypeId+".uuuuuvvvvvwwwwwxxxxxzz", transferRequest)
-		require.EqualError(t, err, "token not found: "+deployResponse.TypeId+".uuuuuvvvvvwwwwwxxxxxzz")
-		require.IsType(t, &ErrNotFound{}, err)
-		require.Nil(t, transferResponse)
+		transferResponse, err := env.manager.PrepareTransfer(deployResponse.TypeId+".uuuuuvvvvvwwwwwxxxxxzz", transferRequest)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "token not found: "+deployResponse.TypeId+".uuuuuvvvvvwwwwwxxxxxzz", transferResponse, err)
 	})
 
 	t.Run("error: new owner not a user", func(t *testing.T) {
@@ -581,31 +446,14 @@ func TestTokensManager_TransferToken(t *testing.T) {
 			Owner:    "bob",
 			NewOwner: "david",
 		}
-		transferResponse, err := manager.PrepareTransfer(tokenIDs[1], transferRequest)
+		transferResponse, err := env.manager.PrepareTransfer(tokenIDs[1], transferRequest)
 		require.NoError(t, err)
 		require.NotNil(t, transferResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxEnvelope)
-		require.NoError(t, err)
-		txEnv := &oriontypes.DataTxEnvelope{}
-		err = proto.Unmarshal(txEnvBytes, txEnv)
-		require.NoError(t, err)
-
-		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
-		require.NotNil(t, sig)
-
-		submitRequest := &types.SubmitRequest{
-			TokenId:       transferResponse.TokenId,
-			TxEnvelope:    transferResponse.TxEnvelope,
-			TxPayloadHash: transferResponse.TxPayloadHash,
-			Signer:        "bob",
-			Signature:     base64.StdEncoding.EncodeToString(sig),
+		submitResponse, err := env.signAndSubmit("bob", transferResponse)
+		if assertTokenHttpErr(t, http.StatusBadRequest, submitResponse, err) {
+			assert.Contains(t, err.Error(), "is not valid, flag: INVALID_INCORRECT_ENTRIES, reason: the user [david] defined in the access control for the key [gm8Ndnh5x9firTQ2FLrIcQ] does not exist")
 		}
-
-		submitResponse, err := manager.SubmitTx(submitRequest)
-		assert.Contains(t, err.Error(), "is not valid, flag: INVALID_INCORRECT_ENTRIES, reason: the user [david] defined in the access control for the key [gm8Ndnh5x9firTQ2FLrIcQ] does not exist")
-		assert.IsType(t, &ErrInvalid{}, err)
-		require.Nil(t, submitResponse)
 	})
 
 	t.Run("error: wrong signature", func(t *testing.T) {
@@ -613,29 +461,20 @@ func TestTokensManager_TransferToken(t *testing.T) {
 			Owner:    "bob",
 			NewOwner: "charlie",
 		}
-		transferResponse, err := manager.PrepareTransfer(tokenIDs[2], transferRequest)
+		transferResponse, err := env.manager.PrepareTransfer(tokenIDs[2], transferRequest)
 		require.NoError(t, err)
 		require.NotNil(t, transferResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(transferResponse.TxEnvelope)
-		require.NoError(t, err)
-		txEnv := &oriontypes.DataTxEnvelope{}
-		err = proto.Unmarshal(txEnvBytes, txEnv)
-		require.NoError(t, err)
-
-		sig := testutils.SignatureFromTx(t, signerCharlie, txEnv.Payload)
-		require.NotNil(t, sig)
-
 		submitRequest := &types.SubmitRequest{
-			TokenId:       transferResponse.TokenId,
+			TxContext:     transferResponse.TokenId,
 			TxEnvelope:    transferResponse.TxEnvelope,
 			TxPayloadHash: transferResponse.TxPayloadHash,
 			Signer:        "bob",
 			Signature:     base64.StdEncoding.EncodeToString([]byte("bogus-sig")),
 		}
 
-		submitResponse, err := manager.SubmitTx(submitRequest)
-		assert.Contains(t, err.Error(), "is not valid, flag: INVALID_NO_PERMISSION, reason: not all required users in [alice,bob] have signed the transaction to write/delete key [sVnBPZovzX2wvtnOxxg1Sg] present in the database [ttid.kdcFXEExc8FvQTDDumKyUw]")
+		submitResponse, err := env.manager.SubmitTx(submitRequest)
+		assert.Regexp(t, regexp.MustCompile(".*is not valid, flag: INVALID_NO_PERMISSION, reason: not all required (signers|users) in \\[alice,bob] have signed the transaction to write/delete key \\[sVnBPZovzX2wvtnOxxg1Sg] present in the database \\[ttid\\.kdcFXEExc8FvQTDDumKyUw].*"), err.Error())
 		require.Nil(t, submitResponse)
 	})
 }
@@ -643,37 +482,15 @@ func TestTokensManager_TransferToken(t *testing.T) {
 func TestTokensManager_GetTokensByOwner(t *testing.T) {
 	env := newTestEnv(t)
 
-	manager, err := NewManager(env.conf, env.lg)
-	require.NoError(t, err)
-	require.NotNil(t, manager)
-
-	stat, err := manager.GetStatus()
-	require.NoError(t, err)
-	require.Contains(t, stat, "connected:")
-
 	deployRequest := &types.DeployRequest{
 		Name:        "my-NFT",
 		Description: "my NFT for testing",
 	}
 
-	deployResponse, err := manager.DeployTokenType(deployRequest)
+	deployResponse, err := env.manager.DeployTokenType(deployRequest)
 	assert.NoError(t, err)
 
-	certBob, signerBob := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
-	err = manager.AddUser(&types.UserRecord{
-		Identity:    "bob",
-		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
-		Privilege:   nil,
-	})
-	assert.NoError(t, err)
-
-	certCharlie, signerCharlie := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "charlie")
-	err = manager.AddUser(&types.UserRecord{
-		Identity:    "charlie",
-		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
-		Privilege:   nil,
-	})
-	assert.NoError(t, err)
+	env.updateUsers()
 
 	var tokenIDs []string
 	for i := 1; i <= 5; i++ {
@@ -682,30 +499,12 @@ func TestTokensManager_GetTokensByOwner(t *testing.T) {
 			AssetData:     fmt.Sprintf("bob's asset %d", i),
 			AssetMetadata: "bob's asset metadata",
 		}
-		mintResponse, err := manager.PrepareMint(deployResponse.TypeId, mintRequest)
+		mintResponse, err := env.manager.PrepareMint(deployResponse.TypeId, mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
-		require.NoError(t, err)
-		txEnv := &oriontypes.DataTxEnvelope{}
-		err = proto.Unmarshal(txEnvBytes, txEnv)
-		require.NoError(t, err)
-
-		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
-		require.NotNil(t, sig)
-
-		submitRequest := &types.SubmitRequest{
-			TokenId:       mintResponse.TokenId,
-			TxEnvelope:    mintResponse.TxEnvelope,
-			TxPayloadHash: mintResponse.TxPayloadHash,
-			Signer:        "bob",
-			Signature:     base64.StdEncoding.EncodeToString(sig),
-		}
-
-		submitResponse, err := manager.SubmitTx(submitRequest)
-		require.NoError(t, err)
-		tokenIDs = append(tokenIDs, submitResponse.TokenId)
+		submitResponse := env.requireSignAndSubmit("bob", mintResponse)
+		tokenIDs = append(tokenIDs, submitResponse.TxContext)
 	}
 
 	for i := 1; i <= 6; i++ {
@@ -714,57 +513,39 @@ func TestTokensManager_GetTokensByOwner(t *testing.T) {
 			AssetData:     fmt.Sprintf("charlie's asset %d", i),
 			AssetMetadata: "charlie's asset metadata",
 		}
-		mintResponse, err := manager.PrepareMint(deployResponse.TypeId, mintRequest)
+		mintResponse, err := env.manager.PrepareMint(deployResponse.TypeId, mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
-		require.NoError(t, err)
-		txEnv := &oriontypes.DataTxEnvelope{}
-		err = proto.Unmarshal(txEnvBytes, txEnv)
-		require.NoError(t, err)
-
-		sig := testutils.SignatureFromTx(t, signerCharlie, txEnv.Payload)
-		require.NotNil(t, sig)
-
-		submitRequest := &types.SubmitRequest{
-			TokenId:       mintResponse.TokenId,
-			TxEnvelope:    mintResponse.TxEnvelope,
-			TxPayloadHash: mintResponse.TxPayloadHash,
-			Signer:        "charlie",
-			Signature:     base64.StdEncoding.EncodeToString(sig),
-		}
-
-		submitResponse, err := manager.SubmitTx(submitRequest)
-		require.NoError(t, err)
-		tokenIDs = append(tokenIDs, submitResponse.TokenId)
+		submitResponse := env.requireSignAndSubmit("charlie", mintResponse)
+		tokenIDs = append(tokenIDs, submitResponse.TxContext)
 	}
 
 	t.Run("success", func(t *testing.T) {
-		records, err := manager.GetTokensByOwner(deployResponse.TypeId, "bob")
+		records, err := env.manager.GetTokensByOwner(deployResponse.TypeId, "bob")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 5)
 
-		records, err = manager.GetTokensByOwner(deployResponse.TypeId, "charlie")
+		records, err = env.manager.GetTokensByOwner(deployResponse.TypeId, "charlie")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
 	})
 
 	t.Run("success: manager restart", func(t *testing.T) {
-		err = manager.Close()
+		err = env.manager.Close()
 		require.NoError(t, err)
-		manager, err = NewManager(env.conf, env.lg)
+		env.manager, err = NewManager(env.conf, env.lg)
 		require.NoError(t, err)
-		require.NotNil(t, manager)
+		require.NotNil(t, env.manager)
 
-		records, err := manager.GetTokensByOwner(deployResponse.TypeId, "bob")
+		records, err := env.manager.GetTokensByOwner(deployResponse.TypeId, "bob")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 5)
 
-		records, err = manager.GetTokensByOwner(deployResponse.TypeId, "charlie")
+		records, err = env.manager.GetTokensByOwner(deployResponse.TypeId, "charlie")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
@@ -775,58 +556,43 @@ func TestTokensManager_GetTokensByOwner(t *testing.T) {
 func TestManager_Users(t *testing.T) {
 	env := newTestEnv(t)
 
-	manager, err := NewManager(env.conf, env.lg)
-	require.NoError(t, err)
-	require.NotNil(t, manager)
-
-	stat, err := manager.GetStatus()
-	require.NoError(t, err)
-	require.Contains(t, stat, "connected:")
-
 	deployRequest1 := &types.DeployRequest{
 		Name:        "my-1st-NFT",
 		Description: "my NFT for testing",
 	}
-	deployResponse1, err := manager.DeployTokenType(deployRequest1)
+	deployResponse1, err := env.manager.DeployTokenType(deployRequest1)
 	assert.NoError(t, err)
 	deployRequest2 := &types.DeployRequest{
 		Name:        "my-2nd-NFT",
 		Description: "his NFT for testing",
 	}
-	deployResponse2, err := manager.DeployTokenType(deployRequest2)
+	deployResponse2, err := env.manager.DeployTokenType(deployRequest2)
 	assert.NoError(t, err)
 	tokenTypes := []string{deployResponse1.TypeId, deployResponse2.TypeId}
 	sort.Strings(tokenTypes)
 
-	// Add a user
-	certBob, _ := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
-	err = manager.AddUser(&types.UserRecord{
-		Identity:    "bob",
-		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
-		Privilege:   nil,
-	})
-	assert.NoError(t, err)
+	// Update users
+	env.updateUsers()
 
 	// Get a user
-	userRecord, err := manager.GetUser("bob")
+	userRecord, err := env.manager.GetUser("bob")
 	assert.NoError(t, err)
 	assert.Equal(t, "bob", userRecord.Identity)
 	sort.Strings(userRecord.Privilege)
 	assert.Equal(t, tokenTypes, userRecord.Privilege)
-	assert.Equal(t, base64.StdEncoding.EncodeToString(certBob.Raw), userRecord.Certificate)
+	assert.Equal(t, base64.StdEncoding.EncodeToString(env.certs["bob"].Raw), userRecord.Certificate)
 
 	// Add same user again
-	err = manager.AddUser(&types.UserRecord{
+	err = env.manager.AddUser(&types.UserRecord{
 		Identity:    "bob",
-		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
+		Certificate: base64.StdEncoding.EncodeToString(env.certs["bob"].Raw),
 		Privilege:   nil,
 	})
-	assert.EqualError(t, err, "user already exists")
-	assert.IsType(t, &ErrExist{}, err)
+	assertTokenHttpErrMessage(t, http.StatusConflict, "user already exists: bob", nil, err)
 
 	// Update a user
 	certCharlie, _ := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "charlie")
-	err = manager.UpdateUser(&types.UserRecord{
+	err = env.manager.UpdateUser(&types.UserRecord{
 		Identity:    "bob",
 		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
 		Privilege:   []string{deployResponse1.TypeId},
@@ -834,7 +600,7 @@ func TestManager_Users(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Get updated user
-	userRecord, err = manager.GetUser("bob")
+	userRecord, err = env.manager.GetUser("bob")
 	assert.NoError(t, err)
 	assert.Equal(t, "bob", userRecord.Identity)
 	assert.Len(t, userRecord.Privilege, 1)
@@ -842,41 +608,49 @@ func TestManager_Users(t *testing.T) {
 	assert.Equal(t, base64.StdEncoding.EncodeToString(certCharlie.Raw), userRecord.Certificate)
 
 	// Delete user
-	err = manager.RemoveUser("bob")
+	err = env.manager.RemoveUser("bob")
 	assert.NoError(t, err)
-	userRecord, err = manager.GetUser("bob")
-	assert.EqualError(t, err, "user not found: bob")
-	assert.IsType(t, &ErrNotFound{}, err)
-	err = manager.RemoveUser("bob")
-	assert.EqualError(t, err, "user not found: bob")
-	assert.IsType(t, &ErrNotFound{}, err)
+	userRecord, err = env.manager.GetUser("bob")
+	assertTokenHttpErrMessage(t, http.StatusNotFound, "user not found: bob", userRecord, err)
+
+	err = env.manager.RemoveUser("bob")
+	assertTokenHttpErrMessage(t, http.StatusNotFound, "user not found: bob", nil, err)
 
 	// Update a non-existing user
-	err = manager.UpdateUser(&types.UserRecord{
+	err = env.manager.UpdateUser(&types.UserRecord{
 		Identity:    "bob",
 		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
 		Privilege:   []string{deployResponse1.TypeId},
 	})
-	assert.EqualError(t, err, "user not found: bob")
-	assert.IsType(t, &ErrNotFound{}, err)
+	assertTokenHttpErrMessage(t, http.StatusNotFound, "user not found: bob", nil, err)
 }
 
-func assertEqualDeployResponse(t *testing.T, expected, actual *types.DeployResponse) {
-	assert.Equal(t, expected.Name, actual.Name)
-	assert.Equal(t, expected.TypeId, actual.TypeId)
-	assert.Equal(t, expected.Description, actual.Description)
-	assert.Equal(t, expected.Url, actual.Url)
+func assertEqualGetTokenType(t *testing.T, expected *types.DeployResponse, actual map[string]string) {
+	assert.Equal(t, expected.Name, actual["name"])
+	assert.Equal(t, expected.TypeId, actual["typeId"])
+	assert.Equal(t, expected.Description, actual["description"])
+	assert.Equal(t, expected.Url, actual["url"])
 }
 
 type testEnv struct {
-	dir     string
-	cluster *setup.Cluster
-	conf    *config.Configuration
-	lg      *logger.SugarLogger
+	t           *testing.T
+	dir         string
+	cluster     *setup.Cluster
+	conf        *config.Configuration
+	lg          *logger.SugarLogger
+	manager     Operations
+	userRecords map[string]*types.UserRecord
+	certs       map[string]*x509.Certificate
+	signers     map[string]crypto.Signer
 }
 
 func newTestEnv(t *testing.T) *testEnv {
-	e := &testEnv{}
+	e := &testEnv{
+		t:           t,
+		userRecords: map[string]*types.UserRecord{},
+		certs:       map[string]*x509.Certificate{},
+		signers:     map[string]crypto.Signer{},
+	}
 	t.Cleanup(e.clean)
 
 	dir, err := ioutil.TempDir("", "token-manager-test")
@@ -947,7 +721,68 @@ func newTestEnv(t *testing.T) *testEnv {
 	})
 	require.NoError(t, err)
 
+	e.manager, err = NewManager(e.conf, e.lg)
+	require.NoError(t, err)
+	require.NotNil(t, e.manager)
+
+	stat, err := e.manager.GetStatus()
+	require.NoError(t, err)
+	require.Contains(t, stat, "connected:")
+
+	keyPair, err := e.cluster.GetX509KeyPair()
+	require.NoError(t, err)
+	require.NoError(t, e.cluster.CreateUserCerts("dave", keyPair))
+
+	for _, user := range []string{"alice", "admin"} {
+		e.certs[user], e.signers[user] = testutils.LoadTestCrypto(t, e.cluster.GetUserCertDir(), user)
+	}
+
+	e.addUser("bob")
+	e.addUser("charlie")
+	e.addUser("dave")
+
 	return e
+}
+
+func (e *testEnv) addUser(user string) {
+	cert, signer := testutils.LoadTestCrypto(e.t, e.cluster.GetUserCertDir(), user)
+	record := &types.UserRecord{
+		Identity:    user,
+		Certificate: base64.StdEncoding.EncodeToString(cert.Raw),
+		Privilege:   nil,
+	}
+	err := e.manager.AddUser(record)
+	require.NoError(e.t, err)
+	e.userRecords[user] = record
+	e.certs[user] = cert
+	e.signers[user] = signer
+}
+
+func (e *testEnv) updateUsers() {
+	for _, record := range e.userRecords {
+		err := e.manager.UpdateUser(record)
+		require.NoError(e.t, err)
+	}
+}
+
+func (e *testEnv) signAndSubmit(user string, response tokencrypto.SignatureRequester) (*types.SubmitResponse, error) {
+	submitRequest, err := tokencrypto.SignTransactionResponse(e.signers[user], response)
+	require.NoError(e.t, err)
+	return e.manager.SubmitTx(submitRequest)
+}
+
+func (e *testEnv) requireSignAndSubmit(user string, response tokencrypto.SignatureRequester) *types.SubmitResponse {
+	submitResponse, err := e.signAndSubmit(user, response)
+	require.NoError(e.t, err)
+	require.NotNil(e.t, submitResponse)
+	return submitResponse
+}
+
+func (e *testEnv) wrongSignAndSubmit(user string, response tokencrypto.SignatureRequester) (*types.SubmitResponse, error) {
+	submitRequest := response.PrepareSubmit()
+	submitRequest.Signer = user
+	submitRequest.Signature = base64.StdEncoding.EncodeToString([]byte("bogus-sig"))
+	return e.manager.SubmitTx(submitRequest)
 }
 
 func (e *testEnv) clean() {

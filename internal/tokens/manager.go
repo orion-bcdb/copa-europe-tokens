@@ -9,13 +9,10 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"hash/crc32"
 	"io/ioutil"
 	"strings"
 
 	"github.com/copa-europe-tokens/pkg/config"
-	"github.com/copa-europe-tokens/pkg/constants"
-	"github.com/copa-europe-tokens/pkg/types"
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
 	sdkconfig "github.com/hyperledger-labs/orion-sdk-go/pkg/config"
@@ -25,29 +22,23 @@ import (
 )
 
 const (
-	TokenDBSeparator      = "."
 	TypesDBName           = "token-types"
-	TokenTypeDBNamePrefix = "ttid" + TokenDBSeparator
+	TokenTypeDBNamePrefix = "ttid."
 )
 
-//go:generate counterfeiter -o mocks/operations.go --fake-name Operations . Operations
+func getTokenTypeDBName(typeId string) (string, error) {
+	if err := validateMD5Base64ID(typeId, "token type"); err != nil {
+		return "", err
+	}
 
-type Operations interface {
-	GetStatus() (string, error)
-	DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error)
-	GetTokenType(tokenTypeId string) (*types.DeployResponse, error)
-	GetTokenTypes() ([]*types.DeployResponse, error)
+	return TokenTypeDBNamePrefix + typeId, nil
+}
 
-	PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error)
-	PrepareTransfer(tokenId string, transferRequest *types.TransferRequest) (*types.TransferResponse, error)
-	SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error)
-	GetToken(tokenId string) (*types.TokenRecord, error)
-	GetTokensByOwner(tokenTypeId string, owner string) ([]*types.TokenRecord, error)
-
-	AddUser(userRecord *types.UserRecord) error
-	UpdateUser(userRecord *types.UserRecord) error
-	RemoveUser(userId string) error
-	GetUser(userId string) (*types.UserRecord, error)
+func getTokenTypeId(tokenDbName string) (string, error) {
+	if !strings.HasPrefix(tokenDbName, TokenTypeDBNamePrefix) {
+		return "", errors.Errorf("%s is not a valid DB name. Must start with: %s", tokenDbName, TokenTypeDBNamePrefix)
+	}
+	return tokenDbName[len(TokenTypeDBNamePrefix):], nil
 }
 
 // TODO handle ServerTimeout on Commit
@@ -63,12 +54,25 @@ type Manager struct {
 	tokenTypesDBs map[string]bool
 }
 
-type TokenDescription struct {
+func abort(ctx bcdb.TxContext) {
+	if ctx != nil {
+		_ = ctx.Abort()
+	}
+}
+
+type CommonTokenDescription struct {
 	TypeId      string `json:"typeId"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Class       string `json:"class"`
-	Url         string `json:"url,omitempty"`
+}
+
+type TokenDescription interface {
+	common() *CommonTokenDescription
+}
+
+func (desc *CommonTokenDescription) common() *CommonTokenDescription {
+	return desc
 }
 
 func NewManager(config *config.Configuration, lg *logger.SugarLogger) (*Manager, error) {
@@ -109,7 +113,10 @@ func NewManager(config *config.Configuration, lg *logger.SugarLogger) (*Manager,
 	}
 	m.lg.Debugf("Found token types: %+v", tokenTypes)
 	for _, tt := range tokenTypes {
-		dbName := TokenTypeDBNamePrefix + tt.TypeId
+		dbName, err := getTokenTypeDBName(tt["typeId"])
+		if err != nil {
+			return nil, errors.Wrapf(err, "Detected invalid type ID in DB: %v", tt["typeId"])
+		}
 		m.tokenTypesDBs[dbName] = true
 	}
 	m.lg.Debugf("Found token types: %v", m.tokenTypesDBs)
@@ -117,722 +124,6 @@ func NewManager(config *config.Configuration, lg *logger.SugarLogger) (*Manager,
 	m.lg.Info("Connected to Orion")
 
 	return m, nil
-}
-
-func (m *Manager) Close() error {
-	//TODO
-	return nil
-}
-
-func (m *Manager) GetStatus() (string, error) {
-	tx, err := m.adminSession.ConfigTx()
-	if err != nil {
-		return "", errors.Wrap(err, "failed to get status")
-	}
-	config, err := tx.GetClusterConfig()
-	if err != nil {
-		return "", errors.Wrap(err, "failed to get status")
-	}
-
-	b := strings.Builder{}
-	b.WriteString("{")
-	for i, n := range config.Nodes {
-		b.WriteString(nodeConfigToString(n))
-		if i < len(config.Nodes)-1 {
-			b.WriteString("; ")
-		}
-	}
-	b.WriteString("}")
-	return fmt.Sprintf("connected: %s", b.String()), nil
-}
-
-func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error) {
-	if deployRequest.Name == "" {
-		return nil, &ErrInvalid{ErrMsg: "token type name is empty"}
-	}
-
-	// Compute TypeId
-	tokenTypeIDBase64, err := NameToID(deployRequest.Name)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to compute hash of token type name")
-	}
-	tokenDBName := TokenTypeDBNamePrefix + tokenTypeIDBase64
-
-	switch deployRequest.Class {
-	case "": //backward compatibility
-		deployRequest.Class = constants.TokenClass_NFT
-	case constants.TokenClass_NFT:
-	case constants.TokenClass_FUNGIBLE:
-	case constants.TokenClass_ANNOTATIONS:
-	default:
-		return nil, &ErrInvalid{ErrMsg: "unsupported token class: " + deployRequest.Class}
-	}
-
-	tokenDesc := &TokenDescription{
-		TypeId:      tokenTypeIDBase64,
-		Name:        deployRequest.Name,
-		Class:       deployRequest.Class,
-		Description: deployRequest.Description,
-	}
-
-	// Check existence by looking into the custodian privileges
-	userTx, err := m.adminSession.UsersTx()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create UsersTx")
-	}
-	custodian, err := userTx.GetUser(m.config.Users.Custodian.UserID)
-	if err != nil {
-		userTx.Abort()
-		return nil, errors.Wrapf(err, "failed to get user: %s", m.config.Users.Custodian.UserID)
-	}
-	if _, exists := custodian.GetPrivilege().GetDbPermission()[tokenDBName]; exists {
-		userTx.Abort()
-		return nil, &ErrExist{ErrMsg: "token type already exists"}
-	}
-
-	// Save token description to Types-DB
-	dataTx, err := m.adminSession.DataTx()
-	if err != nil {
-		userTx.Abort()
-		return nil, errors.Wrap(err, "failed to create DataTx")
-	}
-
-	data, _, err := dataTx.Get(TypesDBName, tokenDBName)
-	if err != nil {
-		userTx.Abort()
-		dataTx.Abort()
-		return nil, errors.Wrapf(err, "failed to get %s %s", TypesDBName, tokenDBName)
-	}
-	if data != nil {
-		userTx.Abort()
-		dataTx.Abort()
-		return nil, errors.Errorf("failed to deploy token: custodian does not have privilege, but token type description exists: %s", string(data))
-	}
-
-	data, err = json.Marshal(tokenDesc)
-	if err != nil {
-		m.lg.Panicf("failed to json.Marshal TokenDescription: %s", err)
-	}
-	err = dataTx.Put(TypesDBName, tokenDBName, data, nil)
-	if err != nil {
-		userTx.Abort()
-		dataTx.Abort()
-		return nil, errors.Wrapf(err, "failed to put %s %s", TypesDBName, tokenDBName)
-	}
-	txID, receiptEnv, err := dataTx.Commit(true)
-	if err != nil {
-		userTx.Abort()
-		return nil, errors.Wrapf(err, "failed to commit %s %s", TypesDBName, tokenDBName)
-	}
-
-	m.lg.Infof("Saved token description: %+v; txID: %s, receipt: %+v", tokenDesc, txID, receiptEnv.GetResponse().GetReceipt())
-
-	switch deployRequest.Class {
-	case constants.TokenClass_NFT:
-		err = m.deployNFT(deployRequest, tokenDBName, "owner")
-	case constants.TokenClass_ANNOTATIONS:
-		err = m.deployNFT(deployRequest, tokenDBName, "owner", "link")
-	case constants.TokenClass_FUNGIBLE:
-		err = errors.New("not implemented yet")
-
-	default:
-		err = &ErrInvalid{ErrMsg: "unsupported token class: " + deployRequest.Class}
-	}
-
-	if err != nil {
-		userTx.Abort()
-		return nil, err
-	}
-
-	// Add privilege to custodian
-	custodian.Privilege.DbPermission[tokenDBName] = oriontypes.Privilege_ReadWrite
-
-	err = userTx.PutUser(custodian, nil)
-	if err != nil {
-		userTx.Abort()
-		return nil, errors.Wrap(err, "failed to put user")
-	}
-
-	txID, receiptEnv, err = userTx.Commit(true)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to commit user")
-	}
-
-	m.tokenTypesDBs[tokenDBName] = true
-	m.lg.Infof("Custodian [%s] granted RW privilege to database: %s; txID: %s, receipt: %+v", m.config.Users.Custodian.UserID, tokenDBName, txID, receiptEnv.GetResponse().GetReceipt())
-
-	return &types.DeployResponse{
-		TypeId:      tokenTypeIDBase64,
-		Name:        deployRequest.Name,
-		Class:       deployRequest.Class,
-		Description: deployRequest.Description,
-		Url:         constants.TokensTypesSubTree + tokenTypeIDBase64,
-	}, nil
-}
-
-func (m *Manager) deployNFT(deployRequest *types.DeployRequest, tokenDBName string, indices ...string) error {
-	dBsTx, err := m.adminSession.DBsTx()
-	if err != nil {
-		return errors.Wrap(err, "failed to create DBsTx")
-	}
-
-	exists, err := dBsTx.Exists(tokenDBName)
-	if err != nil {
-		dBsTx.Abort()
-		return errors.Wrap(err, "failed to query DB existence")
-	}
-	if exists {
-		dBsTx.Abort()
-		return errors.Errorf("failed to deploy token: custodian does not have privilege, but token database exists: %s", tokenDBName)
-	}
-
-	index := make(map[string]oriontypes.IndexAttributeType)
-	for _, ind := range indices {
-		index[ind] = oriontypes.IndexAttributeType_STRING
-	}
-	err = dBsTx.CreateDB(tokenDBName, index)
-	if err != nil {
-		dBsTx.Abort()
-		return errors.Wrap(err, "failed to build DBsTx")
-	}
-
-	txID, receiptEnv, err := dBsTx.Commit(true)
-	if err != nil {
-		m.lg.Errorf("Failed to deploy: commit failed: %s", err.Error())
-		if strings.Contains(err.Error(), fmt.Sprintf("[%s] already exists", tokenDBName)) {
-			return &ErrExist{ErrMsg: "token type already exists"}
-		}
-		return errors.Wrap(err, "failed to deploy token type")
-	}
-
-	m.lg.Infof("Database created: %s, for token-name: %s; token-class: %s txID: %s, receipt: %+v", tokenDBName, deployRequest.Name, deployRequest.Class, txID, receiptEnv.GetResponse().GetReceipt())
-	return nil
-}
-
-func (m *Manager) GetTokenType(tokenTypeId string) (*types.DeployResponse, error) {
-	if err := validateMD5Base64ID(tokenTypeId, "token type"); err != nil {
-		return nil, err
-	}
-
-	dataTx, err := m.custodianSession.DataTx()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create DataTx")
-	}
-
-	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
-	val, meta, err := dataTx.Get(TypesDBName, tokenDBName)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to Get %s", tokenDBName)
-	}
-
-	if val == nil {
-		return nil, &ErrNotFound{ErrMsg: "not found"}
-	}
-
-	deployResponse := &types.DeployResponse{}
-	err = json.Unmarshal(val, deployResponse)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to json.Unmarshal %s", tokenDBName)
-	}
-	deployResponse.Url = constants.TokensTypesSubTree + deployResponse.TypeId
-
-	m.lg.Debugf("Token type deploy response: %+v; metadata: %v", deployResponse, meta)
-
-	return deployResponse, nil
-}
-
-func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error) {
-	if err := validateMD5Base64ID(tokenTypeId, "token type"); err != nil {
-		return nil, err
-	}
-
-	if mintRequest.Owner == "" {
-		return nil, &ErrInvalid{ErrMsg: "missing owner"}
-	}
-	if mintRequest.Owner == m.config.Users.Custodian.UserID {
-		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("owner cannot be the custodian: %s", m.config.Users.Custodian.UserID)}
-	}
-	if mintRequest.Owner == m.config.Users.Admin.UserID {
-		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("owner cannot be the admin: %s", m.config.Users.Admin.UserID)}
-	}
-	if mintRequest.AssetData == "" {
-		return nil, &ErrInvalid{ErrMsg: "missing asset data"}
-	}
-
-	assetDataId, err := NameToID(mintRequest.AssetData)
-	if err != nil {
-		return nil, err
-	}
-
-	dataTx, err := m.custodianSession.DataTx()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create DataTx")
-	}
-
-	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
-	val, meta, err := dataTx.Get(tokenDBName, assetDataId)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to Get %s", tokenDBName)
-	}
-	if val != nil {
-		m.lg.Debugf("token already exists: DB: %s, assetId: %s, record: %s, meta: %+v", tokenDBName, assetDataId, string(val), meta)
-		return nil, &ErrExist{ErrMsg: "token already exists"}
-	}
-
-	record := &types.TokenRecord{
-		AssetDataId:   assetDataId,
-		Owner:         mintRequest.Owner,
-		AssetData:     mintRequest.AssetData,
-		AssetMetadata: mintRequest.AssetMetadata,
-	}
-
-	val, err = json.Marshal(record)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to json.Marshal record")
-	}
-
-	err = dataTx.Put(tokenDBName, assetDataId, val,
-		&oriontypes.AccessControl{
-			ReadWriteUsers: map[string]bool{
-				m.config.Users.Custodian.UserID: true,
-				mintRequest.Owner:               true,
-			},
-			SignPolicyForWrite: oriontypes.AccessControl_ALL,
-		},
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to Put")
-	}
-
-	dataTx.AddMustSignUser(mintRequest.Owner)
-
-	txEnv, err := dataTx.SignConstructedTxEnvelopeAndCloseTx()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to construct Tx envelope")
-	}
-
-	txEnvBytes, err := proto.Marshal(txEnv)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
-	}
-
-	payloadBytes, err := json.Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
-	}
-	payloadHash, err := ComputeSHA256Hash(payloadBytes)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to compute hash of DataTx bytes")
-	}
-
-	m.lg.Debugf("Received mint request for token: %+v", record)
-
-	mintResponse := &types.MintResponse{
-		TokenId:       tokenTypeId + "." + assetDataId,
-		Owner:         mintRequest.Owner,
-		TxEnvelope:    base64.StdEncoding.EncodeToString(txEnvBytes),
-		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
-	}
-
-	return mintResponse, nil
-}
-
-func (m *Manager) PrepareTransfer(tokenId string, transferRequest *types.TransferRequest) (*types.TransferResponse, error) {
-	m.lg.Debugf("Received transfer request: %+v, for tokenId: %s", transferRequest, tokenId)
-
-	tokenTypeId, assetId, err := parseTokenId(tokenId)
-	if err != nil {
-		return nil, err
-	}
-
-	if transferRequest.NewOwner == "" {
-		return nil, &ErrInvalid{ErrMsg: "missing new owner"}
-	}
-	if transferRequest.NewOwner == m.config.Users.Custodian.UserID {
-		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("new owner cannot be the custodian: %s", m.config.Users.Custodian.UserID)}
-	}
-	if transferRequest.NewOwner == m.config.Users.Admin.UserID {
-		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("new owner cannot be the admin: %s", m.config.Users.Admin.UserID)}
-	}
-
-	dataTx, err := m.custodianSession.DataTx()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create DataTx")
-	}
-	defer dataTx.Abort()
-
-	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
-	if _, ok := m.tokenTypesDBs[tokenDBName]; !ok {
-		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
-	}
-
-	val, meta, err := dataTx.Get(tokenDBName, assetId)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to Get %s", tokenDBName)
-	}
-	if val == nil {
-		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token not found: %s", tokenId)}
-	}
-
-	record := &types.TokenRecord{}
-	err = json.Unmarshal(val, record)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to json.Unmarshal %v", val)
-	}
-
-	if transferRequest.Owner != record.Owner {
-		return nil, &ErrPermission{ErrMsg: fmt.Sprintf("not owner: %s", transferRequest.Owner)}
-	}
-
-	m.lg.Debugf("Token: %+v; meta: %+v", record, meta)
-
-	record.Owner = transferRequest.NewOwner
-	recordBytes, err := json.Marshal(record)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to json.Marshal %v", record)
-	}
-
-	acl := &oriontypes.AccessControl{
-		ReadWriteUsers: map[string]bool{
-			m.config.Users.Custodian.UserID: true,
-			transferRequest.NewOwner:        true,
-		},
-		SignPolicyForWrite: oriontypes.AccessControl_ALL,
-	}
-
-	err = dataTx.Put(tokenDBName, assetId, recordBytes, acl)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to Put")
-	}
-
-	txEnv, err := dataTx.SignConstructedTxEnvelopeAndCloseTx()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to construct Tx envelope")
-	}
-
-	txEnvBytes, err := proto.Marshal(txEnv)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
-	}
-
-	payloadBytes, err := json.Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
-	}
-	payloadHash, err := ComputeSHA256Hash(payloadBytes)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to compute hash of DataTx bytes")
-	}
-
-	transferResponse := &types.TransferResponse{
-		TokenId:       tokenId,
-		Owner:         transferRequest.Owner,
-		NewOwner:      transferRequest.NewOwner,
-		TxEnvelope:    base64.StdEncoding.EncodeToString(txEnvBytes),
-		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
-	}
-
-	return transferResponse, nil
-}
-
-func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error) {
-	tokenTypeId, assetId, err := parseTokenId(submitRequest.TokenId)
-	if err != nil {
-		return nil, err
-	}
-
-	m.lg.Infof("Custodian [%s] preparing to submit the Tx to the database,  tokenTypeId: %s, assetId: %s, signer: %s",
-		m.config.Users.Custodian.UserID, tokenTypeId, assetId, submitRequest.Signer)
-
-	txEnvBytes, err := base64.StdEncoding.DecodeString(submitRequest.TxEnvelope)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode TxEnvelope")
-	}
-
-	txEnv := &oriontypes.DataTxEnvelope{}
-	err = proto.Unmarshal(txEnvBytes, txEnv)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to proto.Unmarshal TxEnvelope")
-	}
-
-	sigBytes, err := base64.StdEncoding.DecodeString(submitRequest.Signature)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode Signature")
-	}
-
-	txEnv.Signatures[submitRequest.Signer] = sigBytes
-	loadedTx, err := m.custodianSession.LoadDataTx(txEnv)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to load tx envelope")
-	}
-
-	m.lg.Debugf("signed users: %+v", loadedTx.SignedUsers())
-
-	txID, receiptEnv, err := loadedTx.Commit(true)
-	if err != nil {
-		if strings.Contains(err.Error(), "status: 401 Unauthorized") {
-			return nil, &ErrPermission{ErrMsg: err.Error()}
-		}
-
-		if errV, ok := err.(*bcdb.ErrorTxValidation); ok {
-			switch oriontypes.Flag_value[errV.Flag] {
-			case int32(oriontypes.Flag_INVALID_NO_PERMISSION), int32(oriontypes.Flag_INVALID_UNAUTHORISED), int32(oriontypes.Flag_INVALID_MISSING_SIGNATURE):
-				return nil, &ErrPermission{ErrMsg: err.Error()}
-			default:
-				return nil, &ErrInvalid{ErrMsg: err.Error()}
-			}
-		}
-
-		return nil, err
-	}
-
-	m.lg.Infof("Custodian [%s] committed the Tx to the database, txID: %s, receipt: %+v", m.config.Users.Custodian.UserID, txID, receiptEnv.GetResponse().GetReceipt())
-
-	receiptBytes, err := proto.Marshal(receiptEnv)
-
-	return &types.SubmitResponse{
-		TokenId:   submitRequest.TokenId,
-		TxId:      txID,
-		TxReceipt: base64.StdEncoding.EncodeToString(receiptBytes),
-	}, nil
-}
-
-func (m *Manager) GetToken(tokenId string) (*types.TokenRecord, error) {
-	tokenTypeId, assetId, err := parseTokenId(tokenId)
-	if err != nil {
-		return nil, err
-	}
-
-	dataTx, err := m.custodianSession.DataTx()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create DataTx")
-	}
-	defer dataTx.Abort()
-
-	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
-	if _, ok := m.tokenTypesDBs[tokenDBName]; !ok {
-		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
-	}
-
-	val, meta, err := dataTx.Get(tokenDBName, assetId)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to Get %s", tokenDBName)
-	}
-	if val == nil {
-		return nil, &ErrNotFound{ErrMsg: "token not found"}
-	}
-
-	record := &types.TokenRecord{}
-	err = json.Unmarshal(val, record)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to json.Unmarshal %v", val)
-	}
-
-	m.lg.Debugf("Token record: %v; metadata: %+v", record, meta)
-
-	return record, nil
-}
-
-func (m *Manager) GetTokensByOwner(tokenTypeId string, owner string) ([]*types.TokenRecord, error) {
-	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
-	if _, ok := m.tokenTypesDBs[tokenDBName]; !ok {
-		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
-	}
-
-	jq, err := m.custodianSession.Query()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create JSONQuery")
-	}
-
-	query := fmt.Sprintf(`{"selector": {"owner": {"$eq": "%s"}}}`, owner)
-	results, err := jq.ExecuteJSONQuery(tokenDBName, query)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to execute JSONQuery")
-	}
-
-	var records []*types.TokenRecord
-	for _, res := range results {
-		record := &types.TokenRecord{}
-		err = json.Unmarshal(res.GetValue(), record)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
-		}
-		records = append(records, record)
-	}
-
-	return records, nil
-}
-
-func (m *Manager) GetTokenTypes() ([]*types.DeployResponse, error) {
-	jq, err := m.custodianSession.Query()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create JSONQuery")
-	}
-
-	query := `{"selector": {"typeId": {"$lte": "~"}}}` //base64 chars are always smaller
-	results, err := jq.ExecuteJSONQuery(TypesDBName, query)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to execute JSONQuery")
-	}
-
-	var records []*types.DeployResponse
-	for _, res := range results {
-		record := &types.DeployResponse{}
-		err = json.Unmarshal(res.GetValue(), record)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
-		}
-		record.Url = constants.TokensTypesSubTree + record.TypeId
-		records = append(records, record)
-	}
-
-	return records, nil
-}
-
-func (m *Manager) AddUser(userRecord *types.UserRecord) error {
-	m.lg.Debugf("Add user: %v", userRecord)
-	return m.writeUser(userRecord, true)
-}
-
-func (m *Manager) UpdateUser(userRecord *types.UserRecord) error {
-	m.lg.Debugf("Update user: %v", userRecord)
-	return m.writeUser(userRecord, false)
-}
-
-func (m *Manager) writeUser(userRecord *types.UserRecord, insert bool) error {
-	userTx, err := m.adminSession.UsersTx()
-	if err != nil {
-		return errors.Wrap(err, "failed to create userTx")
-	}
-
-	user, err := userTx.GetUser(userRecord.Identity)
-	if err != nil {
-		userTx.Abort()
-		return errors.Wrapf(err, "failed to get user: %s", userRecord.Identity)
-	}
-
-	if insert && user != nil {
-		userTx.Abort()
-		return &ErrExist{"user already exists"}
-	}
-
-	if !insert && user == nil {
-		userTx.Abort()
-		return &ErrNotFound{fmt.Sprintf("user not found: %s", userRecord.Identity)}
-	}
-
-	cert, err := base64.StdEncoding.DecodeString(userRecord.Certificate)
-	if err != nil {
-		return &ErrInvalid{ErrMsg: fmt.Sprintf("failed to decode certificate: %s", err.Error())}
-	}
-
-	privilege := &oriontypes.Privilege{
-		DbPermission: make(map[string]oriontypes.Privilege_Access),
-		Admin:        false,
-	}
-	// all token types or a partial list
-	if len(userRecord.Privilege) == 0 {
-		for db, _ := range m.tokenTypesDBs {
-			privilege.DbPermission[db] = oriontypes.Privilege_ReadWrite
-		}
-	} else {
-		for _, tt := range userRecord.Privilege {
-			db := TokenTypeDBNamePrefix + tt
-			if _, ok := m.tokenTypesDBs[db]; !ok {
-				return &ErrInvalid{fmt.Sprintf("token type does not exist: %s", tt)}
-			}
-			privilege.DbPermission[db] = oriontypes.Privilege_ReadWrite
-		}
-	}
-	user = &oriontypes.User{
-		Id:          userRecord.Identity,
-		Certificate: cert,
-		Privilege:   privilege,
-	}
-
-	err = userTx.PutUser(user, nil)
-	if err != nil {
-		userTx.Abort()
-		return errors.Wrapf(err, "failed to put user: %s", user.Id)
-	}
-
-	txID, receiptEnv, err := userTx.Commit(true)
-	if err != nil {
-		return errors.Wrap(err, "failed to commit user")
-	}
-
-	m.lg.Infof("User [%s] written to database, privilege: %+v; txID: %s, receipt: %+v", user.Id, user.GetPrivilege(), txID, receiptEnv.GetResponse().GetReceipt())
-
-	return nil
-}
-
-func (m *Manager) RemoveUser(userId string) error {
-	m.lg.Debugf("Removing user: %v", userId)
-
-	userTx, err := m.adminSession.UsersTx()
-	if err != nil {
-		return errors.Wrap(err, "failed to create userTx")
-	}
-
-	user, err := userTx.GetUser(userId)
-	if err != nil {
-		userTx.Abort()
-		return errors.Wrapf(err, "failed to get user: %s", userId)
-	}
-
-	if user == nil {
-		return &ErrNotFound{ErrMsg: fmt.Sprintf("user not found: %s", userId)}
-	}
-
-	err = userTx.RemoveUser(userId)
-	if err != nil {
-		userTx.Abort()
-		return errors.Wrapf(err, "failed to remove user: %s", userId)
-	}
-
-	txId, receiptEnv, err := userTx.Commit(true)
-	if err != nil {
-		return errors.Wrap(err, "failed to commit remove user")
-	}
-
-	m.lg.Infof("User [%s] removed from database; txID: %s, receipt: %+v", userId, txId, receiptEnv.GetResponse().GetReceipt())
-
-	return nil
-}
-
-func (m *Manager) GetUser(userId string) (*types.UserRecord, error) {
-	m.lg.Debugf("Getting user: %v", userId)
-
-	userTx, err := m.adminSession.UsersTx()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create userTx")
-	}
-	defer userTx.Abort()
-
-	user, err := userTx.GetUser(userId)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get user: %s", userId)
-	}
-	if user == nil {
-		return nil, &ErrNotFound{fmt.Sprintf("user not found: %s", userId)}
-	}
-
-	userRecord := &types.UserRecord{
-		Identity:    user.Id,
-		Certificate: base64.StdEncoding.EncodeToString(user.Certificate),
-		Privilege:   nil,
-	}
-
-	for dbName, _ := range user.Privilege.GetDbPermission() {
-		tt := dbName[len(TokenTypeDBNamePrefix):]
-		userRecord.Privilege = append(userRecord.Privilege, tt)
-	}
-
-	return userRecord, nil
-}
-
-func nodeConfigToString(n *oriontypes.NodeConfig) string {
-	return fmt.Sprintf("Id: %s, Address: %s, Port: %d, Cert-hash: %x", n.Id, n.Address, n.Port, crc32.ChecksumIEEE(n.Certificate))
 }
 
 func (m *Manager) createDBInstance() (err error) {
@@ -873,15 +164,14 @@ func (m *Manager) enrollCustodian() (err error) {
 	if err != nil {
 		return err
 	}
+	defer abort(tx)
 
 	user, err := tx.GetUser(m.config.Users.Custodian.UserID)
 	if err != nil {
-		tx.Abort()
 		return err
 	}
 
 	if user != nil {
-		tx.Abort()
 		if bytes.Compare(user.Certificate, certBlock.Bytes) != 0 {
 			return errors.New("custodian certificate in DB is different than certificated in config")
 		}
@@ -932,15 +222,14 @@ func (m *Manager) createTypesDB() (err error) {
 	if err != nil {
 		return errors.Wrapf(err, "failed to create %s: failed to create DBsTx", TypesDBName)
 	}
+	defer abort(tx)
 
 	exists, err := tx.Exists(TypesDBName)
 	if err != nil {
-		tx.Abort()
 		return errors.Wrapf(err, "failed to query %s existence", TypesDBName)
 	}
 	if exists {
 		m.lg.Infof("DB: %s, already exists", TypesDBName)
-		tx.Abort()
 		return nil
 	}
 
@@ -962,4 +251,238 @@ func (m *Manager) createTypesDB() (err error) {
 	m.lg.Infof("Created DB: %s, TxID: %s, receipt: %+v", TypesDBName, txID, receiptEnv.GetResponse().GetReceipt())
 
 	return nil
+}
+
+func (m *Manager) deployNewTokenType(desc TokenDescription, indices ...string) error {
+	commonDesc := desc.common()
+	if commonDesc.Name == "" {
+		return NewErrInvalid("token type name is empty")
+	}
+
+	// Compute TypeId
+	tokenTypeIDBase64, err := NameToID(commonDesc.Name)
+	if err != nil {
+		return errors.Wrap(err, "failed to compute hash of token type name")
+	}
+	commonDesc.TypeId = tokenTypeIDBase64
+
+	tokenDBName, err := getTokenTypeDBName(tokenTypeIDBase64)
+	if err != nil {
+		return errors.Wrap(err, "Created invalid type ID")
+	}
+
+	// Check existence by looking into the custodian privileges
+	userTx, err := m.adminSession.UsersTx()
+	if err != nil {
+		return errors.Wrap(err, "failed to create UsersTx")
+	}
+	defer abort(userTx)
+
+	custodian, err := userTx.GetUser(m.config.Users.Custodian.UserID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get user: %s", m.config.Users.Custodian.UserID)
+	}
+	if _, exists := custodian.GetPrivilege().GetDbPermission()[tokenDBName]; exists {
+		return NewErrExist("token type already exists")
+	}
+
+	// Save token description to Types-DB
+	dataTx, err := m.adminSession.DataTx()
+	if err != nil {
+		return errors.Wrap(err, "failed to create DataTx")
+	}
+	defer abort(dataTx)
+
+	existingTokenDesc, _, err := dataTx.Get(TypesDBName, tokenDBName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %s %s", TypesDBName, tokenDBName)
+	}
+	if existingTokenDesc != nil {
+		return errors.Errorf("failed to deploy token: custodian does not have privilege, but token type description exists: %s", string(existingTokenDesc))
+	}
+
+	serializedDescription, err := json.Marshal(desc)
+	if err != nil {
+		m.lg.Panicf("failed to json.Marshal description: %s", err)
+		return err
+	}
+	err = dataTx.Put(TypesDBName, tokenDBName, serializedDescription, nil)
+	if err != nil {
+		return errors.Wrapf(err, "failed to put %s %s", TypesDBName, tokenDBName)
+	}
+
+	txID, receiptEnv, err := dataTx.Commit(true)
+	if err != nil {
+		return errors.Wrapf(err, "failed to commit %s %s", TypesDBName, tokenDBName)
+	}
+
+	m.lg.Infof("Saved token description: %+v; txID: %s, receipt: %+v", desc, txID, receiptEnv.GetResponse().GetReceipt())
+
+	err = m.createTokenDBTable(tokenDBName, indices...)
+	if err != nil {
+		return err
+	}
+
+	// Add privilege to custodian
+	custodian.Privilege.DbPermission[tokenDBName] = oriontypes.Privilege_ReadWrite
+
+	err = userTx.PutUser(custodian, nil)
+	if err != nil {
+		return errors.Wrap(err, "failed to put user")
+	}
+
+	txID, receiptEnv, err = userTx.Commit(true)
+	if err != nil {
+		return errors.Wrap(err, "failed to commit user")
+	}
+
+	m.tokenTypesDBs[tokenDBName] = true
+	m.lg.Infof("Custodian [%s] granted RW privilege to database: %s; description: %s, txID: %s, receipt: %+v", m.config.Users.Custodian.UserID, desc, tokenDBName, txID, receiptEnv.GetResponse().GetReceipt())
+
+	return nil
+}
+
+func (m *Manager) createTokenDBTable(tokenDBName string, indices ...string) error {
+	dBsTx, err := m.adminSession.DBsTx()
+	if err != nil {
+		return errors.Wrap(err, "failed to create DBsTx")
+	}
+	defer abort(dBsTx)
+
+	exists, err := dBsTx.Exists(tokenDBName)
+	if err != nil {
+		return errors.Wrap(err, "failed to query DB existence")
+	}
+	if exists {
+		return errors.Errorf("failed to deploy token: custodian does not have privilege, but token database exists: %s", tokenDBName)
+	}
+
+	index := make(map[string]oriontypes.IndexAttributeType)
+	for _, ind := range indices {
+		index[ind] = oriontypes.IndexAttributeType_STRING
+	}
+	err = dBsTx.CreateDB(tokenDBName, index)
+	if err != nil {
+		return errors.Wrap(err, "failed to build DBsTx")
+	}
+
+	txID, receiptEnv, err := dBsTx.Commit(true)
+	if err != nil {
+		m.lg.Errorf("Failed to deploy: commit failed: %s", err.Error())
+		if strings.Contains(err.Error(), fmt.Sprintf("[%s] already exists", tokenDBName)) {
+			return NewErrExist("token type already exists")
+		}
+		return errors.Wrap(err, "failed to deploy token type")
+	}
+
+	m.lg.Infof("Database created: %s, txID: %s, receipt: %+v", tokenDBName, txID, receiptEnv.GetResponse().GetReceipt())
+	return nil
+}
+
+type TokenContext struct {
+	m           *Manager
+	dataTx      bcdb.DataTxContext
+	tokenDBName string
+	typeId      string
+}
+
+type TokenDBTxEnvelope struct {
+	TxEnvelope    string
+	TxPayloadHash string
+}
+
+// Create a new common token context without initiating a TX.
+func (m *Manager) newTokenContext(typeId string) (*TokenContext, error) {
+	tokenDBName, err := getTokenTypeDBName(typeId)
+	if err != nil {
+		return nil, err
+	}
+
+	return &TokenContext{
+		m:           m,
+		tokenDBName: tokenDBName,
+		typeId:      typeId,
+	}, nil
+}
+
+// Create a new common token context and initiating a TX.
+func (m *Manager) newTokenContextTx(typeId string) (*TokenContext, error) {
+	ctx, err := m.newTokenContext(typeId)
+	if err != nil {
+		return nil, err
+	}
+
+	return ctx, ctx.initTx()
+}
+
+// Initialize a TX.
+func (ctx *TokenContext) initTx() error {
+	if ctx.dataTx != nil {
+		abort(ctx.dataTx)
+	}
+
+	dataTx, err := ctx.m.custodianSession.DataTx()
+	if err != nil {
+		return errors.Wrap(err, "failed to create DataTx")
+	}
+	ctx.dataTx = dataTx
+
+	return nil
+}
+
+// Aborts a TX if it was initiated
+func (ctx *TokenContext) abort() {
+	if ctx != nil && ctx.dataTx != nil {
+		abort(ctx.dataTx)
+	}
+}
+
+func (ctx *TokenContext) getTokenDescription(result interface{}) error {
+	dataTx, err := ctx.m.adminSession.DataTx()
+	if err != nil {
+		return errors.Wrap(err, "failed to create DataTx")
+	}
+	defer abort(dataTx)
+
+	val, meta, err := dataTx.Get(TypesDBName, ctx.tokenDBName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to Get %s", ctx.tokenDBName)
+	}
+	if val == nil {
+		return NewErrNotFound("token type not found: %v", ctx.typeId)
+	}
+
+	if err = json.Unmarshal(val, result); err != nil {
+		return errors.Wrapf(err, "failed to json.Unmarshal %s for DB %s", val, ctx.tokenDBName)
+	}
+
+	ctx.m.lg.Debugf("Token type description: %+v; metadata: %v", result, meta)
+
+	return nil
+}
+
+func (ctx *TokenContext) prepare() (*TokenDBTxEnvelope, error) {
+	txEnv, err := ctx.dataTx.SignConstructedTxEnvelopeAndCloseTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to construct Tx envelope")
+	}
+
+	txEnvBytes, err := proto.Marshal(txEnv)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
+	}
+
+	payloadBytes, err := json.Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
+	}
+	payloadHash, err := ComputeSHA256Hash(payloadBytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to compute hash of DataTx bytes")
+	}
+
+	return &TokenDBTxEnvelope{
+		TxEnvelope:    base64.StdEncoding.EncodeToString(txEnvBytes),
+		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
+	}, nil
 }

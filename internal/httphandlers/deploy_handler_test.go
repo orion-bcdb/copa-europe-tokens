@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"testing"
 
 	"github.com/copa-europe-tokens/internal/tokens"
@@ -112,7 +113,7 @@ func TestDeployHandler_DeployTokenType(t *testing.T) {
 
 	t.Run("error: exists", func(t *testing.T) {
 		mockManager := &mocks.Operations{}
-		mockManager.DeployTokenTypeReturns(nil, &tokens.ErrExist{ErrMsg: "it already exists"})
+		mockManager.DeployTokenTypeReturns(nil, tokens.NewErrExist("it already exists"))
 
 		h := NewDeployHandler(mockManager, testLogger(t, "debug"))
 		require.NotNil(t, h)
@@ -146,7 +147,7 @@ func TestDeployHandler_DeployTokenType(t *testing.T) {
 
 	t.Run("error: invalid", func(t *testing.T) {
 		mockManager := &mocks.Operations{}
-		mockManager.DeployTokenTypeReturns(nil, &tokens.ErrInvalid{ErrMsg: "some invalid request"})
+		mockManager.DeployTokenTypeReturns(nil, tokens.NewErrInvalid("some invalid request"))
 
 		h := NewDeployHandler(mockManager, testLogger(t, "debug"))
 		require.NotNil(t, h)
@@ -217,13 +218,12 @@ func TestDeployHandler_DeployTokenType(t *testing.T) {
 func TestDeployHandler_GetTokenType(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mockManager := &mocks.Operations{}
-		mockManager.GetTokenTypeReturns(
-			&types.DeployResponse{
-				TypeId:      "aAbBcCdDeEfFgG",
-				Name:        "myNFT",
-				Description: "it is my NFT",
-				Url:         "/tokens/types/aAbBcCdDeEfFgG",
-			}, nil)
+		expectedResponse := map[string]string{
+			"typeId":      "aAbBcCdDeEfFgG",
+			"name":        "myNFT",
+			"description": "it is my NFT",
+		}
+		mockManager.GetTokenTypeReturns(expectedResponse, nil)
 
 		h := NewDeployHandler(mockManager, testLogger(t, "debug"))
 		require.NotNil(t, h)
@@ -238,20 +238,15 @@ func TestDeployHandler_GetTokenType(t *testing.T) {
 
 		h.ServeHTTP(rr, req)
 		require.Equal(t, http.StatusOK, rr.Code)
-		resp := &types.DeployResponse{}
-		err = json.NewDecoder(rr.Body).Decode(resp)
+		resp := map[string]string{}
+		err = json.NewDecoder(rr.Body).Decode(&resp)
 		require.NoError(t, err)
-		require.Equal(t, &types.DeployResponse{
-			TypeId:      "aAbBcCdDeEfFgG",
-			Name:        "myNFT",
-			Description: "it is my NFT",
-			Url:         "/tokens/types/aAbBcCdDeEfFgG",
-		}, resp)
+		require.Equal(t, expectedResponse, resp)
 	})
 
 	t.Run("error: invalid", func(t *testing.T) {
 		mockManager := &mocks.Operations{}
-		mockManager.GetTokenTypeReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops"})
+		mockManager.GetTokenTypeReturns(nil, tokens.NewErrInvalid("oops"))
 
 		h := NewDeployHandler(mockManager, testLogger(t, "debug"))
 		require.NotNil(t, h)
@@ -276,7 +271,7 @@ func TestDeployHandler_GetTokenType(t *testing.T) {
 
 	t.Run("error: not found", func(t *testing.T) {
 		mockManager := &mocks.Operations{}
-		mockManager.GetTokenTypeReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops"})
+		mockManager.GetTokenTypeReturns(nil, tokens.NewErrNotFound("oops"))
 
 		h := NewDeployHandler(mockManager, testLogger(t, "debug"))
 		require.NotNil(t, h)
@@ -302,18 +297,16 @@ func TestDeployHandler_GetTokenType(t *testing.T) {
 
 func TestDeployHandler_ListTokenTypes(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		expectedTypes := []*types.DeployResponse{
+		expectedTypes := []map[string]string{
 			{
-				TypeId:      "xXyYzZ09-_",
-				Name:        "hisNFT",
-				Description: "it is my NFT",
-				Url:         "/tokens/types/xXyYzZ09-_",
+				"typeId":      "xXyYzZ09-_",
+				"name":        "hisNFT",
+				"description": "it is my NFT",
 			},
 			{
-				TypeId:      "aAbBcCdDeEfFgG",
-				Name:        "myNFT",
-				Description: "it is my NFT",
-				Url:         "/tokens/types/aAbBcCdDeEfFgG",
+				"typeId":      "aAbBcCdDeEfFgG",
+				"name":        "myNFT",
+				"description": "it is my NFT",
 			},
 		}
 
@@ -332,7 +325,7 @@ func TestDeployHandler_ListTokenTypes(t *testing.T) {
 
 		h.ServeHTTP(rr, req)
 		require.Equal(t, http.StatusOK, rr.Code)
-		var tokenTypes []*types.DeployResponse
+		var tokenTypes []map[string]string
 		err = json.NewDecoder(rr.Body).Decode(&tokenTypes)
 		require.NoError(t, err)
 		require.Len(t, tokenTypes, 2)
@@ -340,7 +333,7 @@ func TestDeployHandler_ListTokenTypes(t *testing.T) {
 		for _, expectedTT := range expectedTypes {
 			found := false
 			for _, actualTT := range tokenTypes {
-				if *expectedTT == *actualTT {
+				if reflect.DeepEqual(expectedTT, actualTT) {
 					found = true
 					break
 				}
@@ -360,7 +353,7 @@ func TestDeployHandler_ListTokenTypes(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokenTypesReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.GetTokenTypesReturns(nil, tokens.NewErrInvalid("oops invalid"))
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -370,7 +363,7 @@ func TestDeployHandler_ListTokenTypes(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokenTypesReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.GetTokenTypesReturns(nil, tokens.NewErrNotFound("oops not found"))
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,

@@ -55,22 +55,8 @@ func (d *eventsHandler) queryAnnotation(response http.ResponseWriter, request *h
 
 	//TODO call manager
 	err := errors.Errorf("not implemented yet: queryAnnotation: %s", annotationId)
-
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	// TODO return eventRecord
-	SendHTTPResponse(response, http.StatusOK, &types.AnnotationRecord{}, d.lg)
+	//TODO return eventRecord
+	SendHttpResponseOrError(response, &types.AnnotationRecord{}, err, http.StatusOK, d.lg)
 }
 
 func (d *eventsHandler) listAnnotations(response http.ResponseWriter, request *http.Request) {
@@ -79,22 +65,8 @@ func (d *eventsHandler) listAnnotations(response http.ResponseWriter, request *h
 
 	//TODO call manager
 	err := errors.Errorf("not implemented yet: listAnnotations: %s", typeId)
-
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	// TODO return eventRecord
-	SendHTTPResponse(response, http.StatusOK, &types.AnnotationRecord{}, d.lg)
+	//TODO return eventRecord
+	SendHttpResponseOrError(response, &types.AnnotationRecord{}, err, http.StatusOK, d.lg)
 }
 
 func (d *eventsHandler) prepareRegister(response http.ResponseWriter, request *http.Request) {
@@ -103,22 +75,8 @@ func (d *eventsHandler) prepareRegister(response http.ResponseWriter, request *h
 
 	//TODO call manager
 	err := errors.Errorf("not implemented yet: %s", typeId)
-
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	// TODO return registerResponse
-	SendHTTPResponse(response, http.StatusOK, &types.AnnotationRecord{}, d.lg)
+	//TODO return registerResponse
+	SendHttpResponseOrError(response, &types.AnnotationRecord{}, err, http.StatusOK, d.lg)
 }
 
 func (d *eventsHandler) submit(response http.ResponseWriter, request *http.Request) {
@@ -134,20 +92,6 @@ func (d *eventsHandler) submit(response http.ResponseWriter, request *http.Reque
 
 	//TODO call manager
 	err := errors.New("not implemented yet")
-
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	// TODO return submitResponse
-	SendHTTPResponse(response, http.StatusOK, &types.SubmitResponse{}, d.lg)
+	//TODO submit
+	SendHttpResponseOrError(response, &types.SubmitResponse{}, err, http.StatusOK, d.lg)
 }

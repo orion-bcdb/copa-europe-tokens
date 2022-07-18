@@ -4,103 +4,38 @@
 package httphandlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/copa-europe-tokens/internal/tokens"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/gorilla/mux"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
 )
 
-type deployHandler struct {
-	router  *mux.Router
-	manager tokens.Operations
-	lg      *logger.SugarLogger
-}
+type deployHandler struct{ operationsHandler }
 
 func NewDeployHandler(manager tokens.Operations, lg *logger.SugarLogger) *deployHandler {
-	handler := &deployHandler{
-		router:  mux.NewRouter(),
-		manager: manager,
-		lg:      lg,
-	}
+	d := deployHandler{newOperationsHandler(manager, lg)}
 
-	handler.router.HandleFunc(constants.TokensTypesQuery, handler.queryType).Methods(http.MethodGet)
-	handler.router.HandleFunc(constants.TokensTypesEndpoint, handler.listTypes).Methods(http.MethodGet)
-	handler.router.HandleFunc(constants.TokensTypesEndpoint, handler.deployType).Methods(http.MethodPost)
+	d.addHandler(constants.TokensTypesQuery, d.queryType, http.StatusOK).Methods(http.MethodGet)
+	d.addHandler(constants.TokensTypesEndpoint, d.listTypes, http.StatusOK).Methods(http.MethodGet)
+	d.addHandler(constants.TokensTypesEndpoint, d.deployType, http.StatusCreated).Methods(http.MethodPost)
 
-	return handler
+	return &d
 }
 
-func (d *deployHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	d.router.ServeHTTP(response, request)
+func (d *deployHandler) listTypes(_ *http.Request, _ map[string]string) (interface{}, error) {
+	return d.manager.GetTokenTypes()
 }
 
-func (d *deployHandler) listTypes(response http.ResponseWriter, request *http.Request) {
-	tokenTypes, err := d.manager.GetTokenTypes()
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusOK, tokenTypes, d.lg)
+func (d *deployHandler) queryType(_ *http.Request, params map[string]string) (interface{}, error) {
+	return d.manager.GetTokenType(params[typeIdPlaceholder])
 }
 
-func (d *deployHandler) queryType(response http.ResponseWriter, request *http.Request) {
-	params := mux.Vars(request)
-	tokenTypeId := params["typeId"]
-
-	deployResponse, err := d.manager.GetTokenType(tokenTypeId)
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusOK, deployResponse, d.lg)
-}
-
-func (d *deployHandler) deployType(response http.ResponseWriter, request *http.Request) {
+func (d *deployHandler) deployType(request *http.Request, _ map[string]string) (interface{}, error) {
 	deployRequest := &types.DeployRequest{}
-
-	dec := json.NewDecoder(request.Body)
-	dec.DisallowUnknownFields()
-
-	if err := dec.Decode(deployRequest); err != nil {
-		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		return
+	if err := decode(request, deployRequest); err != nil {
+		return nil, err
 	}
-
-	deployResponse, err := d.manager.DeployTokenType(deployRequest)
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrExist:
-			SendHTTPResponse(response, http.StatusConflict, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusCreated, deployResponse, d.lg)
+	return d.manager.DeployTokenType(deployRequest)
 }

@@ -11,21 +11,17 @@ import (
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
 )
 
-type statusHandler struct {
-	manager *tokens.Manager
-	lg      *logger.SugarLogger
+type statusHandler struct{ operationsHandler }
+
+func NewStatusHandler(manager tokens.Operations, lg *logger.SugarLogger) *statusHandler {
+	return &statusHandler{newOperationsHandler(manager, lg)}
 }
 
-func NewStatusHandler(manager *tokens.Manager, lg *logger.SugarLogger) *statusHandler {
-	return &statusHandler{
-		manager: manager,
-		lg:      lg}
-}
-
-func (d *statusHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+func (d *statusHandler) ServeHTTP(response http.ResponseWriter, _ *http.Request) {
 	stat, err := d.manager.GetStatus()
 	if err != nil {
 		SendHTTPResponse(response, http.StatusServiceUnavailable, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+	} else {
+		SendHTTPResponse(response, http.StatusOK, &types.StatusResponse{Status: stat}, d.lg)
 	}
-	SendHTTPResponse(response, http.StatusOK, &types.StatusResponse{Status: stat}, d.lg)
 }

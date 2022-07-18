@@ -18,19 +18,14 @@ import (
 
 type TokensServer struct {
 	lg           *logger.SugarLogger
-	tokenManager *tokens.Manager
+	tokenManager tokens.Operations
 	handler      http.Handler
 	listen       net.Listener
 	server       *http.Server
 	conf         *config.Configuration
 }
 
-func NewTokensServer(conf *config.Configuration, lg *logger.SugarLogger) (*TokensServer, error) {
-	tokenManager, err := tokens.NewManager(conf, lg)
-	if err != nil {
-		return nil, errors.Wrap(err, "error while creating the tokens manager object")
-	}
-
+func NewTokensServerWithManager(tokenManager tokens.Operations, conf *config.Configuration, lg *logger.SugarLogger) (*TokensServer, error) {
 	mux := http.NewServeMux()
 
 	mux.Handle(constants.StatusEndpoint, httphandlers.NewStatusHandler(tokenManager, lg))
@@ -40,8 +35,9 @@ func NewTokensServer(conf *config.Configuration, lg *logger.SugarLogger) (*Token
 	mux.Handle(constants.TokensAssetsSubTree, httphandlers.NewAssetsHandler(tokenManager, lg))
 	mux.Handle(constants.TokensUsersEndpoint, httphandlers.NewUserHandler(tokenManager, lg))
 	mux.Handle(constants.TokensUsersSubTree, httphandlers.NewUserHandler(tokenManager, lg))
-	mux.Handle(constants.TokensAnnotationsEndpoint, httphandlers.NewAnnotationsHandler(tokenManager,lg))
-	mux.Handle(constants.TokensAnnotationsSubTree, httphandlers.NewAnnotationsHandler(tokenManager,lg))
+	mux.Handle(constants.TokensAnnotationsEndpoint, httphandlers.NewAnnotationsHandler(tokenManager, lg))
+	mux.Handle(constants.TokensAnnotationsSubTree, httphandlers.NewAnnotationsHandler(tokenManager, lg))
+	mux.Handle(constants.FungibleEndpoint, httphandlers.NewFungibleHandler(tokenManager, lg))
 
 	netConf := conf.Network
 	addr := fmt.Sprintf("%s:%d", netConf.Address, netConf.Port)
@@ -69,6 +65,15 @@ func NewTokensServer(conf *config.Configuration, lg *logger.SugarLogger) (*Token
 		conf:         conf,
 		lg:           lg,
 	}, nil
+}
+
+func NewTokensServer(conf *config.Configuration, lg *logger.SugarLogger) (*TokensServer, error) {
+	tokenManager, err := tokens.NewManager(conf, lg)
+	if err != nil {
+		return nil, errors.Wrap(err, "error while creating the tokens manager object")
+	}
+
+	return NewTokensServerWithManager(tokenManager, conf, lg)
 }
 
 // Start starts the server

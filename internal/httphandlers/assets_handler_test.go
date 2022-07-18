@@ -64,7 +64,7 @@ func TestAssetsHandler_Get(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokenReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.GetTokenReturns(nil, tokens.NewErrInvalid("oops invalid"))
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -74,7 +74,7 @@ func TestAssetsHandler_Get(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokenReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.GetTokenReturns(nil, tokens.NewErrNotFound("oops not found"))
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -210,7 +210,7 @@ func TestAssetsHandler_GetTokensByOwner(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokensByOwnerReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.GetTokensByOwnerReturns(nil, tokens.NewErrInvalid("oops invalid"))
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -220,7 +220,7 @@ func TestAssetsHandler_GetTokensByOwner(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokensByOwnerReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.GetTokensByOwnerReturns(nil, tokens.NewErrNotFound("oops not found"))
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -318,7 +318,7 @@ func TestAssetsHandler_Mint(t *testing.T) {
 			name: "error: already exists",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.PrepareMintReturns(nil, &tokens.ErrExist{ErrMsg: "oops already exists"})
+				mockManager.PrepareMintReturns(nil, tokens.NewErrExist("oops already exists"))
 				return mockManager
 			},
 			expectedStatus: http.StatusConflict,
@@ -328,7 +328,7 @@ func TestAssetsHandler_Mint(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.PrepareMintReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.PrepareMintReturns(nil, tokens.NewErrInvalid("oops invalid"))
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -338,7 +338,7 @@ func TestAssetsHandler_Mint(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.PrepareMintReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.PrepareMintReturns(nil, tokens.NewErrNotFound("oops not found"))
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -441,7 +441,7 @@ func TestAssetsHandler_Transfer(t *testing.T) {
 			name: "error: permission",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.PrepareTransferReturns(nil, &tokens.ErrPermission{ErrMsg: "oops permission"})
+				mockManager.PrepareTransferReturns(nil, tokens.NewErrPermission("oops permission"))
 				return mockManager
 			},
 			expectedStatus: http.StatusForbidden,
@@ -451,7 +451,7 @@ func TestAssetsHandler_Transfer(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.PrepareTransferReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.PrepareTransferReturns(nil, tokens.NewErrInvalid("oops invalid"))
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -461,7 +461,7 @@ func TestAssetsHandler_Transfer(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.PrepareTransferReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.PrepareTransferReturns(nil, tokens.NewErrNotFound("oops not found"))
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -508,7 +508,7 @@ func TestAssetsHandler_Transfer(t *testing.T) {
 
 func TestAssetsHandler_Submit(t *testing.T) {
 	request := &types.SubmitRequest{
-		TokenId:       "xxx.yyy",
+		TxContext:     "xxx.yyy",
 		TxEnvelope:    "abcd",
 		TxPayloadHash: "efgh",
 		Signer:        "bob",
@@ -518,7 +518,7 @@ func TestAssetsHandler_Submit(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mockManager := &mocks.Operations{}
 		mockManager.SubmitTxReturns(&types.SubmitResponse{
-			TokenId:   "xxx.yyy",
+			TxContext: "xxx.yyy",
 			TxId:      "txid",
 			TxReceipt: "xXyYzZ",
 		}, nil)
@@ -546,7 +546,7 @@ func TestAssetsHandler_Submit(t *testing.T) {
 		err = json.NewDecoder(rr.Body).Decode(resp)
 		require.NoError(t, err)
 		require.Equal(t, &types.SubmitResponse{
-			TokenId:   "xxx.yyy",
+			TxContext: "xxx.yyy",
 			TxId:      "txid",
 			TxReceipt: "xXyYzZ",
 		}, resp)
@@ -563,7 +563,7 @@ func TestAssetsHandler_Submit(t *testing.T) {
 			name: "error: already exists",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.SubmitTxReturns(nil, &tokens.ErrExist{ErrMsg: "oops already exists"})
+				mockManager.SubmitTxReturns(nil, tokens.NewErrExist("oops already exists"))
 				return mockManager
 			},
 			expectedStatus: http.StatusConflict,
@@ -573,7 +573,7 @@ func TestAssetsHandler_Submit(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.SubmitTxReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.SubmitTxReturns(nil, tokens.NewErrInvalid("oops invalid"))
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -583,7 +583,7 @@ func TestAssetsHandler_Submit(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.SubmitTxReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.SubmitTxReturns(nil, tokens.NewErrNotFound("oops not found"))
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -593,7 +593,7 @@ func TestAssetsHandler_Submit(t *testing.T) {
 			name: "error: permission",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.SubmitTxReturns(nil, &tokens.ErrPermission{ErrMsg: "oops permission"})
+				mockManager.SubmitTxReturns(nil, tokens.NewErrPermission("oops permission"))
 				return mockManager
 			},
 			expectedStatus: http.StatusForbidden,

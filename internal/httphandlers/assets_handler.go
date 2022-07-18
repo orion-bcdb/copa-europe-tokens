@@ -4,191 +4,59 @@
 package httphandlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/copa-europe-tokens/internal/tokens"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/gorilla/mux"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
 )
 
-type assetsHandler struct {
-	router  *mux.Router
-	manager tokens.Operations
-	lg      *logger.SugarLogger
-}
+type assetsHandler struct{ operationsHandler }
 
 func NewAssetsHandler(manager tokens.Operations, lg *logger.SugarLogger) *assetsHandler {
-	handler := &assetsHandler{
-		router:  mux.NewRouter(),
-		manager: manager,
-		lg:      lg,
-	}
+	d := assetsHandler{newOperationsHandler(manager, lg)}
 
 	// GET /tokens/assets/?type=[token-type-id],owner=[user-id]
-	handler.router.HandleFunc(constants.TokensAssetsEndpoint, handler.queryAssetByOwner).Methods(http.MethodGet).Queries("type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}")
+	d.addHandler(constants.TokensAssetsEndpoint, d.queryAssetByOwner, http.StatusOK).Methods(http.MethodGet).Queries(
+		"type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}")
 	// GET /tokens/assets/[token-id]
-	handler.router.HandleFunc(constants.TokensAssetsQuery, handler.queryAsset).Methods(http.MethodGet)
-	handler.router.HandleFunc(constants.TokensAssetsPrepareMintMatch, handler.prepareMint).Methods(http.MethodPost)
-	handler.router.HandleFunc(constants.TokensAssetsPrepareTransferMatch, handler.prepareTransfer).Methods(http.MethodPost)
-	handler.router.HandleFunc(constants.TokensAssetsSubmit, handler.submit).Methods(http.MethodPost)
+	d.addHandler(constants.TokensAssetsQuery, d.queryAsset, http.StatusOK).Methods(http.MethodGet)
+	d.addHandler(constants.TokensAssetsPrepareMintMatch, d.prepareMint, http.StatusOK).Methods(http.MethodPost)
+	d.addHandler(constants.TokensAssetsPrepareTransferMatch, d.prepareTransfer, http.StatusOK).Methods(http.MethodPost)
+	d.addHandler(constants.TokensAssetsSubmit, d.submit, http.StatusOK).Methods(http.MethodPost)
 
-	return handler
+	return &d
 }
 
-func (d *assetsHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	d.router.ServeHTTP(response, request)
+func (d *assetsHandler) queryAsset(_ *http.Request, params map[string]string) (interface{}, error) {
+	return d.manager.GetToken(params[tokenIdPlaceholder])
 }
 
-func (d *assetsHandler) queryAsset(response http.ResponseWriter, request *http.Request) {
-	params := mux.Vars(request)
-	tokenId := params["tokenId"]
-
-	tokenRecord, err := d.manager.GetToken(tokenId)
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusOK, tokenRecord, d.lg)
+func (d *assetsHandler) queryAssetByOwner(_ *http.Request, params map[string]string) (interface{}, error) {
+	return d.manager.GetTokensByOwner(params["typeId"], params["ownerId"])
 }
 
-func (d *assetsHandler) queryAssetByOwner(response http.ResponseWriter, request *http.Request) {
-	params := mux.Vars(request)
-	typeId := params["typeId"]
-	ownerId := params["ownerId"]
-
-	if typeId == "" {
-		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: "missing typeId"}, d.lg)
-		return
-	}
-
-	if ownerId == "" {
-		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: "missing owner"}, d.lg)
-		return
-	}
-
-	tokenRecords, err := d.manager.GetTokensByOwner(typeId, ownerId)
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusOK, tokenRecords, d.lg)
-}
-
-func (d *assetsHandler) prepareMint(response http.ResponseWriter, request *http.Request) {
-	params := mux.Vars(request)
-	tokenTypeId := params["typeId"]
-
+func (d *assetsHandler) prepareMint(request *http.Request, params map[string]string) (interface{}, error) {
 	mintRequest := &types.MintRequest{}
-
-	dec := json.NewDecoder(request.Body)
-	dec.DisallowUnknownFields()
-
-	if err := dec.Decode(mintRequest); err != nil {
-		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		return
+	if err := decode(request, mintRequest); err != nil {
+		return nil, err
 	}
-
-	mintResponse, err := d.manager.PrepareMint(tokenTypeId, mintRequest)
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrExist:
-			SendHTTPResponse(response, http.StatusConflict, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusOK, mintResponse, d.lg)
+	return d.manager.PrepareMint(params[typeIdPlaceholder], mintRequest)
 }
 
-func (d *assetsHandler) prepareTransfer(response http.ResponseWriter, request *http.Request) {
-	params := mux.Vars(request)
-	tokenId := params["tokenId"]
-
+func (d *assetsHandler) prepareTransfer(request *http.Request, params map[string]string) (interface{}, error) {
 	transferRequest := &types.TransferRequest{}
-
-	dec := json.NewDecoder(request.Body)
-	dec.DisallowUnknownFields()
-
-	if err := dec.Decode(transferRequest); err != nil {
-		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		return
+	if err := decode(request, transferRequest); err != nil {
+		return nil, err
 	}
-
-	mintResponse, err := d.manager.PrepareTransfer(tokenId, transferRequest)
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrPermission:
-			SendHTTPResponse(response, http.StatusForbidden, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusOK, mintResponse, d.lg)
+	return d.manager.PrepareTransfer(params[tokenIdPlaceholder], transferRequest)
 }
 
-func (d *assetsHandler) submit(response http.ResponseWriter, request *http.Request) {
+func (d *assetsHandler) submit(request *http.Request, _ map[string]string) (interface{}, error) {
 	submitRequest := &types.SubmitRequest{}
-
-	dec := json.NewDecoder(request.Body)
-	dec.DisallowUnknownFields()
-
-	if err := dec.Decode(submitRequest); err != nil {
-		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		return
+	if err := decode(request, submitRequest); err != nil {
+		return nil, err
 	}
-
-	submitResponse, err := d.manager.SubmitTx(submitRequest)
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrExist:
-			SendHTTPResponse(response, http.StatusConflict, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrPermission:
-			SendHTTPResponse(response, http.StatusForbidden, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusOK, submitResponse, d.lg)
+	return d.manager.SubmitTx(submitRequest)
 }

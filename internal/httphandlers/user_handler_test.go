@@ -62,7 +62,7 @@ func TestUserHandler_Get(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetUserReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.GetUserReturns(nil, tokens.NewErrInvalid("oops invalid"))
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -72,7 +72,7 @@ func TestUserHandler_Get(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetUserReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.GetUserReturns(nil, tokens.NewErrNotFound("oops not found"))
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -154,7 +154,7 @@ func TestUserHandler_Add(t *testing.T) {
 			name: "error: already exists",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.AddUserReturns(&tokens.ErrExist{ErrMsg: "oops already exists"})
+				mockManager.AddUserReturns(tokens.NewErrExist("oops already exists"))
 				return mockManager
 			},
 			expectedStatus: http.StatusConflict,
@@ -164,7 +164,7 @@ func TestUserHandler_Add(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.AddUserReturns(&tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.AddUserReturns(tokens.NewErrInvalid("oops invalid"))
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -174,7 +174,7 @@ func TestUserHandler_Add(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.AddUserReturns(&tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.AddUserReturns(tokens.NewErrNotFound("oops not found"))
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -243,7 +243,7 @@ func TestUserHandler_Update(t *testing.T) {
 		require.NotNil(t, txReader)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensUsersSubTree +"bob"}
+			Path: constants.TokensUsersSubTree + "bob"}
 		req, err := http.NewRequest(http.MethodPut, reqUrl.String(), txReader)
 		require.NoError(t, err)
 
@@ -262,7 +262,7 @@ func TestUserHandler_Update(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.UpdateUserReturns(&tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.UpdateUserReturns(tokens.NewErrInvalid("oops invalid"))
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -272,7 +272,7 @@ func TestUserHandler_Update(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.UpdateUserReturns(&tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.UpdateUserReturns(tokens.NewErrNotFound("oops not found"))
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -303,7 +303,7 @@ func TestUserHandler_Update(t *testing.T) {
 			require.NotNil(t, txReader)
 
 			reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-				Path: constants.TokensUsersSubTree +"bob"}
+				Path: constants.TokensUsersSubTree + "bob"}
 			req, err := http.NewRequest(http.MethodPut, reqUrl.String(), txReader)
 			require.NoError(t, err)
 
@@ -329,7 +329,7 @@ func TestUserHandler_Delete(t *testing.T) {
 		require.NotNil(t, rr)
 
 		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-			Path: constants.TokensUsersSubTree +"bob"}
+			Path: constants.TokensUsersSubTree + "bob"}
 		req, err := http.NewRequest(http.MethodDelete, reqUrl.String(), nil)
 		require.NoError(t, err)
 
@@ -348,7 +348,7 @@ func TestUserHandler_Delete(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.RemoveUserReturns(&tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.RemoveUserReturns(tokens.NewErrInvalid("oops invalid"))
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -358,7 +358,7 @@ func TestUserHandler_Delete(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.RemoveUserReturns(&tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.RemoveUserReturns(tokens.NewErrNotFound("oops not found"))
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -383,7 +383,7 @@ func TestUserHandler_Delete(t *testing.T) {
 			require.NotNil(t, rr)
 
 			reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091",
-				Path: constants.TokensUsersSubTree +"bob"}
+				Path: constants.TokensUsersSubTree + "bob"}
 			req, err := http.NewRequest(http.MethodDelete, reqUrl.String(), nil)
 			require.NoError(t, err)
 

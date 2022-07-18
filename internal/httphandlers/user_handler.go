@@ -4,145 +4,55 @@
 package httphandlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/copa-europe-tokens/internal/tokens"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/gorilla/mux"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
 )
 
-type userHandler struct {
-	router  *mux.Router
-	manager tokens.Operations
-	lg      *logger.SugarLogger
-}
+type userHandler struct{ operationsHandler }
 
 func NewUserHandler(manager tokens.Operations, lg *logger.SugarLogger) *userHandler {
-	handler := &userHandler{
-		router:  mux.NewRouter(),
-		manager: manager,
-		lg:      lg,
-	}
+	d := userHandler{newOperationsHandler(manager, lg)}
 
-	handler.router.HandleFunc(constants.TokensUsersEndpoint, handler.addUser).Methods(http.MethodPost)
-	handler.router.HandleFunc(constants.TokensUsersMatch, handler.queryUser).Methods(http.MethodGet)
-	handler.router.HandleFunc(constants.TokensUsersMatch, handler.updateUser).Methods(http.MethodPut)
-	handler.router.HandleFunc(constants.TokensUsersMatch, handler.deleteUser).Methods(http.MethodDelete)
+	d.addHandler(constants.TokensUsersEndpoint, d.addUser, http.StatusCreated).Methods(http.MethodPost)
+	d.addHandler(constants.TokensUsersMatch, d.queryUser, http.StatusOK).Methods(http.MethodGet)
+	d.addHandler(constants.TokensUsersMatch, d.updateUser, http.StatusOK).Methods(http.MethodPut)
+	d.addHandler(constants.TokensUsersMatch, d.deleteUser, http.StatusOK).Methods(http.MethodDelete)
 
-	return handler
+	return &d
 }
 
-func (d *userHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	d.router.ServeHTTP(response, request)
-}
-
-func (d *userHandler) addUser(response http.ResponseWriter, request *http.Request) {
+func (d *userHandler) addUser(request *http.Request, _ map[string]string) (interface{}, error) {
 	userRecord := &types.UserRecord{}
-
-	dec := json.NewDecoder(request.Body)
-	dec.DisallowUnknownFields()
-
-	if err := dec.Decode(userRecord); err != nil {
-		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		return
+	if err := decode(request, userRecord); err != nil {
+		return nil, err
 	}
-
 	err := d.manager.AddUser(userRecord)
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrExist:
-			SendHTTPResponse(response, http.StatusConflict, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusCreated, nil, d.lg)
+	return nil, err
 }
 
-func (d *userHandler) deleteUser(response http.ResponseWriter, request *http.Request) {
-	params := mux.Vars(request)
-	userId := params["userId"]
-
-	err := d.manager.RemoveUser(userId)
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusOK, nil, d.lg)
+func (d *userHandler) deleteUser(_ *http.Request, params map[string]string) (interface{}, error) {
+	err := d.manager.RemoveUser(params[userIdPlaceholder])
+	return nil, err
 }
 
-func (d *userHandler) queryUser(response http.ResponseWriter, request *http.Request) {
-	params := mux.Vars(request)
-	userId := params["userId"]
-
-	userRecord, err := d.manager.GetUser(userId)
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusOK, userRecord, d.lg)
+func (d *userHandler) queryUser(_ *http.Request, params map[string]string) (interface{}, error) {
+	return d.manager.GetUser(params[userIdPlaceholder])
 }
 
-func (d *userHandler) updateUser(response http.ResponseWriter, request *http.Request) {
-	params := mux.Vars(request)
-	userId := params["userId"]
-
+func (d *userHandler) updateUser(request *http.Request, params map[string]string) (interface{}, error) {
 	userRecord := &types.UserRecord{}
-
-	dec := json.NewDecoder(request.Body)
-	dec.DisallowUnknownFields()
-
-	if err := dec.Decode(userRecord); err != nil {
-		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		return
+	if err := decode(request, userRecord); err != nil {
+		return nil, err
 	}
 
-	if userId != userRecord.Identity {
-		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: "inconsistent userId parameter versus user record identity"}, d.lg)
-		return
+	if params[userIdPlaceholder] != userRecord.Identity {
+		return nil, tokens.NewErrInvalid("inconsistent userId parameter versus user record identity")
 	}
 
 	err := d.manager.UpdateUser(userRecord)
-	if err != nil {
-		switch err.(type) {
-		case *tokens.ErrInvalid:
-			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		case *tokens.ErrNotFound:
-			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		default:
-			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
-		}
-
-		return
-	}
-
-	SendHTTPResponse(response, http.StatusOK, nil, d.lg)
+	return nil, err
 }
