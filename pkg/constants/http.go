@@ -19,6 +19,13 @@ const (
 	TokensAssetsSubmit               = "/tokens/assets/submit"
 	TokensAssetsQuery                = "/tokens/assets/{tokenId}"
 
+	TokensAnnotationsEndpoint             = "/tokens/annotations"
+	TokensAnnotationsSubTree              = "/tokens/annotations/"
+	TokensAnnotationsPrepareRegister      = "/tokens/annotations/prepare-register/"
+	TokensAnnotationsPrepareRegisterMatch = "/tokens/annotations/prepare-register/{typeId}"
+	TokensAnnotationsSubmit               = "/tokens/annotations/submit"
+	TokensAnnotationsQuery                = "/tokens/annotations/{tokenId}"
+
 	TokensUsersEndpoint = "/tokens/users"
 	TokensUsersSubTree  = "/tokens/users/"
 	TokensUsersMatch    = "/tokens/users/{userId}"
