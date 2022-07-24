@@ -12,7 +12,6 @@ import (
 	"github.com/copa-europe-tokens/pkg/types"
 	"github.com/gorilla/mux"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
-	"github.com/pkg/errors"
 )
 
 type eventsHandler struct {
@@ -39,8 +38,10 @@ func NewAnnotationsHandler(manager tokens.Operations, lg *logger.SugarLogger) *e
 	// GET /tokens/annotations/[annotation-id]
 	handler.router.HandleFunc(constants.TokensAnnotationsQuery, handler.queryAnnotation).Methods(http.MethodGet)
 
+	// POST "/tokens/annotations/prepare-register/{typeId}"
 	handler.router.HandleFunc(constants.TokensAnnotationsPrepareRegisterMatch, handler.prepareRegister).Methods(http.MethodPost)
-	handler.router.HandleFunc(constants.TokensAssetsSubmit, handler.submit).Methods(http.MethodPost)
+	// POST "/tokens/annotations/submit"
+	handler.router.HandleFunc(constants.TokensAnnotationsSubmit, handler.submit).Methods(http.MethodPost)
 
 	return handler
 }
@@ -53,8 +54,7 @@ func (d *eventsHandler) queryAnnotation(response http.ResponseWriter, request *h
 	params := mux.Vars(request)
 	annotationId := params["annotationId"]
 
-	//TODO call manager
-	err := errors.Errorf("not implemented yet: queryAnnotation: %s", annotationId)
+	record, err := d.manager.GetAnnotation(annotationId)
 
 	if err != nil {
 		switch err.(type) {
@@ -69,16 +69,16 @@ func (d *eventsHandler) queryAnnotation(response http.ResponseWriter, request *h
 		return
 	}
 
-	// TODO return eventRecord
-	SendHTTPResponse(response, http.StatusOK, &types.AnnotationRecord{}, d.lg)
+	SendHTTPResponse(response, http.StatusOK, record, d.lg)
 }
 
 func (d *eventsHandler) listAnnotations(response http.ResponseWriter, request *http.Request) {
 	params := mux.Vars(request)
 	typeId := params["typeId"]
+	ownerId := params["ownerId"]
+	linkId := params["linkId"]
 
-	//TODO call manager
-	err := errors.Errorf("not implemented yet: listAnnotations: %s", typeId)
+	tokenRecords, err := d.manager.GetAnnotationsByOwnerLink(typeId, ownerId, linkId)
 
 	if err != nil {
 		switch err.(type) {
@@ -93,19 +93,28 @@ func (d *eventsHandler) listAnnotations(response http.ResponseWriter, request *h
 		return
 	}
 
-	// TODO return eventRecord
-	SendHTTPResponse(response, http.StatusOK, &types.AnnotationRecord{}, d.lg)
+	SendHTTPResponse(response, http.StatusOK, tokenRecords, d.lg)
 }
 
 func (d *eventsHandler) prepareRegister(response http.ResponseWriter, request *http.Request) {
 	params := mux.Vars(request)
-	typeId := params["typeId"]
+	tokenTypeId := params["typeId"]
 
-	//TODO call manager
-	err := errors.Errorf("not implemented yet: %s", typeId)
+	regRequest := &types.AnnotationRegisterRequest{}
 
+	dec := json.NewDecoder(request.Body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(regRequest); err != nil {
+		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		return
+	}
+
+	regResponse, err := d.manager.PrepareRegister(tokenTypeId, regRequest)
 	if err != nil {
 		switch err.(type) {
+		case *tokens.ErrExist:
+			SendHTTPResponse(response, http.StatusConflict, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
 		case *tokens.ErrInvalid:
 			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
 		case *tokens.ErrNotFound:
@@ -117,8 +126,7 @@ func (d *eventsHandler) prepareRegister(response http.ResponseWriter, request *h
 		return
 	}
 
-	// TODO return registerResponse
-	SendHTTPResponse(response, http.StatusOK, &types.AnnotationRecord{}, d.lg)
+	SendHTTPResponse(response, http.StatusOK, regResponse, d.lg)
 }
 
 func (d *eventsHandler) submit(response http.ResponseWriter, request *http.Request) {
@@ -132,15 +140,17 @@ func (d *eventsHandler) submit(response http.ResponseWriter, request *http.Reque
 		return
 	}
 
-	//TODO call manager
-	err := errors.New("not implemented yet")
-
+	resp, err := d.manager.SubmitTx(submitRequest)
 	if err != nil {
 		switch err.(type) {
+		case *tokens.ErrExist:
+			SendHTTPResponse(response, http.StatusConflict, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
 		case *tokens.ErrInvalid:
 			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
 		case *tokens.ErrNotFound:
 			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		case *tokens.ErrPermission:
+			SendHTTPResponse(response, http.StatusForbidden, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
 		default:
 			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
 		}
@@ -148,6 +158,5 @@ func (d *eventsHandler) submit(response http.ResponseWriter, request *http.Reque
 		return
 	}
 
-	// TODO return submitResponse
-	SendHTTPResponse(response, http.StatusOK, &types.SubmitResponse{}, d.lg)
+	SendHTTPResponse(response, http.StatusOK, resp, d.lg)
 }

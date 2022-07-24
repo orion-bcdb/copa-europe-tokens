@@ -44,6 +44,10 @@ type Operations interface {
 	GetToken(tokenId string) (*types.TokenRecord, error)
 	GetTokensByOwner(tokenTypeId string, owner string) ([]*types.TokenRecord, error)
 
+	PrepareRegister(tokenTypeId string, registerRequest *types.AnnotationRegisterRequest) (*types.AnnotationRegisterResponse, error)
+	GetAnnotation(tokenId string) (*types.AnnotationRecord, error)
+	GetAnnotationsByOwnerLink(tokenTypeId string, owner, link string) ([]*types.AnnotationRecord, error)
+
 	AddUser(userRecord *types.UserRecord) error
 	UpdateUser(userRecord *types.UserRecord) error
 	RemoveUser(userId string) error
@@ -346,6 +350,8 @@ func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest
 		return nil, err
 	}
 
+	// TODO enforce class
+
 	if mintRequest.Owner == "" {
 		return nil, &ErrInvalid{ErrMsg: "missing owner"}
 	}
@@ -428,7 +434,7 @@ func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest
 	m.lg.Debugf("Received mint request for token: %+v", record)
 
 	mintResponse := &types.MintResponse{
-		TokenId:       tokenTypeId + "." + assetDataId,
+		TokenId:       tokenTypeId + TokenDBSeparator + assetDataId,
 		Owner:         mintRequest.Owner,
 		TxEnvelope:    base64.StdEncoding.EncodeToString(txEnvBytes),
 		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
@@ -444,6 +450,8 @@ func (m *Manager) PrepareTransfer(tokenId string, transferRequest *types.Transfe
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO enforce class
 
 	if transferRequest.NewOwner == "" {
 		return nil, &ErrInvalid{ErrMsg: "missing new owner"}
@@ -603,6 +611,8 @@ func (m *Manager) GetToken(tokenId string) (*types.TokenRecord, error) {
 		return nil, err
 	}
 
+	//TODO enforce class
+
 	dataTx, err := m.custodianSession.DataTx()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create DataTx")
@@ -683,6 +693,186 @@ func (m *Manager) GetTokenTypes() ([]*types.DeployResponse, error) {
 			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
 		}
 		record.Url = constants.TokensTypesSubTree + record.TypeId
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func (m *Manager) PrepareRegister(tokenTypeId string, registerRequest *types.AnnotationRegisterRequest) (*types.AnnotationRegisterResponse, error) {
+	if err := validateMD5Base64ID(tokenTypeId, "token type"); err != nil {
+		return nil, err
+	}
+
+	// TODO enforce class
+
+	if registerRequest.Owner == "" {
+		return nil, &ErrInvalid{ErrMsg: "missing owner"}
+	}
+	if registerRequest.Owner == m.config.Users.Custodian.UserID {
+		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("owner cannot be the custodian: %s", m.config.Users.Custodian.UserID)}
+	}
+	if registerRequest.Owner == m.config.Users.Admin.UserID {
+		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("owner cannot be the admin: %s", m.config.Users.Admin.UserID)}
+	}
+	if registerRequest.AnnotationData == "" {
+		return nil, &ErrInvalid{ErrMsg: "missing annotation data"}
+	}
+
+	annotDataId, err := NameToID(registerRequest.AnnotationData)
+	if err != nil {
+		return nil, err
+	}
+
+	dataTx, err := m.custodianSession.DataTx()
+	if err != nil {
+		dataTx.Abort()
+		return nil, errors.Wrap(err, "failed to create DataTx")
+	}
+
+	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
+	val, meta, err := dataTx.Get(tokenDBName, annotDataId)
+	if err != nil {
+		dataTx.Abort()
+		return nil, errors.Wrapf(err, "failed to Get %s %s", tokenDBName, annotDataId)
+	}
+	if val != nil {
+		m.lg.Debugf("annotation already exists: DB: %s, annotationId: %s, record: %s, meta: %+v", tokenDBName, annotDataId, string(val), meta)
+		return nil, &ErrExist{ErrMsg: "token already exists"}
+	}
+
+	record := &types.AnnotationRecord{
+		AnnotationDataId:   annotDataId,
+		Owner:              registerRequest.Owner,
+		Link:               registerRequest.Link,
+		AnnotationData:     registerRequest.AnnotationData,
+		AnnotationMetadata: registerRequest.AnnotationMetadata,
+	}
+
+	val, err = json.Marshal(record)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to json.Marshal record")
+	}
+
+	err = dataTx.Put(tokenDBName, annotDataId, val,
+		&oriontypes.AccessControl{ // Read-only
+			ReadUsers: map[string]bool{
+				m.config.Users.Custodian.UserID: true,
+				registerRequest.Owner:           true,
+			},
+		},
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to Put")
+	}
+
+	dataTx.AddMustSignUser(registerRequest.Owner)
+
+	txEnv, err := dataTx.SignConstructedTxEnvelopeAndCloseTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to construct Tx envelope")
+	}
+
+	txEnvBytes, err := proto.Marshal(txEnv)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
+	}
+
+	payloadBytes, err := json.Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
+	}
+	payloadHash, err := ComputeSHA256Hash(payloadBytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to compute hash of DataTx bytes")
+	}
+
+	m.lg.Debugf("Received mint request for token: %+v", record)
+
+	registerResponse := &types.AnnotationRegisterResponse{
+		AnnotationId:  tokenTypeId + TokenDBSeparator + annotDataId,
+		Owner:         registerRequest.Owner,
+		Link:          registerRequest.Link,
+		TxEnvelope:    base64.StdEncoding.EncodeToString(txEnvBytes),
+		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
+	}
+
+	return registerResponse, nil
+}
+
+func (m *Manager) GetAnnotation(tokenId string) (*types.AnnotationRecord, error) {
+	tokenTypeId, assetId, err := parseTokenId(tokenId)
+	if err != nil {
+		return nil, err
+	}
+
+	dataTx, err := m.custodianSession.DataTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create DataTx")
+	}
+	defer dataTx.Abort()
+
+	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
+	_, ok := m.tokenTypesDBs[tokenDBName]
+	if !ok {
+		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
+	}
+
+	//TODO enforce class==ANNOTATIONS
+
+	val, meta, err := dataTx.Get(tokenDBName, assetId)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to Get %s", tokenDBName)
+	}
+	if val == nil {
+		return nil, &ErrNotFound{ErrMsg: "token not found"}
+	}
+
+	record := &types.AnnotationRecord{}
+	err = json.Unmarshal(val, record)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to json.Unmarshal %v", val)
+	}
+
+	m.lg.Debugf("Annotation record: %v; metadata: %+v", record, meta)
+
+	return record, nil
+}
+
+func (m *Manager) GetAnnotationsByOwnerLink(tokenTypeId string, owner, link string) ([]*types.AnnotationRecord, error) {
+	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
+	if _, ok := m.tokenTypesDBs[tokenDBName]; !ok {
+		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
+	}
+
+	//TODO enforce class
+
+	jq, err := m.custodianSession.Query()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create JSONQuery")
+	}
+
+	var query string
+	if owner != "" && link == "" {
+		query = fmt.Sprintf(`{"selector": {"owner": {"$eq": "%s"}}}`, owner)
+	} else if owner == "" && link != "" {
+		query = fmt.Sprintf(`{"selector": {"link": {"$eq": "%s"}}}`, link)
+	} else {
+		query = fmt.Sprintf(`{"selector": {"$and": {"owner": {"$eq": "%s"}, "link": {"$eq": "%s"}}}}`, owner, link)
+	}
+
+	results, err := jq.ExecuteJSONQuery(tokenDBName, query)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to execute JSONQuery")
+	}
+
+	var records []*types.AnnotationRecord
+	for _, res := range results {
+		record := &types.AnnotationRecord{}
+		err = json.Unmarshal(res.GetValue(), record)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
+		}
 		records = append(records, record)
 	}
 
