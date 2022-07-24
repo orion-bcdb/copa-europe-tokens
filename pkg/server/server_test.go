@@ -153,7 +153,7 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(status.Status, fmt.Sprintf("connected: {Id: node-1, Address: 127.0.0.1, Port: %d", nPort)))
 
-	// Deploy two token types
+	// Deploy two token types, one annotation
 	deployReq1 := &types.DeployRequest{
 		Name:        "original content",
 		Description: "represents copyright ownership of original content",
@@ -164,12 +164,21 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	deployReq2 := &types.DeployRequest{
 		Name:        "leasing rights",
 		Description: "represents the right to watch the content for a limited time",
+		Class:       constants.TokenClass_NFT,
 	}
 	deployResp2 := deployTokenType(t, httpClient, baseURL, deployReq2)
 	t.Logf("Deployed token-type: %+v", deployResp2)
 
+	deployReq3 := &types.DeployRequest{
+		Name:        "production",
+		Description: "represents the production supply chain",
+		Class:       constants.TokenClass_ANNOTATIONS,
+	}
+	deployResp3 := deployTokenType(t, httpClient, baseURL, deployReq3)
+	t.Logf("Deployed token-type: %+v", deployResp3)
+
 	// Get the token types one by one
-	for _, typeIdUrl := range []string{deployResp1.Url, deployResp2.Url} {
+	for _, typeIdUrl := range []string{deployResp1.Url, deployResp2.Url, deployResp3.Url} {
 		u = baseURL.ResolveReference(&url.URL{Path: typeIdUrl})
 		resp, err = httpClient.Get(u.String())
 		require.NoError(t, err)
@@ -189,8 +198,8 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	var tokenTypes []*types.DeployResponse
 	err = json.NewDecoder(resp.Body).Decode(&tokenTypes)
 	require.NoError(t, err)
-	require.Len(t, tokenTypes, 2)
-	for _, expectedTT := range []*types.DeployResponse{deployResp1, deployResp2} {
+	require.Len(t, tokenTypes, 3)
+	for _, expectedTT := range []*types.DeployResponse{deployResp1, deployResp2, deployResp3} {
 		found := false
 		for _, actualTT := range tokenTypes {
 			if *expectedTT == *actualTT {

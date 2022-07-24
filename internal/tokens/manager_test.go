@@ -55,7 +55,7 @@ func TestTokensManager_Deploy(t *testing.T) {
 		Description: "my NFT for testing",
 	}
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("success: NFT", func(t *testing.T) {
 		deployResponseMy, err := manager.DeployTokenType(deployRequestMy)
 		assert.NoError(t, err)
 		assert.Equal(t, deployRequestMy.Name, deployResponseMy.Name)
@@ -66,6 +66,7 @@ func TestTokensManager_Deploy(t *testing.T) {
 		deployRequestHis := &types.DeployRequest{
 			Name:        "his-NFT",
 			Description: "", //empty description is fine
+			Class:       constants.TokenClass_NFT,
 		}
 		deployResponseHis, err := manager.DeployTokenType(deployRequestHis)
 		assert.NoError(t, err)
@@ -73,6 +74,20 @@ func TestTokensManager_Deploy(t *testing.T) {
 		expectedIdHis, _ := NameToID(deployRequestHis.Name)
 		assert.Equal(t, expectedIdHis, deployResponseHis.TypeId)
 		assert.Equal(t, constants.TokensTypesSubTree+expectedIdHis, deployResponseHis.Url)
+	})
+
+	t.Run("success: ANNOTATIONS", func(t *testing.T) {
+		deployRequestAnnt := &types.DeployRequest{
+			Name:        "my-annotations",
+			Description: "annotations aon my NFTs",
+			Class:       constants.TokenClass_ANNOTATIONS,
+		}
+		deployResponseAnnt, err := manager.DeployTokenType(deployRequestAnnt)
+		assert.NoError(t, err)
+		assert.Equal(t, deployRequestAnnt.Name, deployResponseAnnt.Name)
+		expectedIdHis, _ := NameToID(deployRequestAnnt.Name)
+		assert.Equal(t, expectedIdHis, deployResponseAnnt.TypeId)
+		assert.Equal(t, constants.TokensTypesSubTree+expectedIdHis, deployResponseAnnt.Url)
 	})
 
 	t.Run("error: deploy again", func(t *testing.T) {
@@ -89,6 +104,16 @@ func TestTokensManager_Deploy(t *testing.T) {
 		}
 		deployResponseBad, err := manager.DeployTokenType(deployRequestEmpty)
 		assert.EqualError(t, err, "token type name is empty")
+		assert.Nil(t, deployResponseBad)
+	})
+
+	t.Run("error: wrong class", func(t *testing.T) {
+		deployRequestEmpty := &types.DeployRequest{
+			Name:  "wrong class",
+			Class: "no-such-class",
+		}
+		deployResponseBad, err := manager.DeployTokenType(deployRequestEmpty)
+		assert.EqualError(t, err, "unsupported token class: no-such-class")
 		assert.Nil(t, deployResponseBad)
 	})
 }

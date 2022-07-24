@@ -229,11 +229,14 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 
 	switch deployRequest.Class {
 	case constants.TokenClass_NFT:
-		err = m.deployNFT(deployRequest, tokenDBName, txID, receiptEnv)
-	//TODO annotations, fungible
+		err = m.deployNFT(deployRequest, tokenDBName, "owner")
+	case constants.TokenClass_ANNOTATIONS:
+		err = m.deployNFT(deployRequest, tokenDBName, "owner", "link")
+	case constants.TokenClass_FUNGIBLE:
+		err = errors.New("not implemented yet")
 
 	default:
-		err = errors.New("not implemented")
+		err = &ErrInvalid{ErrMsg: "unsupported token class: " + deployRequest.Class}
 	}
 
 	if err != nil {
@@ -267,7 +270,7 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 	}, nil
 }
 
-func (m *Manager) deployNFT(deployRequest *types.DeployRequest, tokenDBName string, txID string, receiptEnv *oriontypes.TxReceiptResponseEnvelope) error {
+func (m *Manager) deployNFT(deployRequest *types.DeployRequest, tokenDBName string, indices ...string) error {
 	dBsTx, err := m.adminSession.DBsTx()
 	if err != nil {
 		return errors.Wrap(err, "failed to create DBsTx")
@@ -284,14 +287,16 @@ func (m *Manager) deployNFT(deployRequest *types.DeployRequest, tokenDBName stri
 	}
 
 	index := make(map[string]oriontypes.IndexAttributeType)
-	index["owner"] = oriontypes.IndexAttributeType_STRING
+	for _, ind := range indices {
+		index[ind] = oriontypes.IndexAttributeType_STRING
+	}
 	err = dBsTx.CreateDB(tokenDBName, index)
 	if err != nil {
 		dBsTx.Abort()
 		return errors.Wrap(err, "failed to build DBsTx")
 	}
 
-	txID, receiptEnv, err = dBsTx.Commit(true)
+	txID, receiptEnv, err := dBsTx.Commit(true)
 	if err != nil {
 		m.lg.Errorf("Failed to deploy: commit failed: %s", err.Error())
 		if strings.Contains(err.Error(), fmt.Sprintf("[%s] already exists", tokenDBName)) {

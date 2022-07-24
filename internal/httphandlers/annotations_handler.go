@@ -38,7 +38,7 @@ func NewAnnotationsHandler(manager tokens.Operations, lg *logger.SugarLogger) *e
 
 	// GET /tokens/annotations/[annotation-id]
 	handler.router.HandleFunc(constants.TokensAnnotationsQuery, handler.queryAnnotation).Methods(http.MethodGet)
-	
+
 	handler.router.HandleFunc(constants.TokensAnnotationsPrepareRegisterMatch, handler.prepareRegister).Methods(http.MethodPost)
 	handler.router.HandleFunc(constants.TokensAssetsSubmit, handler.submit).Methods(http.MethodPost)
 
