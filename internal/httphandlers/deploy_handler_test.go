@@ -64,6 +64,52 @@ func TestDeployHandler_DeployTokenType(t *testing.T) {
 		}, resp)
 	})
 
+	t.Run("success: Annotation", func(t *testing.T) {
+		mockManager := &mocks.Operations{}
+		mockManager.DeployTokenTypeReturns(
+			&types.DeployResponse{
+				TypeId:      "aAbBcCdDeEfFgG",
+				Name:        "myNFT",
+				Description: "it is my Annotation",
+				Class:       constants.TokenClass_ANNOTATIONS,
+				Url:         "/tokens/types/aAbBcCdDeEfFgG",
+			}, nil)
+
+		h := NewDeployHandler(mockManager, testLogger(t, "debug"))
+		require.NotNil(t, h)
+
+		request := &types.DeployRequest{
+			Name:        "myNFT",
+			Description: "my NFT is best",
+			Class:       constants.TokenClass_ANNOTATIONS,
+		}
+		requestBytes, err := json.Marshal(request)
+		require.NoError(t, err)
+
+		txReader := bytes.NewReader(requestBytes)
+		require.NotNil(t, txReader)
+
+		rr := httptest.NewRecorder()
+		require.NotNil(t, rr)
+
+		reqUrl := &url.URL{Scheme: "http", Host: "server1.example.com:6091", Path: constants.TokensTypesEndpoint}
+		req, err := http.NewRequest(http.MethodPost, reqUrl.String(), txReader)
+		require.NoError(t, err)
+
+		h.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusCreated, rr.Code)
+		resp := &types.DeployResponse{}
+		err = json.NewDecoder(rr.Body).Decode(resp)
+		require.NoError(t, err)
+		require.Equal(t, &types.DeployResponse{
+			TypeId:      "aAbBcCdDeEfFgG",
+			Name:        "myNFT",
+			Description: "it is my Annotation",
+			Class:       constants.TokenClass_ANNOTATIONS,
+			Url:         "/tokens/types/aAbBcCdDeEfFgG",
+		}, resp)
+	})
+
 	t.Run("error: exists", func(t *testing.T) {
 		mockManager := &mocks.Operations{}
 		mockManager.DeployTokenTypeReturns(nil, &tokens.ErrExist{ErrMsg: "it already exists"})
