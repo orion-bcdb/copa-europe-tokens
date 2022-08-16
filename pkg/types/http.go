@@ -113,6 +113,7 @@ type AnnotationRegisterRequest struct {
 type AnnotationRegisterResponse struct {
 	AnnotationId  string `json:"annotationId"`
 	Owner         string `json:"owner"`
+	Link          string `json:"link"`
 	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }

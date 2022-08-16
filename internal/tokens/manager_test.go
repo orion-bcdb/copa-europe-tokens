@@ -378,13 +378,13 @@ func TestTokensManager_MintToken(t *testing.T) {
 		require.NoError(t, err)
 
 		_, keyPath := env.cluster.GetUserCertKeyPath("charlie")
-		aliceSigner, err := crypto.NewSigner(&crypto.SignerOptions{
+		charlieSigner, err := crypto.NewSigner(&crypto.SignerOptions{
 			Identity:    "charlie",
 			KeyFilePath: keyPath,
 		})
 		require.NoError(t, err)
 
-		sig := testutils.SignatureFromTx(t, aliceSigner, txEnv.Payload)
+		sig := testutils.SignatureFromTx(t, charlieSigner, txEnv.Payload)
 		require.NotNil(t, sig)
 
 		submitRequest := &types.SubmitRequest{
@@ -772,6 +772,366 @@ func TestTokensManager_GetTokensByOwner(t *testing.T) {
 
 }
 
+func TestTokensManager_RegisterAnnotation(t *testing.T) {
+	env := newTestEnv(t)
+
+	manager, err := NewManager(env.conf, env.lg)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	stat, err := manager.GetStatus()
+	require.NoError(t, err)
+	require.Contains(t, stat, "connected:")
+
+	deployRequest := &types.DeployRequest{
+		Name:        "my-Annot",
+		Description: "my Annotations for testing",
+		Class:       constants.TokenClass_ANNOTATIONS,
+	}
+
+	deployResponseMy, err := manager.DeployTokenType(deployRequest)
+	assert.NoError(t, err)
+
+	t.Run("success: owner is user bob", func(t *testing.T) {
+		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		assert.NoError(t, err)
+		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+
+		certBob, signerBob := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
+		err = manager.AddUser(&types.UserRecord{
+			Identity:    "bob",
+			Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
+			Privilege:   nil,
+		})
+		assert.NoError(t, err)
+
+		regRequest := &types.AnnotationRegisterRequest{
+			Owner:              "bob",
+			Link:               "xyx.abc",
+			AnnotationData:     "bob's annotation",
+			AnnotationMetadata: "bob's metadata",
+		}
+		regResponse, err := manager.PrepareRegister(getResponse.TypeId, regRequest)
+		require.NoError(t, err)
+		require.NotNil(t, regResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(regResponse.TxEnvelope)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       regResponse.AnnotationId,
+			TxEnvelope:    regResponse.TxEnvelope,
+			TxPayloadHash: regResponse.TxPayloadHash,
+			Signer:        "bob",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.NoError(t, err)
+		require.NotNil(t, submitResponse)
+		require.Equal(t, submitRequest.TokenId, submitResponse.TokenId)
+
+		// Get this annotation
+		annotRecord, err := manager.GetAnnotation(regResponse.AnnotationId)
+		require.NoError(t, err)
+		require.Equal(t, regRequest.Owner, annotRecord.Owner)
+		require.Equal(t, regRequest.AnnotationData, annotRecord.AnnotationData)
+		require.Equal(t, regRequest.AnnotationMetadata, annotRecord.AnnotationMetadata)
+		h, err := ComputeMD5Hash([]byte(annotRecord.AnnotationData))
+		require.NoError(t, err)
+		require.Equal(t, base64.RawURLEncoding.EncodeToString(h), annotRecord.AnnotationDataId)
+	})
+
+	t.Run("error: owner is custodian or admin", func(t *testing.T) {
+		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		assert.NoError(t, err)
+		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+
+		regRequest := &types.AnnotationRegisterRequest{
+			Owner:              "alice",
+			Link:               "xyx.abc",
+			AnnotationData:     "my annotation on xyz.abc",
+			AnnotationMetadata: "my metadata",
+		}
+		regResponse, err := manager.PrepareRegister(getResponse.TypeId, regRequest)
+
+		require.EqualError(t, err, "owner cannot be the custodian: alice")
+		require.IsType(t, &ErrInvalid{}, err)
+		require.Nil(t, regResponse)
+
+		regRequest = &types.AnnotationRegisterRequest{
+			Owner:              "admin",
+			Link:               "xyx.abc",
+			AnnotationData:     "my annotation on xyz.abc",
+			AnnotationMetadata: "my metadata",
+		}
+		regResponse, err = manager.PrepareRegister(getResponse.TypeId, regRequest)
+		require.EqualError(t, err, "owner cannot be the admin: admin")
+		require.IsType(t, &ErrInvalid{}, err)
+		require.Nil(t, regResponse)
+	})
+
+	t.Run("error: annotation already exists", func(t *testing.T) {
+		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		assert.NoError(t, err)
+		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+
+		regRequest := &types.AnnotationRegisterRequest{
+			Owner:              "charlie",
+			Link:               "xyz.abc",
+			AnnotationData:     "bob's annotation",
+			AnnotationMetadata: "bob's asset meta",
+		}
+		regResponse, err := manager.PrepareRegister(getResponse.TypeId, regRequest)
+		require.EqualError(t, err, "token already exists")
+		require.IsType(t, &ErrExist{}, err)
+		require.Nil(t, regResponse)
+	})
+
+	t.Run("error: not a user", func(t *testing.T) {
+		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+		assert.NoError(t, err)
+		assertEqualDeployResponse(t, deployResponseMy, getResponse)
+
+		regRequest := &types.AnnotationRegisterRequest{
+			Owner:              "charlie",
+			Link:               "xyz.abc",
+			AnnotationData:     "charlie's asset",
+			AnnotationMetadata: "charlie's asset meta",
+		}
+		regResponse, err := manager.PrepareRegister(getResponse.TypeId, regRequest)
+		require.NoError(t, err)
+		require.NotNil(t, regResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(regResponse.TxEnvelope)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		_, keyPath := env.cluster.GetUserCertKeyPath("charlie")
+		charlieSigner, err := crypto.NewSigner(&crypto.SignerOptions{
+			Identity:    "charlie",
+			KeyFilePath: keyPath,
+		})
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, charlieSigner, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       regResponse.AnnotationId,
+			TxEnvelope:    regResponse.TxEnvelope,
+			TxPayloadHash: regResponse.TxPayloadHash,
+			Signer:        "charlie",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.EqualError(t, err, "failed to submit transaction, server returned: status: 401 Unauthorized, message: signature verification failed")
+		require.IsType(t, &ErrPermission{}, err)
+		require.Nil(t, submitResponse)
+	})
+
+	t.Run("error: get parameters", func(t *testing.T) {
+		annotRecord, err := manager.GetAnnotation("")
+		require.EqualError(t, err, "invalid tokenId")
+		require.IsType(t, &ErrInvalid{}, err)
+		require.Nil(t, annotRecord)
+
+		annotRecord, err = manager.GetAnnotation("xxx")
+		require.EqualError(t, err, "invalid tokenId")
+		require.IsType(t, &ErrInvalid{}, err)
+		require.Nil(t, annotRecord)
+
+		annotRecord, err = manager.GetAnnotation("xxx.yyy.zzz")
+		require.EqualError(t, err, "invalid tokenId")
+		require.IsType(t, &ErrInvalid{}, err)
+		require.Nil(t, annotRecord)
+
+		annotRecord, err = manager.GetAnnotation("token-not-deployed.xxx")
+		require.EqualError(t, err, "token type not found: token-not-deployed")
+		require.IsType(t, &ErrNotFound{}, err)
+		require.Nil(t, annotRecord)
+	})
+}
+
+func TestTokensManager_GetAnnotationsBy(t *testing.T) {
+	env := newTestEnv(t)
+
+	manager, err := NewManager(env.conf, env.lg)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	stat, err := manager.GetStatus()
+	require.NoError(t, err)
+	require.Contains(t, stat, "connected:")
+
+	deployRequest := &types.DeployRequest{
+		Name:        "my-Annot",
+		Description: "my Annotations for testing",
+		Class:       constants.TokenClass_ANNOTATIONS,
+	}
+
+	deployResponse, err := manager.DeployTokenType(deployRequest)
+	assert.NoError(t, err)
+
+	certBob, signerBob := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
+	err = manager.AddUser(&types.UserRecord{
+		Identity:    "bob",
+		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
+		Privilege:   nil,
+	})
+	assert.NoError(t, err)
+
+	certCharlie, signerCharlie := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "charlie")
+	err = manager.AddUser(&types.UserRecord{
+		Identity:    "charlie",
+		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
+		Privilege:   nil,
+	})
+	assert.NoError(t, err)
+
+	var tokenIDs []string
+	for i := 1; i <= 6; i++ {
+		regRequest := &types.AnnotationRegisterRequest{
+			Owner:              "bob",
+			Link:               fmt.Sprintf("xyz.abc%d", i%2),
+			AnnotationData:     fmt.Sprintf("bob's annot %d", i),
+			AnnotationMetadata: "bob's metadata",
+		}
+		regResponse, err := manager.PrepareRegister(deployResponse.TypeId, regRequest)
+		require.NoError(t, err)
+		require.NotNil(t, regResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(regResponse.TxEnvelope)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       regResponse.AnnotationId,
+			TxEnvelope:    regResponse.TxEnvelope,
+			TxPayloadHash: regResponse.TxPayloadHash,
+			Signer:        "bob",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.NoError(t, err)
+		tokenIDs = append(tokenIDs, submitResponse.TokenId)
+	}
+
+	for i := 1; i <= 8; i++ {
+		regRequest := &types.AnnotationRegisterRequest{
+			Owner:              "charlie",
+			Link:               fmt.Sprintf("xyz.abc%d", i%2),
+			AnnotationData:     fmt.Sprintf("charlies's annot %d", i),
+			AnnotationMetadata: "charlie's metadata",
+		}
+		regResponse, err := manager.PrepareRegister(deployResponse.TypeId, regRequest)
+		require.NoError(t, err)
+		require.NotNil(t, regResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(regResponse.TxEnvelope)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerCharlie, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       regResponse.AnnotationId,
+			TxEnvelope:    regResponse.TxEnvelope,
+			TxPayloadHash: regResponse.TxPayloadHash,
+			Signer:        "charlie",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.NoError(t, err)
+		tokenIDs = append(tokenIDs, submitResponse.TokenId)
+	}
+
+	t.Run("success", func(t *testing.T) {
+		records, err := manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 6)
+
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 8)
+
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "", "xyz.abc0")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 7)
+
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 8)
+
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "xyz.abc0")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 3)
+
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "xyz.abc1")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 4)
+
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "", "")
+		require.NoError(t, err)
+		require.Len(t, records, 0)
+	})
+
+	t.Run("success: manager restart", func(t *testing.T) {
+		err = manager.Close()
+		require.NoError(t, err)
+		manager, err = NewManager(env.conf, env.lg)
+		require.NoError(t, err)
+		require.NotNil(t, manager)
+
+		records, err := manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "xyz.abc0")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 3)
+
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "xyz.abc0")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 4)
+	})
+
+	t.Run("invalid: ", func(t *testing.T) {
+		err = manager.Close()
+		require.NoError(t, err)
+		manager, err = NewManager(env.conf, env.lg)
+		require.NoError(t, err)
+		require.NotNil(t, manager)
+
+		records, err := manager.GetAnnotationsByOwnerLink("xxx", "charlie", "xyz.abc0")
+		require.EqualError(t, err, "token type not found: xxx")
+		require.Nil(t, records)
+	})
+}
+
 func TestManager_Users(t *testing.T) {
 	env := newTestEnv(t)
 
@@ -875,6 +1235,7 @@ type testEnv struct {
 	lg      *logger.SugarLogger
 }
 
+// A new test environment.
 func newTestEnv(t *testing.T) *testEnv {
 	e := &testEnv{}
 	t.Cleanup(e.clean)

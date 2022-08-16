@@ -33,6 +33,34 @@ type Operations struct {
 		result1 *types.DeployResponse
 		result2 error
 	}
+	GetAnnotationStub        func(string) (*types.AnnotationRecord, error)
+	getAnnotationMutex       sync.RWMutex
+	getAnnotationArgsForCall []struct {
+		arg1 string
+	}
+	getAnnotationReturns struct {
+		result1 *types.AnnotationRecord
+		result2 error
+	}
+	getAnnotationReturnsOnCall map[int]struct {
+		result1 *types.AnnotationRecord
+		result2 error
+	}
+	GetAnnotationsByOwnerLinkStub        func(string, string, string) ([]*types.AnnotationRecord, error)
+	getAnnotationsByOwnerLinkMutex       sync.RWMutex
+	getAnnotationsByOwnerLinkArgsForCall []struct {
+		arg1 string
+		arg2 string
+		arg3 string
+	}
+	getAnnotationsByOwnerLinkReturns struct {
+		result1 []*types.AnnotationRecord
+		result2 error
+	}
+	getAnnotationsByOwnerLinkReturnsOnCall map[int]struct {
+		result1 []*types.AnnotationRecord
+		result2 error
+	}
 	GetStatusStub        func() (string, error)
 	getStatusMutex       sync.RWMutex
 	getStatusArgsForCall []struct {
@@ -122,6 +150,20 @@ type Operations struct {
 	}
 	prepareMintReturnsOnCall map[int]struct {
 		result1 *types.MintResponse
+		result2 error
+	}
+	PrepareRegisterStub        func(string, *types.AnnotationRegisterRequest) (*types.AnnotationRegisterResponse, error)
+	prepareRegisterMutex       sync.RWMutex
+	prepareRegisterArgsForCall []struct {
+		arg1 string
+		arg2 *types.AnnotationRegisterRequest
+	}
+	prepareRegisterReturns struct {
+		result1 *types.AnnotationRegisterResponse
+		result2 error
+	}
+	prepareRegisterReturnsOnCall map[int]struct {
+		result1 *types.AnnotationRegisterResponse
 		result2 error
 	}
 	PrepareTransferStub        func(string, *types.TransferRequest) (*types.TransferResponse, error)
@@ -296,6 +338,134 @@ func (fake *Operations) DeployTokenTypeReturnsOnCall(i int, result1 *types.Deplo
 	}
 	fake.deployTokenTypeReturnsOnCall[i] = struct {
 		result1 *types.DeployResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) GetAnnotation(arg1 string) (*types.AnnotationRecord, error) {
+	fake.getAnnotationMutex.Lock()
+	ret, specificReturn := fake.getAnnotationReturnsOnCall[len(fake.getAnnotationArgsForCall)]
+	fake.getAnnotationArgsForCall = append(fake.getAnnotationArgsForCall, struct {
+		arg1 string
+	}{arg1})
+	fake.recordInvocation("GetAnnotation", []interface{}{arg1})
+	fake.getAnnotationMutex.Unlock()
+	if fake.GetAnnotationStub != nil {
+		return fake.GetAnnotationStub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	fakeReturns := fake.getAnnotationReturns
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) GetAnnotationCallCount() int {
+	fake.getAnnotationMutex.RLock()
+	defer fake.getAnnotationMutex.RUnlock()
+	return len(fake.getAnnotationArgsForCall)
+}
+
+func (fake *Operations) GetAnnotationCalls(stub func(string) (*types.AnnotationRecord, error)) {
+	fake.getAnnotationMutex.Lock()
+	defer fake.getAnnotationMutex.Unlock()
+	fake.GetAnnotationStub = stub
+}
+
+func (fake *Operations) GetAnnotationArgsForCall(i int) string {
+	fake.getAnnotationMutex.RLock()
+	defer fake.getAnnotationMutex.RUnlock()
+	argsForCall := fake.getAnnotationArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *Operations) GetAnnotationReturns(result1 *types.AnnotationRecord, result2 error) {
+	fake.getAnnotationMutex.Lock()
+	defer fake.getAnnotationMutex.Unlock()
+	fake.GetAnnotationStub = nil
+	fake.getAnnotationReturns = struct {
+		result1 *types.AnnotationRecord
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) GetAnnotationReturnsOnCall(i int, result1 *types.AnnotationRecord, result2 error) {
+	fake.getAnnotationMutex.Lock()
+	defer fake.getAnnotationMutex.Unlock()
+	fake.GetAnnotationStub = nil
+	if fake.getAnnotationReturnsOnCall == nil {
+		fake.getAnnotationReturnsOnCall = make(map[int]struct {
+			result1 *types.AnnotationRecord
+			result2 error
+		})
+	}
+	fake.getAnnotationReturnsOnCall[i] = struct {
+		result1 *types.AnnotationRecord
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) GetAnnotationsByOwnerLink(arg1 string, arg2 string, arg3 string) ([]*types.AnnotationRecord, error) {
+	fake.getAnnotationsByOwnerLinkMutex.Lock()
+	ret, specificReturn := fake.getAnnotationsByOwnerLinkReturnsOnCall[len(fake.getAnnotationsByOwnerLinkArgsForCall)]
+	fake.getAnnotationsByOwnerLinkArgsForCall = append(fake.getAnnotationsByOwnerLinkArgsForCall, struct {
+		arg1 string
+		arg2 string
+		arg3 string
+	}{arg1, arg2, arg3})
+	fake.recordInvocation("GetAnnotationsByOwnerLink", []interface{}{arg1, arg2, arg3})
+	fake.getAnnotationsByOwnerLinkMutex.Unlock()
+	if fake.GetAnnotationsByOwnerLinkStub != nil {
+		return fake.GetAnnotationsByOwnerLinkStub(arg1, arg2, arg3)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	fakeReturns := fake.getAnnotationsByOwnerLinkReturns
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) GetAnnotationsByOwnerLinkCallCount() int {
+	fake.getAnnotationsByOwnerLinkMutex.RLock()
+	defer fake.getAnnotationsByOwnerLinkMutex.RUnlock()
+	return len(fake.getAnnotationsByOwnerLinkArgsForCall)
+}
+
+func (fake *Operations) GetAnnotationsByOwnerLinkCalls(stub func(string, string, string) ([]*types.AnnotationRecord, error)) {
+	fake.getAnnotationsByOwnerLinkMutex.Lock()
+	defer fake.getAnnotationsByOwnerLinkMutex.Unlock()
+	fake.GetAnnotationsByOwnerLinkStub = stub
+}
+
+func (fake *Operations) GetAnnotationsByOwnerLinkArgsForCall(i int) (string, string, string) {
+	fake.getAnnotationsByOwnerLinkMutex.RLock()
+	defer fake.getAnnotationsByOwnerLinkMutex.RUnlock()
+	argsForCall := fake.getAnnotationsByOwnerLinkArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+}
+
+func (fake *Operations) GetAnnotationsByOwnerLinkReturns(result1 []*types.AnnotationRecord, result2 error) {
+	fake.getAnnotationsByOwnerLinkMutex.Lock()
+	defer fake.getAnnotationsByOwnerLinkMutex.Unlock()
+	fake.GetAnnotationsByOwnerLinkStub = nil
+	fake.getAnnotationsByOwnerLinkReturns = struct {
+		result1 []*types.AnnotationRecord
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) GetAnnotationsByOwnerLinkReturnsOnCall(i int, result1 []*types.AnnotationRecord, result2 error) {
+	fake.getAnnotationsByOwnerLinkMutex.Lock()
+	defer fake.getAnnotationsByOwnerLinkMutex.Unlock()
+	fake.GetAnnotationsByOwnerLinkStub = nil
+	if fake.getAnnotationsByOwnerLinkReturnsOnCall == nil {
+		fake.getAnnotationsByOwnerLinkReturnsOnCall = make(map[int]struct {
+			result1 []*types.AnnotationRecord
+			result2 error
+		})
+	}
+	fake.getAnnotationsByOwnerLinkReturnsOnCall[i] = struct {
+		result1 []*types.AnnotationRecord
 		result2 error
 	}{result1, result2}
 }
@@ -727,6 +897,70 @@ func (fake *Operations) PrepareMintReturnsOnCall(i int, result1 *types.MintRespo
 	}{result1, result2}
 }
 
+func (fake *Operations) PrepareRegister(arg1 string, arg2 *types.AnnotationRegisterRequest) (*types.AnnotationRegisterResponse, error) {
+	fake.prepareRegisterMutex.Lock()
+	ret, specificReturn := fake.prepareRegisterReturnsOnCall[len(fake.prepareRegisterArgsForCall)]
+	fake.prepareRegisterArgsForCall = append(fake.prepareRegisterArgsForCall, struct {
+		arg1 string
+		arg2 *types.AnnotationRegisterRequest
+	}{arg1, arg2})
+	fake.recordInvocation("PrepareRegister", []interface{}{arg1, arg2})
+	fake.prepareRegisterMutex.Unlock()
+	if fake.PrepareRegisterStub != nil {
+		return fake.PrepareRegisterStub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	fakeReturns := fake.prepareRegisterReturns
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) PrepareRegisterCallCount() int {
+	fake.prepareRegisterMutex.RLock()
+	defer fake.prepareRegisterMutex.RUnlock()
+	return len(fake.prepareRegisterArgsForCall)
+}
+
+func (fake *Operations) PrepareRegisterCalls(stub func(string, *types.AnnotationRegisterRequest) (*types.AnnotationRegisterResponse, error)) {
+	fake.prepareRegisterMutex.Lock()
+	defer fake.prepareRegisterMutex.Unlock()
+	fake.PrepareRegisterStub = stub
+}
+
+func (fake *Operations) PrepareRegisterArgsForCall(i int) (string, *types.AnnotationRegisterRequest) {
+	fake.prepareRegisterMutex.RLock()
+	defer fake.prepareRegisterMutex.RUnlock()
+	argsForCall := fake.prepareRegisterArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *Operations) PrepareRegisterReturns(result1 *types.AnnotationRegisterResponse, result2 error) {
+	fake.prepareRegisterMutex.Lock()
+	defer fake.prepareRegisterMutex.Unlock()
+	fake.PrepareRegisterStub = nil
+	fake.prepareRegisterReturns = struct {
+		result1 *types.AnnotationRegisterResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) PrepareRegisterReturnsOnCall(i int, result1 *types.AnnotationRegisterResponse, result2 error) {
+	fake.prepareRegisterMutex.Lock()
+	defer fake.prepareRegisterMutex.Unlock()
+	fake.PrepareRegisterStub = nil
+	if fake.prepareRegisterReturnsOnCall == nil {
+		fake.prepareRegisterReturnsOnCall = make(map[int]struct {
+			result1 *types.AnnotationRegisterResponse
+			result2 error
+		})
+	}
+	fake.prepareRegisterReturnsOnCall[i] = struct {
+		result1 *types.AnnotationRegisterResponse
+		result2 error
+	}{result1, result2}
+}
+
 func (fake *Operations) PrepareTransfer(arg1 string, arg2 *types.TransferRequest) (*types.TransferResponse, error) {
 	fake.prepareTransferMutex.Lock()
 	ret, specificReturn := fake.prepareTransferReturnsOnCall[len(fake.prepareTransferArgsForCall)]
@@ -981,6 +1215,10 @@ func (fake *Operations) Invocations() map[string][][]interface{} {
 	defer fake.addUserMutex.RUnlock()
 	fake.deployTokenTypeMutex.RLock()
 	defer fake.deployTokenTypeMutex.RUnlock()
+	fake.getAnnotationMutex.RLock()
+	defer fake.getAnnotationMutex.RUnlock()
+	fake.getAnnotationsByOwnerLinkMutex.RLock()
+	defer fake.getAnnotationsByOwnerLinkMutex.RUnlock()
 	fake.getStatusMutex.RLock()
 	defer fake.getStatusMutex.RUnlock()
 	fake.getTokenMutex.RLock()
@@ -995,6 +1233,8 @@ func (fake *Operations) Invocations() map[string][][]interface{} {
 	defer fake.getUserMutex.RUnlock()
 	fake.prepareMintMutex.RLock()
 	defer fake.prepareMintMutex.RUnlock()
+	fake.prepareRegisterMutex.RLock()
+	defer fake.prepareRegisterMutex.RUnlock()
 	fake.prepareTransferMutex.RLock()
 	defer fake.prepareTransferMutex.RUnlock()
 	fake.removeUserMutex.RLock()
