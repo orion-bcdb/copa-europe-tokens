@@ -206,5 +206,3 @@ type FungibleAccountRecord struct {
 	Balance uint64 `json:"balance"`
 	Comment string `json:"comment"`
 }
-
-type FungibleAccountRecords = []FungibleAccountRecord
