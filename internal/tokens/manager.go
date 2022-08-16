@@ -33,10 +33,18 @@ const (
 //go:generate counterfeiter -o mocks/operations.go --fake-name Operations . Operations
 
 type Operations interface {
+
+	// Management API
+
 	GetStatus() (string, error)
+
+	// Generic token type API
+
 	DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error)
 	GetTokenType(tokenTypeId string) (*types.DeployResponse, error)
 	GetTokenTypes() ([]*types.DeployResponse, error)
+
+	// Non fungible token type (NFT) API
 
 	PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error)
 	PrepareTransfer(tokenId string, transferRequest *types.TransferRequest) (*types.TransferResponse, error)
@@ -44,14 +52,28 @@ type Operations interface {
 	GetToken(tokenId string) (*types.TokenRecord, error)
 	GetTokensByOwner(tokenTypeId string, owner string) ([]*types.TokenRecord, error)
 
+	// Annotations API
+
 	PrepareRegister(tokenTypeId string, registerRequest *types.AnnotationRegisterRequest) (*types.AnnotationRegisterResponse, error)
 	GetAnnotation(tokenId string) (*types.AnnotationRecord, error)
 	GetAnnotationsByOwnerLink(tokenTypeId string, owner, link string) ([]*types.AnnotationRecord, error)
+
+	// User API
 
 	AddUser(userRecord *types.UserRecord) error
 	UpdateUser(userRecord *types.UserRecord) error
 	RemoveUser(userId string) error
 	GetUser(userId string) (*types.UserRecord, error)
+
+	// Fungible token type API
+
+	FungibleDeploy(deployRequest *types.FungibleDeployRequest) (*types.FungibleDeployResponse, error)
+	FungibleDescribe(typeId string) (*types.FungibleDescribeResponse, error)
+	FungiblePrepareMint(typeId string, request *types.FungibleMintRequest) (*types.FungibleMintResponse, error)
+	FungiblePrepareTransfer(typeId string, request *types.FungibleTransferRequest) (*types.FungibleTransferResponse, error)
+	FungiblePrepareConsolidate(typeId string, request *types.FungibleConsolidateRequest) (*types.FungibleConsolidateResponse, error)
+	FungibleSubmitTx(submitRequest *types.FungibleSubmitRequest) (*types.FungibleSubmitResponse, error)
+	FungibleAccounts(typeId string, owner string, account string) ([]types.FungibleAccountRecord, error)
 }
 
 // TODO handle ServerTimeout on Commit

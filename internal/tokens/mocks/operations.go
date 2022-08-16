@@ -33,6 +33,102 @@ type Operations struct {
 		result1 *types.DeployResponse
 		result2 error
 	}
+	FungibleAccountsStub        func(string, string, string) ([]types.FungibleAccountRecord, error)
+	fungibleAccountsMutex       sync.RWMutex
+	fungibleAccountsArgsForCall []struct {
+		arg1 string
+		arg2 string
+		arg3 string
+	}
+	fungibleAccountsReturns struct {
+		result1 []types.FungibleAccountRecord
+		result2 error
+	}
+	fungibleAccountsReturnsOnCall map[int]struct {
+		result1 []types.FungibleAccountRecord
+		result2 error
+	}
+	FungibleDeployStub        func(*types.FungibleDeployRequest) (*types.FungibleDeployResponse, error)
+	fungibleDeployMutex       sync.RWMutex
+	fungibleDeployArgsForCall []struct {
+		arg1 *types.FungibleDeployRequest
+	}
+	fungibleDeployReturns struct {
+		result1 *types.FungibleDeployResponse
+		result2 error
+	}
+	fungibleDeployReturnsOnCall map[int]struct {
+		result1 *types.FungibleDeployResponse
+		result2 error
+	}
+	FungibleDescribeStub        func(string) (*types.FungibleDescribeResponse, error)
+	fungibleDescribeMutex       sync.RWMutex
+	fungibleDescribeArgsForCall []struct {
+		arg1 string
+	}
+	fungibleDescribeReturns struct {
+		result1 *types.FungibleDescribeResponse
+		result2 error
+	}
+	fungibleDescribeReturnsOnCall map[int]struct {
+		result1 *types.FungibleDescribeResponse
+		result2 error
+	}
+	FungiblePrepareConsolidateStub        func(string, *types.FungibleConsolidateRequest) (*types.FungibleConsolidateResponse, error)
+	fungiblePrepareConsolidateMutex       sync.RWMutex
+	fungiblePrepareConsolidateArgsForCall []struct {
+		arg1 string
+		arg2 *types.FungibleConsolidateRequest
+	}
+	fungiblePrepareConsolidateReturns struct {
+		result1 *types.FungibleConsolidateResponse
+		result2 error
+	}
+	fungiblePrepareConsolidateReturnsOnCall map[int]struct {
+		result1 *types.FungibleConsolidateResponse
+		result2 error
+	}
+	FungiblePrepareMintStub        func(string, *types.FungibleMintRequest) (*types.FungibleMintResponse, error)
+	fungiblePrepareMintMutex       sync.RWMutex
+	fungiblePrepareMintArgsForCall []struct {
+		arg1 string
+		arg2 *types.FungibleMintRequest
+	}
+	fungiblePrepareMintReturns struct {
+		result1 *types.FungibleMintResponse
+		result2 error
+	}
+	fungiblePrepareMintReturnsOnCall map[int]struct {
+		result1 *types.FungibleMintResponse
+		result2 error
+	}
+	FungiblePrepareTransferStub        func(string, *types.FungibleTransferRequest) (*types.FungibleTransferResponse, error)
+	fungiblePrepareTransferMutex       sync.RWMutex
+	fungiblePrepareTransferArgsForCall []struct {
+		arg1 string
+		arg2 *types.FungibleTransferRequest
+	}
+	fungiblePrepareTransferReturns struct {
+		result1 *types.FungibleTransferResponse
+		result2 error
+	}
+	fungiblePrepareTransferReturnsOnCall map[int]struct {
+		result1 *types.FungibleTransferResponse
+		result2 error
+	}
+	FungibleSubmitTxStub        func(*types.FungibleSubmitRequest) (*types.FungibleSubmitResponse, error)
+	fungibleSubmitTxMutex       sync.RWMutex
+	fungibleSubmitTxArgsForCall []struct {
+		arg1 *types.FungibleSubmitRequest
+	}
+	fungibleSubmitTxReturns struct {
+		result1 *types.FungibleSubmitResponse
+		result2 error
+	}
+	fungibleSubmitTxReturnsOnCall map[int]struct {
+		result1 *types.FungibleSubmitResponse
+		result2 error
+	}
 	GetAnnotationStub        func(string) (*types.AnnotationRecord, error)
 	getAnnotationMutex       sync.RWMutex
 	getAnnotationArgsForCall []struct {
@@ -225,15 +321,16 @@ func (fake *Operations) AddUser(arg1 *types.UserRecord) error {
 	fake.addUserArgsForCall = append(fake.addUserArgsForCall, struct {
 		arg1 *types.UserRecord
 	}{arg1})
+	stub := fake.AddUserStub
+	fakeReturns := fake.addUserReturns
 	fake.recordInvocation("AddUser", []interface{}{arg1})
 	fake.addUserMutex.Unlock()
-	if fake.AddUserStub != nil {
-		return fake.AddUserStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.addUserReturns
 	return fakeReturns.result1
 }
 
@@ -285,15 +382,16 @@ func (fake *Operations) DeployTokenType(arg1 *types.DeployRequest) (*types.Deplo
 	fake.deployTokenTypeArgsForCall = append(fake.deployTokenTypeArgsForCall, struct {
 		arg1 *types.DeployRequest
 	}{arg1})
+	stub := fake.DeployTokenTypeStub
+	fakeReturns := fake.deployTokenTypeReturns
 	fake.recordInvocation("DeployTokenType", []interface{}{arg1})
 	fake.deployTokenTypeMutex.Unlock()
-	if fake.DeployTokenTypeStub != nil {
-		return fake.DeployTokenTypeStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.deployTokenTypeReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -342,21 +440,475 @@ func (fake *Operations) DeployTokenTypeReturnsOnCall(i int, result1 *types.Deplo
 	}{result1, result2}
 }
 
+func (fake *Operations) FungibleAccounts(arg1 string, arg2 string, arg3 string) ([]types.FungibleAccountRecord, error) {
+	fake.fungibleAccountsMutex.Lock()
+	ret, specificReturn := fake.fungibleAccountsReturnsOnCall[len(fake.fungibleAccountsArgsForCall)]
+	fake.fungibleAccountsArgsForCall = append(fake.fungibleAccountsArgsForCall, struct {
+		arg1 string
+		arg2 string
+		arg3 string
+	}{arg1, arg2, arg3})
+	stub := fake.FungibleAccountsStub
+	fakeReturns := fake.fungibleAccountsReturns
+	fake.recordInvocation("FungibleAccounts", []interface{}{arg1, arg2, arg3})
+	fake.fungibleAccountsMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2, arg3)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) FungibleAccountsCallCount() int {
+	fake.fungibleAccountsMutex.RLock()
+	defer fake.fungibleAccountsMutex.RUnlock()
+	return len(fake.fungibleAccountsArgsForCall)
+}
+
+func (fake *Operations) FungibleAccountsCalls(stub func(string, string, string) ([]types.FungibleAccountRecord, error)) {
+	fake.fungibleAccountsMutex.Lock()
+	defer fake.fungibleAccountsMutex.Unlock()
+	fake.FungibleAccountsStub = stub
+}
+
+func (fake *Operations) FungibleAccountsArgsForCall(i int) (string, string, string) {
+	fake.fungibleAccountsMutex.RLock()
+	defer fake.fungibleAccountsMutex.RUnlock()
+	argsForCall := fake.fungibleAccountsArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+}
+
+func (fake *Operations) FungibleAccountsReturns(result1 []types.FungibleAccountRecord, result2 error) {
+	fake.fungibleAccountsMutex.Lock()
+	defer fake.fungibleAccountsMutex.Unlock()
+	fake.FungibleAccountsStub = nil
+	fake.fungibleAccountsReturns = struct {
+		result1 []types.FungibleAccountRecord
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungibleAccountsReturnsOnCall(i int, result1 []types.FungibleAccountRecord, result2 error) {
+	fake.fungibleAccountsMutex.Lock()
+	defer fake.fungibleAccountsMutex.Unlock()
+	fake.FungibleAccountsStub = nil
+	if fake.fungibleAccountsReturnsOnCall == nil {
+		fake.fungibleAccountsReturnsOnCall = make(map[int]struct {
+			result1 []types.FungibleAccountRecord
+			result2 error
+		})
+	}
+	fake.fungibleAccountsReturnsOnCall[i] = struct {
+		result1 []types.FungibleAccountRecord
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungibleDeploy(arg1 *types.FungibleDeployRequest) (*types.FungibleDeployResponse, error) {
+	fake.fungibleDeployMutex.Lock()
+	ret, specificReturn := fake.fungibleDeployReturnsOnCall[len(fake.fungibleDeployArgsForCall)]
+	fake.fungibleDeployArgsForCall = append(fake.fungibleDeployArgsForCall, struct {
+		arg1 *types.FungibleDeployRequest
+	}{arg1})
+	stub := fake.FungibleDeployStub
+	fakeReturns := fake.fungibleDeployReturns
+	fake.recordInvocation("FungibleDeploy", []interface{}{arg1})
+	fake.fungibleDeployMutex.Unlock()
+	if stub != nil {
+		return stub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) FungibleDeployCallCount() int {
+	fake.fungibleDeployMutex.RLock()
+	defer fake.fungibleDeployMutex.RUnlock()
+	return len(fake.fungibleDeployArgsForCall)
+}
+
+func (fake *Operations) FungibleDeployCalls(stub func(*types.FungibleDeployRequest) (*types.FungibleDeployResponse, error)) {
+	fake.fungibleDeployMutex.Lock()
+	defer fake.fungibleDeployMutex.Unlock()
+	fake.FungibleDeployStub = stub
+}
+
+func (fake *Operations) FungibleDeployArgsForCall(i int) *types.FungibleDeployRequest {
+	fake.fungibleDeployMutex.RLock()
+	defer fake.fungibleDeployMutex.RUnlock()
+	argsForCall := fake.fungibleDeployArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *Operations) FungibleDeployReturns(result1 *types.FungibleDeployResponse, result2 error) {
+	fake.fungibleDeployMutex.Lock()
+	defer fake.fungibleDeployMutex.Unlock()
+	fake.FungibleDeployStub = nil
+	fake.fungibleDeployReturns = struct {
+		result1 *types.FungibleDeployResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungibleDeployReturnsOnCall(i int, result1 *types.FungibleDeployResponse, result2 error) {
+	fake.fungibleDeployMutex.Lock()
+	defer fake.fungibleDeployMutex.Unlock()
+	fake.FungibleDeployStub = nil
+	if fake.fungibleDeployReturnsOnCall == nil {
+		fake.fungibleDeployReturnsOnCall = make(map[int]struct {
+			result1 *types.FungibleDeployResponse
+			result2 error
+		})
+	}
+	fake.fungibleDeployReturnsOnCall[i] = struct {
+		result1 *types.FungibleDeployResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungibleDescribe(arg1 string) (*types.FungibleDescribeResponse, error) {
+	fake.fungibleDescribeMutex.Lock()
+	ret, specificReturn := fake.fungibleDescribeReturnsOnCall[len(fake.fungibleDescribeArgsForCall)]
+	fake.fungibleDescribeArgsForCall = append(fake.fungibleDescribeArgsForCall, struct {
+		arg1 string
+	}{arg1})
+	stub := fake.FungibleDescribeStub
+	fakeReturns := fake.fungibleDescribeReturns
+	fake.recordInvocation("FungibleDescribe", []interface{}{arg1})
+	fake.fungibleDescribeMutex.Unlock()
+	if stub != nil {
+		return stub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) FungibleDescribeCallCount() int {
+	fake.fungibleDescribeMutex.RLock()
+	defer fake.fungibleDescribeMutex.RUnlock()
+	return len(fake.fungibleDescribeArgsForCall)
+}
+
+func (fake *Operations) FungibleDescribeCalls(stub func(string) (*types.FungibleDescribeResponse, error)) {
+	fake.fungibleDescribeMutex.Lock()
+	defer fake.fungibleDescribeMutex.Unlock()
+	fake.FungibleDescribeStub = stub
+}
+
+func (fake *Operations) FungibleDescribeArgsForCall(i int) string {
+	fake.fungibleDescribeMutex.RLock()
+	defer fake.fungibleDescribeMutex.RUnlock()
+	argsForCall := fake.fungibleDescribeArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *Operations) FungibleDescribeReturns(result1 *types.FungibleDescribeResponse, result2 error) {
+	fake.fungibleDescribeMutex.Lock()
+	defer fake.fungibleDescribeMutex.Unlock()
+	fake.FungibleDescribeStub = nil
+	fake.fungibleDescribeReturns = struct {
+		result1 *types.FungibleDescribeResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungibleDescribeReturnsOnCall(i int, result1 *types.FungibleDescribeResponse, result2 error) {
+	fake.fungibleDescribeMutex.Lock()
+	defer fake.fungibleDescribeMutex.Unlock()
+	fake.FungibleDescribeStub = nil
+	if fake.fungibleDescribeReturnsOnCall == nil {
+		fake.fungibleDescribeReturnsOnCall = make(map[int]struct {
+			result1 *types.FungibleDescribeResponse
+			result2 error
+		})
+	}
+	fake.fungibleDescribeReturnsOnCall[i] = struct {
+		result1 *types.FungibleDescribeResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungiblePrepareConsolidate(arg1 string, arg2 *types.FungibleConsolidateRequest) (*types.FungibleConsolidateResponse, error) {
+	fake.fungiblePrepareConsolidateMutex.Lock()
+	ret, specificReturn := fake.fungiblePrepareConsolidateReturnsOnCall[len(fake.fungiblePrepareConsolidateArgsForCall)]
+	fake.fungiblePrepareConsolidateArgsForCall = append(fake.fungiblePrepareConsolidateArgsForCall, struct {
+		arg1 string
+		arg2 *types.FungibleConsolidateRequest
+	}{arg1, arg2})
+	stub := fake.FungiblePrepareConsolidateStub
+	fakeReturns := fake.fungiblePrepareConsolidateReturns
+	fake.recordInvocation("FungiblePrepareConsolidate", []interface{}{arg1, arg2})
+	fake.fungiblePrepareConsolidateMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) FungiblePrepareConsolidateCallCount() int {
+	fake.fungiblePrepareConsolidateMutex.RLock()
+	defer fake.fungiblePrepareConsolidateMutex.RUnlock()
+	return len(fake.fungiblePrepareConsolidateArgsForCall)
+}
+
+func (fake *Operations) FungiblePrepareConsolidateCalls(stub func(string, *types.FungibleConsolidateRequest) (*types.FungibleConsolidateResponse, error)) {
+	fake.fungiblePrepareConsolidateMutex.Lock()
+	defer fake.fungiblePrepareConsolidateMutex.Unlock()
+	fake.FungiblePrepareConsolidateStub = stub
+}
+
+func (fake *Operations) FungiblePrepareConsolidateArgsForCall(i int) (string, *types.FungibleConsolidateRequest) {
+	fake.fungiblePrepareConsolidateMutex.RLock()
+	defer fake.fungiblePrepareConsolidateMutex.RUnlock()
+	argsForCall := fake.fungiblePrepareConsolidateArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *Operations) FungiblePrepareConsolidateReturns(result1 *types.FungibleConsolidateResponse, result2 error) {
+	fake.fungiblePrepareConsolidateMutex.Lock()
+	defer fake.fungiblePrepareConsolidateMutex.Unlock()
+	fake.FungiblePrepareConsolidateStub = nil
+	fake.fungiblePrepareConsolidateReturns = struct {
+		result1 *types.FungibleConsolidateResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungiblePrepareConsolidateReturnsOnCall(i int, result1 *types.FungibleConsolidateResponse, result2 error) {
+	fake.fungiblePrepareConsolidateMutex.Lock()
+	defer fake.fungiblePrepareConsolidateMutex.Unlock()
+	fake.FungiblePrepareConsolidateStub = nil
+	if fake.fungiblePrepareConsolidateReturnsOnCall == nil {
+		fake.fungiblePrepareConsolidateReturnsOnCall = make(map[int]struct {
+			result1 *types.FungibleConsolidateResponse
+			result2 error
+		})
+	}
+	fake.fungiblePrepareConsolidateReturnsOnCall[i] = struct {
+		result1 *types.FungibleConsolidateResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungiblePrepareMint(arg1 string, arg2 *types.FungibleMintRequest) (*types.FungibleMintResponse, error) {
+	fake.fungiblePrepareMintMutex.Lock()
+	ret, specificReturn := fake.fungiblePrepareMintReturnsOnCall[len(fake.fungiblePrepareMintArgsForCall)]
+	fake.fungiblePrepareMintArgsForCall = append(fake.fungiblePrepareMintArgsForCall, struct {
+		arg1 string
+		arg2 *types.FungibleMintRequest
+	}{arg1, arg2})
+	stub := fake.FungiblePrepareMintStub
+	fakeReturns := fake.fungiblePrepareMintReturns
+	fake.recordInvocation("FungiblePrepareMint", []interface{}{arg1, arg2})
+	fake.fungiblePrepareMintMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) FungiblePrepareMintCallCount() int {
+	fake.fungiblePrepareMintMutex.RLock()
+	defer fake.fungiblePrepareMintMutex.RUnlock()
+	return len(fake.fungiblePrepareMintArgsForCall)
+}
+
+func (fake *Operations) FungiblePrepareMintCalls(stub func(string, *types.FungibleMintRequest) (*types.FungibleMintResponse, error)) {
+	fake.fungiblePrepareMintMutex.Lock()
+	defer fake.fungiblePrepareMintMutex.Unlock()
+	fake.FungiblePrepareMintStub = stub
+}
+
+func (fake *Operations) FungiblePrepareMintArgsForCall(i int) (string, *types.FungibleMintRequest) {
+	fake.fungiblePrepareMintMutex.RLock()
+	defer fake.fungiblePrepareMintMutex.RUnlock()
+	argsForCall := fake.fungiblePrepareMintArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *Operations) FungiblePrepareMintReturns(result1 *types.FungibleMintResponse, result2 error) {
+	fake.fungiblePrepareMintMutex.Lock()
+	defer fake.fungiblePrepareMintMutex.Unlock()
+	fake.FungiblePrepareMintStub = nil
+	fake.fungiblePrepareMintReturns = struct {
+		result1 *types.FungibleMintResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungiblePrepareMintReturnsOnCall(i int, result1 *types.FungibleMintResponse, result2 error) {
+	fake.fungiblePrepareMintMutex.Lock()
+	defer fake.fungiblePrepareMintMutex.Unlock()
+	fake.FungiblePrepareMintStub = nil
+	if fake.fungiblePrepareMintReturnsOnCall == nil {
+		fake.fungiblePrepareMintReturnsOnCall = make(map[int]struct {
+			result1 *types.FungibleMintResponse
+			result2 error
+		})
+	}
+	fake.fungiblePrepareMintReturnsOnCall[i] = struct {
+		result1 *types.FungibleMintResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungiblePrepareTransfer(arg1 string, arg2 *types.FungibleTransferRequest) (*types.FungibleTransferResponse, error) {
+	fake.fungiblePrepareTransferMutex.Lock()
+	ret, specificReturn := fake.fungiblePrepareTransferReturnsOnCall[len(fake.fungiblePrepareTransferArgsForCall)]
+	fake.fungiblePrepareTransferArgsForCall = append(fake.fungiblePrepareTransferArgsForCall, struct {
+		arg1 string
+		arg2 *types.FungibleTransferRequest
+	}{arg1, arg2})
+	stub := fake.FungiblePrepareTransferStub
+	fakeReturns := fake.fungiblePrepareTransferReturns
+	fake.recordInvocation("FungiblePrepareTransfer", []interface{}{arg1, arg2})
+	fake.fungiblePrepareTransferMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) FungiblePrepareTransferCallCount() int {
+	fake.fungiblePrepareTransferMutex.RLock()
+	defer fake.fungiblePrepareTransferMutex.RUnlock()
+	return len(fake.fungiblePrepareTransferArgsForCall)
+}
+
+func (fake *Operations) FungiblePrepareTransferCalls(stub func(string, *types.FungibleTransferRequest) (*types.FungibleTransferResponse, error)) {
+	fake.fungiblePrepareTransferMutex.Lock()
+	defer fake.fungiblePrepareTransferMutex.Unlock()
+	fake.FungiblePrepareTransferStub = stub
+}
+
+func (fake *Operations) FungiblePrepareTransferArgsForCall(i int) (string, *types.FungibleTransferRequest) {
+	fake.fungiblePrepareTransferMutex.RLock()
+	defer fake.fungiblePrepareTransferMutex.RUnlock()
+	argsForCall := fake.fungiblePrepareTransferArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *Operations) FungiblePrepareTransferReturns(result1 *types.FungibleTransferResponse, result2 error) {
+	fake.fungiblePrepareTransferMutex.Lock()
+	defer fake.fungiblePrepareTransferMutex.Unlock()
+	fake.FungiblePrepareTransferStub = nil
+	fake.fungiblePrepareTransferReturns = struct {
+		result1 *types.FungibleTransferResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungiblePrepareTransferReturnsOnCall(i int, result1 *types.FungibleTransferResponse, result2 error) {
+	fake.fungiblePrepareTransferMutex.Lock()
+	defer fake.fungiblePrepareTransferMutex.Unlock()
+	fake.FungiblePrepareTransferStub = nil
+	if fake.fungiblePrepareTransferReturnsOnCall == nil {
+		fake.fungiblePrepareTransferReturnsOnCall = make(map[int]struct {
+			result1 *types.FungibleTransferResponse
+			result2 error
+		})
+	}
+	fake.fungiblePrepareTransferReturnsOnCall[i] = struct {
+		result1 *types.FungibleTransferResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungibleSubmitTx(arg1 *types.FungibleSubmitRequest) (*types.FungibleSubmitResponse, error) {
+	fake.fungibleSubmitTxMutex.Lock()
+	ret, specificReturn := fake.fungibleSubmitTxReturnsOnCall[len(fake.fungibleSubmitTxArgsForCall)]
+	fake.fungibleSubmitTxArgsForCall = append(fake.fungibleSubmitTxArgsForCall, struct {
+		arg1 *types.FungibleSubmitRequest
+	}{arg1})
+	stub := fake.FungibleSubmitTxStub
+	fakeReturns := fake.fungibleSubmitTxReturns
+	fake.recordInvocation("FungibleSubmitTx", []interface{}{arg1})
+	fake.fungibleSubmitTxMutex.Unlock()
+	if stub != nil {
+		return stub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) FungibleSubmitTxCallCount() int {
+	fake.fungibleSubmitTxMutex.RLock()
+	defer fake.fungibleSubmitTxMutex.RUnlock()
+	return len(fake.fungibleSubmitTxArgsForCall)
+}
+
+func (fake *Operations) FungibleSubmitTxCalls(stub func(*types.FungibleSubmitRequest) (*types.FungibleSubmitResponse, error)) {
+	fake.fungibleSubmitTxMutex.Lock()
+	defer fake.fungibleSubmitTxMutex.Unlock()
+	fake.FungibleSubmitTxStub = stub
+}
+
+func (fake *Operations) FungibleSubmitTxArgsForCall(i int) *types.FungibleSubmitRequest {
+	fake.fungibleSubmitTxMutex.RLock()
+	defer fake.fungibleSubmitTxMutex.RUnlock()
+	argsForCall := fake.fungibleSubmitTxArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *Operations) FungibleSubmitTxReturns(result1 *types.FungibleSubmitResponse, result2 error) {
+	fake.fungibleSubmitTxMutex.Lock()
+	defer fake.fungibleSubmitTxMutex.Unlock()
+	fake.FungibleSubmitTxStub = nil
+	fake.fungibleSubmitTxReturns = struct {
+		result1 *types.FungibleSubmitResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungibleSubmitTxReturnsOnCall(i int, result1 *types.FungibleSubmitResponse, result2 error) {
+	fake.fungibleSubmitTxMutex.Lock()
+	defer fake.fungibleSubmitTxMutex.Unlock()
+	fake.FungibleSubmitTxStub = nil
+	if fake.fungibleSubmitTxReturnsOnCall == nil {
+		fake.fungibleSubmitTxReturnsOnCall = make(map[int]struct {
+			result1 *types.FungibleSubmitResponse
+			result2 error
+		})
+	}
+	fake.fungibleSubmitTxReturnsOnCall[i] = struct {
+		result1 *types.FungibleSubmitResponse
+		result2 error
+	}{result1, result2}
+}
+
 func (fake *Operations) GetAnnotation(arg1 string) (*types.AnnotationRecord, error) {
 	fake.getAnnotationMutex.Lock()
 	ret, specificReturn := fake.getAnnotationReturnsOnCall[len(fake.getAnnotationArgsForCall)]
 	fake.getAnnotationArgsForCall = append(fake.getAnnotationArgsForCall, struct {
 		arg1 string
 	}{arg1})
+	stub := fake.GetAnnotationStub
+	fakeReturns := fake.getAnnotationReturns
 	fake.recordInvocation("GetAnnotation", []interface{}{arg1})
 	fake.getAnnotationMutex.Unlock()
-	if fake.GetAnnotationStub != nil {
-		return fake.GetAnnotationStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.getAnnotationReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -413,15 +965,16 @@ func (fake *Operations) GetAnnotationsByOwnerLink(arg1 string, arg2 string, arg3
 		arg2 string
 		arg3 string
 	}{arg1, arg2, arg3})
+	stub := fake.GetAnnotationsByOwnerLinkStub
+	fakeReturns := fake.getAnnotationsByOwnerLinkReturns
 	fake.recordInvocation("GetAnnotationsByOwnerLink", []interface{}{arg1, arg2, arg3})
 	fake.getAnnotationsByOwnerLinkMutex.Unlock()
-	if fake.GetAnnotationsByOwnerLinkStub != nil {
-		return fake.GetAnnotationsByOwnerLinkStub(arg1, arg2, arg3)
+	if stub != nil {
+		return stub(arg1, arg2, arg3)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.getAnnotationsByOwnerLinkReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -475,15 +1028,16 @@ func (fake *Operations) GetStatus() (string, error) {
 	ret, specificReturn := fake.getStatusReturnsOnCall[len(fake.getStatusArgsForCall)]
 	fake.getStatusArgsForCall = append(fake.getStatusArgsForCall, struct {
 	}{})
+	stub := fake.GetStatusStub
+	fakeReturns := fake.getStatusReturns
 	fake.recordInvocation("GetStatus", []interface{}{})
 	fake.getStatusMutex.Unlock()
-	if fake.GetStatusStub != nil {
-		return fake.GetStatusStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.getStatusReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -531,15 +1085,16 @@ func (fake *Operations) GetToken(arg1 string) (*types.TokenRecord, error) {
 	fake.getTokenArgsForCall = append(fake.getTokenArgsForCall, struct {
 		arg1 string
 	}{arg1})
+	stub := fake.GetTokenStub
+	fakeReturns := fake.getTokenReturns
 	fake.recordInvocation("GetToken", []interface{}{arg1})
 	fake.getTokenMutex.Unlock()
-	if fake.GetTokenStub != nil {
-		return fake.GetTokenStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.getTokenReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -594,15 +1149,16 @@ func (fake *Operations) GetTokenType(arg1 string) (*types.DeployResponse, error)
 	fake.getTokenTypeArgsForCall = append(fake.getTokenTypeArgsForCall, struct {
 		arg1 string
 	}{arg1})
+	stub := fake.GetTokenTypeStub
+	fakeReturns := fake.getTokenTypeReturns
 	fake.recordInvocation("GetTokenType", []interface{}{arg1})
 	fake.getTokenTypeMutex.Unlock()
-	if fake.GetTokenTypeStub != nil {
-		return fake.GetTokenTypeStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.getTokenTypeReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -656,15 +1212,16 @@ func (fake *Operations) GetTokenTypes() ([]*types.DeployResponse, error) {
 	ret, specificReturn := fake.getTokenTypesReturnsOnCall[len(fake.getTokenTypesArgsForCall)]
 	fake.getTokenTypesArgsForCall = append(fake.getTokenTypesArgsForCall, struct {
 	}{})
+	stub := fake.GetTokenTypesStub
+	fakeReturns := fake.getTokenTypesReturns
 	fake.recordInvocation("GetTokenTypes", []interface{}{})
 	fake.getTokenTypesMutex.Unlock()
-	if fake.GetTokenTypesStub != nil {
-		return fake.GetTokenTypesStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.getTokenTypesReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -713,15 +1270,16 @@ func (fake *Operations) GetTokensByOwner(arg1 string, arg2 string) ([]*types.Tok
 		arg1 string
 		arg2 string
 	}{arg1, arg2})
+	stub := fake.GetTokensByOwnerStub
+	fakeReturns := fake.getTokensByOwnerReturns
 	fake.recordInvocation("GetTokensByOwner", []interface{}{arg1, arg2})
 	fake.getTokensByOwnerMutex.Unlock()
-	if fake.GetTokensByOwnerStub != nil {
-		return fake.GetTokensByOwnerStub(arg1, arg2)
+	if stub != nil {
+		return stub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.getTokensByOwnerReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -776,15 +1334,16 @@ func (fake *Operations) GetUser(arg1 string) (*types.UserRecord, error) {
 	fake.getUserArgsForCall = append(fake.getUserArgsForCall, struct {
 		arg1 string
 	}{arg1})
+	stub := fake.GetUserStub
+	fakeReturns := fake.getUserReturns
 	fake.recordInvocation("GetUser", []interface{}{arg1})
 	fake.getUserMutex.Unlock()
-	if fake.GetUserStub != nil {
-		return fake.GetUserStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.getUserReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -840,15 +1399,16 @@ func (fake *Operations) PrepareMint(arg1 string, arg2 *types.MintRequest) (*type
 		arg1 string
 		arg2 *types.MintRequest
 	}{arg1, arg2})
+	stub := fake.PrepareMintStub
+	fakeReturns := fake.prepareMintReturns
 	fake.recordInvocation("PrepareMint", []interface{}{arg1, arg2})
 	fake.prepareMintMutex.Unlock()
-	if fake.PrepareMintStub != nil {
-		return fake.PrepareMintStub(arg1, arg2)
+	if stub != nil {
+		return stub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.prepareMintReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -904,15 +1464,16 @@ func (fake *Operations) PrepareRegister(arg1 string, arg2 *types.AnnotationRegis
 		arg1 string
 		arg2 *types.AnnotationRegisterRequest
 	}{arg1, arg2})
+	stub := fake.PrepareRegisterStub
+	fakeReturns := fake.prepareRegisterReturns
 	fake.recordInvocation("PrepareRegister", []interface{}{arg1, arg2})
 	fake.prepareRegisterMutex.Unlock()
-	if fake.PrepareRegisterStub != nil {
-		return fake.PrepareRegisterStub(arg1, arg2)
+	if stub != nil {
+		return stub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.prepareRegisterReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -968,15 +1529,16 @@ func (fake *Operations) PrepareTransfer(arg1 string, arg2 *types.TransferRequest
 		arg1 string
 		arg2 *types.TransferRequest
 	}{arg1, arg2})
+	stub := fake.PrepareTransferStub
+	fakeReturns := fake.prepareTransferReturns
 	fake.recordInvocation("PrepareTransfer", []interface{}{arg1, arg2})
 	fake.prepareTransferMutex.Unlock()
-	if fake.PrepareTransferStub != nil {
-		return fake.PrepareTransferStub(arg1, arg2)
+	if stub != nil {
+		return stub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.prepareTransferReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -1031,15 +1593,16 @@ func (fake *Operations) RemoveUser(arg1 string) error {
 	fake.removeUserArgsForCall = append(fake.removeUserArgsForCall, struct {
 		arg1 string
 	}{arg1})
+	stub := fake.RemoveUserStub
+	fakeReturns := fake.removeUserReturns
 	fake.recordInvocation("RemoveUser", []interface{}{arg1})
 	fake.removeUserMutex.Unlock()
-	if fake.RemoveUserStub != nil {
-		return fake.RemoveUserStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.removeUserReturns
 	return fakeReturns.result1
 }
 
@@ -1091,15 +1654,16 @@ func (fake *Operations) SubmitTx(arg1 *types.SubmitRequest) (*types.SubmitRespon
 	fake.submitTxArgsForCall = append(fake.submitTxArgsForCall, struct {
 		arg1 *types.SubmitRequest
 	}{arg1})
+	stub := fake.SubmitTxStub
+	fakeReturns := fake.submitTxReturns
 	fake.recordInvocation("SubmitTx", []interface{}{arg1})
 	fake.submitTxMutex.Unlock()
-	if fake.SubmitTxStub != nil {
-		return fake.SubmitTxStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.submitTxReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -1154,15 +1718,16 @@ func (fake *Operations) UpdateUser(arg1 *types.UserRecord) error {
 	fake.updateUserArgsForCall = append(fake.updateUserArgsForCall, struct {
 		arg1 *types.UserRecord
 	}{arg1})
+	stub := fake.UpdateUserStub
+	fakeReturns := fake.updateUserReturns
 	fake.recordInvocation("UpdateUser", []interface{}{arg1})
 	fake.updateUserMutex.Unlock()
-	if fake.UpdateUserStub != nil {
-		return fake.UpdateUserStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.updateUserReturns
 	return fakeReturns.result1
 }
 
@@ -1215,6 +1780,20 @@ func (fake *Operations) Invocations() map[string][][]interface{} {
 	defer fake.addUserMutex.RUnlock()
 	fake.deployTokenTypeMutex.RLock()
 	defer fake.deployTokenTypeMutex.RUnlock()
+	fake.fungibleAccountsMutex.RLock()
+	defer fake.fungibleAccountsMutex.RUnlock()
+	fake.fungibleDeployMutex.RLock()
+	defer fake.fungibleDeployMutex.RUnlock()
+	fake.fungibleDescribeMutex.RLock()
+	defer fake.fungibleDescribeMutex.RUnlock()
+	fake.fungiblePrepareConsolidateMutex.RLock()
+	defer fake.fungiblePrepareConsolidateMutex.RUnlock()
+	fake.fungiblePrepareMintMutex.RLock()
+	defer fake.fungiblePrepareMintMutex.RUnlock()
+	fake.fungiblePrepareTransferMutex.RLock()
+	defer fake.fungiblePrepareTransferMutex.RUnlock()
+	fake.fungibleSubmitTxMutex.RLock()
+	defer fake.fungibleSubmitTxMutex.RUnlock()
 	fake.getAnnotationMutex.RLock()
 	defer fake.getAnnotationMutex.RUnlock()
 	fake.getAnnotationsByOwnerLinkMutex.RLock()
