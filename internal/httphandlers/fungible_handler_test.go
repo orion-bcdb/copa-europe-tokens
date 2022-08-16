@@ -183,7 +183,7 @@ func TestHandler_FungibleSubmit(t *testing.T) {
 
 	requestHandlerErrorsTest(t, func(mockManager *mocks.Operations, err error) {
 		mockManager.FungibleSubmitTxReturns(nil, err)
-	}, request, reqUrl, method, "exist", "invalid", "other")
+	}, request, reqUrl, method, "permission", "invalid", "other")
 }
 
 func TestHandler_FungibleDescribe(t *testing.T) {

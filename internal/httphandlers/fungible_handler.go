@@ -11,10 +11,10 @@ import (
 
 const typeIdPlaceholder = "typeId"
 
-type fungibleHandler struct{ operationsHandler }
+type fungibleHandler struct{ tokenRouter }
 
 func NewFungibleHandler(manager tokens.Operations, lg *logger.SugarLogger) *fungibleHandler {
-	d := fungibleHandler{newOperationsHandler(manager, lg)}
+	d := fungibleHandler{newTokenRouter(manager, lg)}
 	d.StrictSlash(true)
 	d.addHandler(constants.FungibleDeploy, d.handleDeploy, http.StatusCreated).Methods(http.MethodPost)
 	d.addHandler(constants.FungibleSubmit, d.handleSubmit, http.StatusOK).Methods(http.MethodPost)
