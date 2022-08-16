@@ -4,11 +4,16 @@
 package constants
 
 const (
+
+	// Generic token type API
+
 	StatusEndpoint = "/status"
 
 	TokensTypesEndpoint = "/tokens/types"
 	TokensTypesSubTree  = "/tokens/types/"
 	TokensTypesQuery    = "/tokens/types/{typeId}"
+
+	// Non fungible token type (NFT) API
 
 	TokensAssetsEndpoint             = "/tokens/assets"
 	TokensAssetsSubTree              = "/tokens/assets/"
@@ -19,6 +24,8 @@ const (
 	TokensAssetsSubmit               = "/tokens/assets/submit"
 	TokensAssetsQuery                = "/tokens/assets/{tokenId}"
 
+	// Annotations API
+
 	TokensAnnotationsEndpoint             = "/tokens/annotations"
 	TokensAnnotationsSubTree              = "/tokens/annotations/"
 	TokensAnnotationsPrepareRegister      = "/tokens/annotations/prepare-register/"
@@ -26,7 +33,21 @@ const (
 	TokensAnnotationsSubmit               = "/tokens/annotations/submit"
 	TokensAnnotationsQuery                = "/tokens/annotations/{tokenId}"
 
+	// User API
+
 	TokensUsersEndpoint = "/tokens/users"
 	TokensUsersSubTree  = "/tokens/users/"
 	TokensUsersMatch    = "/tokens/users/{userId}"
+
+	// Fungible token type API
+
+	FungibleRoot        = "/tokens/fungible"
+	FungibleEndpoint    = FungibleRoot + "/"
+	FungibleDeploy      = FungibleRoot + "/deploy"
+	FungibleSubmit      = FungibleRoot + "/submit"
+	FungibleTypeRoot    = FungibleRoot + "/{typeId}"
+	FungibleMint        = FungibleTypeRoot + "/mint-prepare"
+	FungibleTransfer    = FungibleTypeRoot + "/transfer-prepare"
+	FungibleConsolidate = FungibleTypeRoot + "/consolidate-prepare"
+	FungibleAccounts    = FungibleTypeRoot + "/accounts"
 )
