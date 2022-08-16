@@ -3,16 +3,6 @@
 
 package constants
 
-import (
-	"fmt"
-)
-
-type ResourceURI string
-
-func (s ResourceURI) ForResource(resourceId string) string {
-	return fmt.Sprintf(string(s), resourceId)
-}
-
 const (
 
 	// Generic token type API
@@ -22,7 +12,6 @@ const (
 	TokensTypesEndpoint = "/tokens/types"
 	TokensTypesSubTree  = "/tokens/types/"
 	TokensTypesQuery    = "/tokens/types/{typeId}"
-	TokensTypesSubmit   = "/tokens/types/submit"
 
 	// Non fungible token type (NFT) API
 
@@ -52,13 +41,13 @@ const (
 
 	// Fungible token type API
 
-	FungibleRoot                    = "/tokens/fungible"
-	FungibleEndpoint                = FungibleRoot + "/"
-	FungibleDeploy                  = FungibleRoot + "/deploy"
-	FungibleTypeRoot    ResourceURI = FungibleRoot + "/%s"
-	FungibleDescribe                = FungibleTypeRoot
-	FungibleMint                    = FungibleTypeRoot + "/mint-prepare"
-	FungibleTransfer                = FungibleTypeRoot + "/transfer-prepare"
-	FungibleConsolidate             = FungibleTypeRoot + "/consolidate-prepare"
-	FungibleAccounts                = FungibleTypeRoot + "/accounts"
+	FungibleRoot        = "/tokens/fungible"
+	FungibleEndpoint    = FungibleRoot + "/"
+	FungibleDeploy      = FungibleRoot + "/deploy"
+	FungibleSubmit      = FungibleRoot + "/submit"
+	FungibleTypeRoot    = FungibleRoot + "/{typeId}"
+	FungibleMint        = FungibleTypeRoot + "/mint-prepare"
+	FungibleTransfer    = FungibleTypeRoot + "/transfer-prepare"
+	FungibleConsolidate = FungibleTypeRoot + "/consolidate-prepare"
+	FungibleAccounts    = FungibleTypeRoot + "/accounts"
 )

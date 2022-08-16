@@ -24,28 +24,6 @@ type StatusResponse struct {
 	Status string `json:"status"`
 }
 
-type TokenSubmitRequest struct {
-	TxContext     string `json:"txContext"`
-	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
-	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
-	Signer        string `json:"signer"`
-	Signature     string `json:"signature"` //base64 (std, padded) encoding of bytes
-}
-
-type TokenSubmitResponse struct {
-	TxContext string `json:"txContext"`
-	TxId      string `json:"txId"`
-	TxReceipt string `json:"txReceipt"`
-}
-
-func (r *TokenSubmitRequest) PrepareSubmit() *TokenSubmitRequest {
-	return &TokenSubmitRequest{
-		TxContext:     r.TxContext,
-		TxEnvelope:    r.TxEnvelope,
-		TxPayloadHash: r.TxPayloadHash,
-	}
-}
-
 // ====================================================
 // Non fungible token type (NFT) API
 // ====================================================
@@ -77,14 +55,6 @@ type MintResponse struct {
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }
 
-func (r *MintResponse) PrepareSubmit() *TokenSubmitRequest {
-	return &TokenSubmitRequest{
-		TxContext:     r.TokenId,
-		TxEnvelope:    r.TxEnvelope,
-		TxPayloadHash: r.TxPayloadHash,
-	}
-}
-
 type TransferRequest struct {
 	Owner    string `json:"owner"`
 	NewOwner string `json:"newOwner"`
@@ -96,14 +66,6 @@ type TransferResponse struct {
 	NewOwner      string `json:"newOwner"`
 	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
-}
-
-func (r *TransferResponse) PrepareSubmit() *TokenSubmitRequest {
-	return &TokenSubmitRequest{
-		TxContext:     r.TokenId,
-		TxEnvelope:    r.TxEnvelope,
-		TxPayloadHash: r.TxPayloadHash,
-	}
 }
 
 type SubmitRequest struct {
@@ -194,14 +156,6 @@ type FungibleMintResponse struct {
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }
 
-func (r *FungibleMintResponse) PrepareSubmit() *TokenSubmitRequest {
-	return &TokenSubmitRequest{
-		TxContext:     r.TypeId,
-		TxEnvelope:    r.TxEnvelope,
-		TxPayloadHash: r.TxPayloadHash,
-	}
-}
-
 type FungibleTransferRequest struct {
 	Owner    string `json:"owner"`
 	Account  string `json:"account"`
@@ -220,14 +174,6 @@ type FungibleTransferResponse struct {
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }
 
-func (r *FungibleTransferResponse) PrepareSubmit() *TokenSubmitRequest {
-	return &TokenSubmitRequest{
-		TxContext:     r.TypeId,
-		TxEnvelope:    r.TxEnvelope,
-		TxPayloadHash: r.TxPayloadHash,
-	}
-}
-
 type FungibleConsolidateRequest struct {
 	Owner    string   `json:"owner"`
 	Accounts []string `json:"accounts"`
@@ -240,12 +186,18 @@ type FungibleConsolidateResponse struct {
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }
 
-func (r *FungibleConsolidateResponse) PrepareSubmit() *TokenSubmitRequest {
-	return &TokenSubmitRequest{
-		TxContext:     r.TypeId,
-		TxEnvelope:    r.TxEnvelope,
-		TxPayloadHash: r.TxPayloadHash,
-	}
+type FungibleSubmitRequest struct {
+	TypeId        string `json:"typeId"`
+	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
+	Signer        string `json:"signer"`
+	Signature     string `json:"signature"` //base64 (std, padded) encoding of bytes
+}
+
+type FungibleSubmitResponse struct {
+	TypeId    string `json:"typeId"`
+	TxId      string `json:"txId"`
+	TxReceipt string `json:"txReceipt"`
 }
 
 type FungibleAccountRecord struct {
