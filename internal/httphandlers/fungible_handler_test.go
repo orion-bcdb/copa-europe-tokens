@@ -7,12 +7,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/copa-europe-tokens/internal/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
-	"github.com/copa-europe-tokens/internal/tokens"
 	"github.com/copa-europe-tokens/internal/tokens/mocks"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
@@ -35,7 +35,7 @@ func buildTestUrl(path string) string {
 }
 
 func buildTestTypeUrl(path string, typeId string) string {
-	return buildTestUrlWithQuery(tokens.URLForType(path, typeId), url.Values{})
+	return buildTestUrlWithQuery(common.URLForType(path, typeId), url.Values{})
 }
 
 // requireResponse validates the status code and the response fields
@@ -85,10 +85,10 @@ func requestHandlerTest(
 }
 
 var ERRORS = map[string]error{
-	"exist":      tokens.NewErrExist("exists"),
-	"invalid":    tokens.NewErrInvalid("invalid"),
-	"not-found":  tokens.NewErrNotFound("not-found"),
-	"permission": tokens.NewErrPermission("permission"),
+	"exist":      common.NewErrExist("exists"),
+	"invalid":    common.NewErrInvalid("invalid"),
+	"not-found":  common.NewErrNotFound("not-found"),
+	"permission": common.NewErrPermission("permission"),
 	"other":      errors.New("other"),
 }
 
@@ -321,7 +321,7 @@ func TestHandler_FungibleAccounts(t *testing.T) {
 	typeId := "aAbBcCdDeEfFgG"
 	owner := "user1"
 	account := "acc1"
-	path := tokens.URLForType(constants.FungibleAccounts, typeId)
+	path := common.URLForType(constants.FungibleAccounts, typeId)
 	reqQueries := map[string]url.Values{
 		"empty":   {},
 		"owner":   {"owner": []string{owner}},

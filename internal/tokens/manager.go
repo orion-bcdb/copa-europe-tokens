@@ -1175,3 +1175,35 @@ func (m *Manager) createTypesDB() (err error) {
 
 	return nil
 }
+
+// ====================================================
+// Fungible functional API implementation
+// ====================================================
+
+func (m *Manager) FungibleDeploy(request *types.FungibleDeployRequest) (*types.FungibleDeployResponse, error) {
+	return nil, errors.New("Not implemented")
+}
+
+func (m *Manager) FungibleDescribe(typeId string) (*types.FungibleDescribeResponse, error) {
+	return nil, errors.New("Not implemented")
+}
+
+func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMintRequest) (*types.FungibleMintResponse, error) {
+	return nil, errors.New("Not implemented")
+}
+
+func (m *Manager) FungiblePrepareTransfer(typeId string, request *types.FungibleTransferRequest) (*types.FungibleTransferResponse, error) {
+	return nil, errors.New("Not implemented")
+}
+
+func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.FungibleConsolidateRequest) (*types.FungibleConsolidateResponse, error) {
+	return nil, errors.New("Not implemented")
+}
+
+func (m *Manager) FungibleSubmitTx(submitRequest *types.FungibleSubmitRequest) (*types.FungibleSubmitResponse, error) {
+	return nil, errors.New("Not implemented")
+}
+
+func (m *Manager) FungibleAccounts(typeId string, owner string, account string) ([]types.FungibleAccountRecord, error) {
+	return nil, errors.New("Not implemented")
+}

@@ -5,6 +5,7 @@ package httphandlers
 
 import (
 	"encoding/json"
+	"github.com/copa-europe-tokens/internal/common"
 	"net/http"
 
 	"github.com/copa-europe-tokens/internal/tokens"
@@ -45,7 +46,7 @@ func decode(request *http.Request, requestBody interface{}) error {
 	dec := json.NewDecoder(request.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&requestBody); err != nil {
-		return tokens.WrapErrInvalid(err)
+		return common.WrapErrInvalid(err)
 	}
 	return nil
 }
@@ -71,7 +72,7 @@ func (d *tokenRouter) sendHttpResponseOrError(
 	status := successStatus
 	if err != nil {
 		response = &types.HttpResponseErr{ErrMsg: err.Error()}
-		if tokenHttpErr, ok := err.(*tokens.TokenHttpErr); ok {
+		if tokenHttpErr, ok := err.(*common.TokenHttpErr); ok {
 			status = tokenHttpErr.StatusCode
 		} else {
 			status = http.StatusInternalServerError
