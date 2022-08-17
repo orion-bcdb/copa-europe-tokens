@@ -7,12 +7,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/copa-europe-tokens/internal/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
+	"github.com/copa-europe-tokens/internal/common"
 	"github.com/copa-europe-tokens/internal/tokens/mocks"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"

@@ -5,9 +5,9 @@ package httphandlers
 
 import (
 	"encoding/json"
-	"github.com/copa-europe-tokens/internal/common"
 	"net/http"
 
+	"github.com/copa-europe-tokens/internal/common"
 	"github.com/copa-europe-tokens/internal/tokens"
 	"github.com/copa-europe-tokens/pkg/types"
 	"github.com/gorilla/mux"
