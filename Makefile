@@ -96,3 +96,6 @@ docker:
 docker-xplatform:
 	$(DOCKER) buildx build --platform linux/arm64 -f $(DOCKERFILE) -t $(DOCKER_IMAGE) --push .
 	$(DOCKER) buildx build --platform linux/arm/v7 -f $(DOCKERFILE) -t $(DOCKER_IMAGE) --push .
+
+generate:
+	cd internal/tokens && $(GO) generate
