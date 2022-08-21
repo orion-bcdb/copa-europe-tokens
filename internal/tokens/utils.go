@@ -89,7 +89,7 @@ func parseTokenId(tokenId string) (tokenTypeId, assetDataId string, err error) {
 	return ids[0], ids[1], nil
 }
 
-// convertErrorType converts common.TokenHttpErr to the errors types above (to avoid modifying existing code)
+// convertErrorType converts common.TokenHttpErr to the errors types in errors.go (to avoid modifying existing code)
 func convertErrorType(err error) error {
 	tknErr, ok := err.(*common.TokenHttpErr)
 	if !ok {
@@ -190,32 +190,39 @@ func (ctx *SubmitContext) ToFungibleRequest() *types.FungibleSubmitRequest {
 // Generic submit helpers for manager and server testing
 // =========================================================
 
-type SignatureRequester interface {
-	PrepareSubmit() *SubmitContext
-}
-
-func SignTransactionResponse(s orioncrypto.Signer, response SignatureRequester) (*SubmitContext, error) {
-	request := response.PrepareSubmit()
-	txEnvBytes, err := base64.StdEncoding.DecodeString(request.TxEnvelope)
+func (ctx *SubmitContext) sign(s orioncrypto.Signer) error {
+	txEnvBytes, err := base64.StdEncoding.DecodeString(ctx.TxEnvelope)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	txEnv := &oriontypes.DataTxEnvelope{}
 	err = proto.Unmarshal(txEnvBytes, txEnv)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	sig, err := cryptoservice.SignTx(s, txEnv.Payload)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	request.Signer = s.Identity()
-	request.Signature = base64.StdEncoding.EncodeToString(sig)
+	ctx.Signer = s.Identity()
+	ctx.Signature = base64.StdEncoding.EncodeToString(sig)
 
-	return request, nil
+	return nil
+}
+
+type SignatureRequester interface {
+	PrepareSubmit() *SubmitContext
+}
+
+func SignTransactionResponse(s orioncrypto.Signer, response SignatureRequester) (*SubmitContext, error) {
+	ctx := response.PrepareSubmit()
+	if err := ctx.sign(s); err != nil {
+		return nil, err
+	}
+	return ctx, nil
 }
 
 type MintResponse types.MintResponse

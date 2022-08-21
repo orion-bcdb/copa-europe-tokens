@@ -308,8 +308,7 @@ func (ctx *FungibleContext) internalFungiblePrepareTransfer(request *types.Fungi
 		return nil, err
 	}
 
-	env, err := ctx.prepare()
-	if err != nil {
+	if err = ctx.prepare(); err != nil {
 		return nil, err
 	}
 
@@ -319,7 +318,7 @@ func (ctx *FungibleContext) internalFungiblePrepareTransfer(request *types.Fungi
 		Account:       request.Account,
 		NewOwner:      newRecord.Owner,
 		NewAccount:    newRecord.Account,
-		TxEnvelope:    env.TxEnvelope,
-		TxPayloadHash: env.TxPayloadHash,
+		TxEnvelope:    ctx.TxEnvelope,
+		TxPayloadHash: ctx.TxPayloadHash,
 	}, nil
 }

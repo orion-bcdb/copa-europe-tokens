@@ -15,13 +15,10 @@ import (
 )
 
 type TokenContext struct {
-	m           *Manager
-	dataTx      bcdb.DataTxContext
-	tokenDBName string
-	typeId      string
-}
-
-type TokenDBTxEnvelope struct {
+	m             *Manager
+	dataTx        bcdb.DataTxContext
+	tokenDBName   string
+	typeId        string
 	TxEnvelope    string
 	TxPayloadHash string
 }
@@ -80,30 +77,30 @@ func (ctx *TokenContext) abort() {
 	}
 }
 
-func (ctx *TokenContext) prepare() (*TokenDBTxEnvelope, error) {
+func (ctx *TokenContext) prepare() error {
 	txEnv, err := ctx.dataTx.SignConstructedTxEnvelopeAndCloseTx()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to construct Tx envelope")
+		return errors.Wrap(err, "failed to construct Tx envelope")
 	}
 
 	txEnvBytes, err := proto.Marshal(txEnv)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
+		return errors.Wrap(err, "failed to proto.Marshal Tx envelope")
 	}
 
 	payloadBytes, err := json.Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
-	}
-	payloadHash, err := ComputeSHA256Hash(payloadBytes)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to compute hash of DataTx bytes")
+		return errors.Wrap(err, "failed to json.Marshal DataTx")
 	}
 
-	return &TokenDBTxEnvelope{
-		TxEnvelope:    base64.StdEncoding.EncodeToString(txEnvBytes),
-		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
-	}, nil
+	payloadHash, err := ComputeSHA256Hash(payloadBytes)
+	if err != nil {
+		return errors.Wrap(err, "failed to compute hash of DataTx bytes")
+	}
+
+	ctx.TxEnvelope = base64.StdEncoding.EncodeToString(txEnvBytes)
+	ctx.TxPayloadHash = base64.StdEncoding.EncodeToString(payloadHash)
+	return nil
 }
 
 func (ctx *TokenContext) getTokenDescription(result interface{}) error {

@@ -592,6 +592,22 @@ func (m *Manager) PrepareTransfer(tokenId string, transferRequest *types.Transfe
 	return transferResponse, nil
 }
 
+func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error) {
+	tokenTypeId, assetId, err := parseTokenId(submitRequest.TokenId)
+	if err != nil {
+		return nil, err
+	}
+
+	m.lg.Infof("Custodian [%s] preparing to submit the Tx to the database,  tokenTypeId: %s, assetId: %s, signer: %s",
+		m.config.Users.Custodian.UserID, tokenTypeId, assetId, submitRequest.Signer)
+
+	ctx := submitContextFromNFT(submitRequest)
+	if err := m.submitTx(ctx); err != nil {
+		return nil, convertErrorType(err)
+	}
+	return ctx.ToNFTResponse(), nil
+}
+
 func (m *Manager) submitTx(ctx *SubmitContext) error {
 	m.lg.Infof("Custodian [%s] preparing to submit TX to the database, context: %s, signer: %s",
 		m.config.Users.Custodian.UserID, ctx.TxContext, ctx.Signer)
@@ -622,11 +638,7 @@ func (m *Manager) submitTx(ctx *SubmitContext) error {
 
 	txID, receiptEnv, err := loadedTx.Commit(true)
 	if err != nil {
-		if unauthorizedRegexp.FindStringIndex(err.Error()) != nil {
-			return common.WrapErrPermission(err)
-		}
-
-		if mustSignRegexp.FindStringIndex(err.Error()) != nil {
+		if unauthorizedRegexp.MatchString(err.Error()) || mustSignRegexp.MatchString(err.Error()) {
 			return common.WrapErrPermission(err)
 		}
 
@@ -653,14 +665,6 @@ func (m *Manager) submitTx(ctx *SubmitContext) error {
 	ctx.TxReceipt = base64.StdEncoding.EncodeToString(receiptBytes)
 
 	return nil
-}
-
-func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error) {
-	ctx := submitContextFromNFT(submitRequest)
-	if err := m.submitTx(ctx); err != nil {
-		return nil, convertErrorType(err)
-	}
-	return ctx.ToNFTResponse(), nil
 }
 
 func (m *Manager) GetToken(tokenId string) (*types.TokenRecord, error) {
@@ -1312,13 +1316,15 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 		return nil, err
 	}
 
-	env, err := ctx.prepare()
+	if err = ctx.prepare(); err != nil {
+		return nil, err
+	}
 	m.lg.Debugf("Processed mint request for token: %+v", ctx.desc)
 
 	return &types.FungibleMintResponse{
 		TypeId:        typeId,
-		TxEnvelope:    env.TxEnvelope,
-		TxPayloadHash: env.TxPayloadHash,
+		TxEnvelope:    ctx.TxEnvelope,
+		TxPayloadHash: ctx.TxPayloadHash,
 	}, nil
 }
 
@@ -1450,16 +1456,15 @@ func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.Fungi
 		return nil, err
 	}
 
-	env, err := ctx.prepare()
-	if err != nil {
+	if err = ctx.prepare(); err != nil {
 		return nil, err
 	}
 
 	return &types.FungibleConsolidateResponse{
 		TypeId:        typeId,
 		Owner:         request.Owner,
-		TxEnvelope:    env.TxEnvelope,
-		TxPayloadHash: env.TxPayloadHash,
+		TxEnvelope:    ctx.TxEnvelope,
+		TxPayloadHash: ctx.TxPayloadHash,
 	}, nil
 }
 
