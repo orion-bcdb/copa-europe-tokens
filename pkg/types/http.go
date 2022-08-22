@@ -24,6 +24,15 @@ type StatusResponse struct {
 	Status string `json:"status"`
 }
 
+type TokenDescription struct {
+	TypeId      string            `json:"typeId"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Class       string            `json:"class"`
+	Extension   map[string]string `json:"extension"`
+	Url         string            `json:"url"`
+}
+
 // ====================================================
 // Non fungible token type (NFT) API
 // ====================================================

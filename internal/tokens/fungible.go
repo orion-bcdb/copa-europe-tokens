@@ -20,11 +20,6 @@ const (
 	mainAccount    = "main"
 )
 
-type FungibleTokenDescription struct {
-	CommonTokenDescription
-	ReserveOwner string `json:"reserveOwner"`
-}
-
 type ReserveAccountComment struct {
 	Supply uint64 `json:"supply"`
 }
@@ -36,7 +31,8 @@ type ReserveAccountRecord struct {
 
 type FungibleContext struct {
 	TokenContext
-	desc FungibleTokenDescription
+	Desc         *types.TokenDescription
+	ReserveOwner string
 }
 
 func newFungibleContext(m *Manager, typeId string) (*FungibleContext, error) {
@@ -45,13 +41,18 @@ func newFungibleContext(m *Manager, typeId string) (*FungibleContext, error) {
 		return nil, err
 	}
 
-	ctx := FungibleContext{TokenContext: *genericCtx}
-
-	if err := ctx.getTokenDescription(&ctx.desc); err != nil {
+	desc, err := genericCtx.getTokenDescription()
+	if err != nil {
 		return nil, err
 	}
 
-	if ctx.desc.Class != constants.TokenClass_FUNGIBLE {
+	ctx := FungibleContext{
+		TokenContext: *genericCtx,
+		Desc:         desc,
+		ReserveOwner: desc.Extension["reserveOwner"],
+	}
+
+	if ctx.Desc.Class != constants.TokenClass_FUNGIBLE {
 		return nil, common.NewErrInvalid("Type %v is not a fungible token.", typeId)
 	}
 
@@ -162,7 +163,7 @@ func (ctx *FungibleContext) getReserveAccount() (*ReserveAccountRecord, error) {
 		Supply:  0,
 	}
 
-	rawRecord, err := ctx.getAccountRecordTxRaw(ctx.desc.ReserveOwner, reserveAccount)
+	rawRecord, err := ctx.getAccountRecordTxRaw(ctx.ReserveOwner, reserveAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +197,7 @@ func (ctx *FungibleContext) putReserveAccount(reserve *ReserveAccountRecord) err
 
 	return ctx.putAccountRecordTx(&types.FungibleAccountRecord{
 		Account: reserveAccount,
-		Owner:   ctx.desc.ReserveOwner,
+		Owner:   ctx.ReserveOwner,
 		Balance: reserve.Balance,
 		Comment: serializedComment,
 	})

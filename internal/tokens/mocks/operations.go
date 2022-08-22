@@ -182,29 +182,29 @@ type Operations struct {
 		result1 *types.TokenRecord
 		result2 error
 	}
-	GetTokenTypeStub        func(string) (*types.DeployResponse, error)
+	GetTokenTypeStub        func(string) (*types.TokenDescription, error)
 	getTokenTypeMutex       sync.RWMutex
 	getTokenTypeArgsForCall []struct {
 		arg1 string
 	}
 	getTokenTypeReturns struct {
-		result1 *types.DeployResponse
+		result1 *types.TokenDescription
 		result2 error
 	}
 	getTokenTypeReturnsOnCall map[int]struct {
-		result1 *types.DeployResponse
+		result1 *types.TokenDescription
 		result2 error
 	}
-	GetTokenTypesStub        func() ([]*types.DeployResponse, error)
+	GetTokenTypesStub        func() ([]*types.TokenDescription, error)
 	getTokenTypesMutex       sync.RWMutex
 	getTokenTypesArgsForCall []struct {
 	}
 	getTokenTypesReturns struct {
-		result1 []*types.DeployResponse
+		result1 []*types.TokenDescription
 		result2 error
 	}
 	getTokenTypesReturnsOnCall map[int]struct {
-		result1 []*types.DeployResponse
+		result1 []*types.TokenDescription
 		result2 error
 	}
 	GetTokensByOwnerStub        func(string, string) ([]*types.TokenRecord, error)
@@ -1143,7 +1143,7 @@ func (fake *Operations) GetTokenReturnsOnCall(i int, result1 *types.TokenRecord,
 	}{result1, result2}
 }
 
-func (fake *Operations) GetTokenType(arg1 string) (*types.DeployResponse, error) {
+func (fake *Operations) GetTokenType(arg1 string) (*types.TokenDescription, error) {
 	fake.getTokenTypeMutex.Lock()
 	ret, specificReturn := fake.getTokenTypeReturnsOnCall[len(fake.getTokenTypeArgsForCall)]
 	fake.getTokenTypeArgsForCall = append(fake.getTokenTypeArgsForCall, struct {
@@ -1168,7 +1168,7 @@ func (fake *Operations) GetTokenTypeCallCount() int {
 	return len(fake.getTokenTypeArgsForCall)
 }
 
-func (fake *Operations) GetTokenTypeCalls(stub func(string) (*types.DeployResponse, error)) {
+func (fake *Operations) GetTokenTypeCalls(stub func(string) (*types.TokenDescription, error)) {
 	fake.getTokenTypeMutex.Lock()
 	defer fake.getTokenTypeMutex.Unlock()
 	fake.GetTokenTypeStub = stub
@@ -1181,33 +1181,33 @@ func (fake *Operations) GetTokenTypeArgsForCall(i int) string {
 	return argsForCall.arg1
 }
 
-func (fake *Operations) GetTokenTypeReturns(result1 *types.DeployResponse, result2 error) {
+func (fake *Operations) GetTokenTypeReturns(result1 *types.TokenDescription, result2 error) {
 	fake.getTokenTypeMutex.Lock()
 	defer fake.getTokenTypeMutex.Unlock()
 	fake.GetTokenTypeStub = nil
 	fake.getTokenTypeReturns = struct {
-		result1 *types.DeployResponse
+		result1 *types.TokenDescription
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *Operations) GetTokenTypeReturnsOnCall(i int, result1 *types.DeployResponse, result2 error) {
+func (fake *Operations) GetTokenTypeReturnsOnCall(i int, result1 *types.TokenDescription, result2 error) {
 	fake.getTokenTypeMutex.Lock()
 	defer fake.getTokenTypeMutex.Unlock()
 	fake.GetTokenTypeStub = nil
 	if fake.getTokenTypeReturnsOnCall == nil {
 		fake.getTokenTypeReturnsOnCall = make(map[int]struct {
-			result1 *types.DeployResponse
+			result1 *types.TokenDescription
 			result2 error
 		})
 	}
 	fake.getTokenTypeReturnsOnCall[i] = struct {
-		result1 *types.DeployResponse
+		result1 *types.TokenDescription
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *Operations) GetTokenTypes() ([]*types.DeployResponse, error) {
+func (fake *Operations) GetTokenTypes() ([]*types.TokenDescription, error) {
 	fake.getTokenTypesMutex.Lock()
 	ret, specificReturn := fake.getTokenTypesReturnsOnCall[len(fake.getTokenTypesArgsForCall)]
 	fake.getTokenTypesArgsForCall = append(fake.getTokenTypesArgsForCall, struct {
@@ -1231,34 +1231,34 @@ func (fake *Operations) GetTokenTypesCallCount() int {
 	return len(fake.getTokenTypesArgsForCall)
 }
 
-func (fake *Operations) GetTokenTypesCalls(stub func() ([]*types.DeployResponse, error)) {
+func (fake *Operations) GetTokenTypesCalls(stub func() ([]*types.TokenDescription, error)) {
 	fake.getTokenTypesMutex.Lock()
 	defer fake.getTokenTypesMutex.Unlock()
 	fake.GetTokenTypesStub = stub
 }
 
-func (fake *Operations) GetTokenTypesReturns(result1 []*types.DeployResponse, result2 error) {
+func (fake *Operations) GetTokenTypesReturns(result1 []*types.TokenDescription, result2 error) {
 	fake.getTokenTypesMutex.Lock()
 	defer fake.getTokenTypesMutex.Unlock()
 	fake.GetTokenTypesStub = nil
 	fake.getTokenTypesReturns = struct {
-		result1 []*types.DeployResponse
+		result1 []*types.TokenDescription
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *Operations) GetTokenTypesReturnsOnCall(i int, result1 []*types.DeployResponse, result2 error) {
+func (fake *Operations) GetTokenTypesReturnsOnCall(i int, result1 []*types.TokenDescription, result2 error) {
 	fake.getTokenTypesMutex.Lock()
 	defer fake.getTokenTypesMutex.Unlock()
 	fake.GetTokenTypesStub = nil
 	if fake.getTokenTypesReturnsOnCall == nil {
 		fake.getTokenTypesReturnsOnCall = make(map[int]struct {
-			result1 []*types.DeployResponse
+			result1 []*types.TokenDescription
 			result2 error
 		})
 	}
 	fake.getTokenTypesReturnsOnCall[i] = struct {
-		result1 []*types.DeployResponse
+		result1 []*types.TokenDescription
 		result2 error
 	}{result1, result2}
 }

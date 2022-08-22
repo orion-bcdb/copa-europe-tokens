@@ -42,8 +42,8 @@ type Operations interface {
 	// Generic token type API
 
 	DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error)
-	GetTokenType(tokenTypeId string) (*types.DeployResponse, error)
-	GetTokenTypes() ([]*types.DeployResponse, error)
+	GetTokenType(tokenTypeId string) (*types.TokenDescription, error)
+	GetTokenTypes() ([]*types.TokenDescription, error)
 
 	// Non fungible token type (NFT) API
 
@@ -94,21 +94,6 @@ func abort(ctx bcdb.TxContext) {
 	if ctx != nil {
 		_ = ctx.Abort()
 	}
-}
-
-type CommonTokenDescription struct {
-	TypeId      string `json:"typeId"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Class       string `json:"class"`
-}
-
-type TokenDescription interface {
-	common() *CommonTokenDescription
-}
-
-func (desc *CommonTokenDescription) common() *CommonTokenDescription {
-	return desc
 }
 
 func NewManager(config *config.Configuration, lg *logger.SugarLogger) (*Manager, error) {
@@ -194,19 +179,18 @@ func (m *Manager) GetStatus() (string, error) {
 // Generic token helpers
 // ====================================================
 
-func (m *Manager) deployNewTokenType(desc TokenDescription, indices ...string) error {
-	commonDesc := desc.common()
-	if commonDesc.Name == "" {
+func (m *Manager) deployNewTokenType(desc *types.TokenDescription, indices ...string) error {
+	if desc.Name == "" {
 		return common.NewErrInvalid("token type name is empty")
 	}
 
 	// Compute TypeId
-	tokenTypeIDBase64, err := NameToID(commonDesc.Name)
+	tokenTypeIDBase64, err := NameToID(desc.Name)
 	if err != nil {
 		return errors.Wrap(err, "failed to compute hash of token type name")
 	}
 	tokenDBName := TokenTypeDBNamePrefix + tokenTypeIDBase64
-	commonDesc.TypeId = tokenTypeIDBase64
+	desc.TypeId = tokenTypeIDBase64
 
 	// Check existence by looking into the custodian privileges
 	userTx, err := m.adminSession.UsersTx()
@@ -342,7 +326,7 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("unsupported token class: %s", deployRequest.Class)}
 	}
 
-	tokenDesc := CommonTokenDescription{
+	tokenDesc := types.TokenDescription{
 		Name:        deployRequest.Name,
 		Description: deployRequest.Description,
 		Class:       deployRequest.Class,
@@ -361,7 +345,7 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 	}, nil
 }
 
-func (m *Manager) GetTokenType(tokenTypeId string) (*types.DeployResponse, error) {
+func (m *Manager) GetTokenType(tokenTypeId string) (*types.TokenDescription, error) {
 	if err := validateMD5Base64ID(tokenTypeId, "token type"); err != nil {
 		return nil, err
 	}
@@ -382,16 +366,16 @@ func (m *Manager) GetTokenType(tokenTypeId string) (*types.DeployResponse, error
 		return nil, &ErrNotFound{ErrMsg: "not found"}
 	}
 
-	deployResponse := &types.DeployResponse{}
-	err = json.Unmarshal(val, deployResponse)
+	desc := &types.TokenDescription{}
+	err = json.Unmarshal(val, desc)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to json.Unmarshal %s", tokenDBName)
 	}
-	deployResponse.Url = constants.TokensTypesSubTree + deployResponse.TypeId
+	desc.Url = constants.TokensTypesSubTree + desc.TypeId
 
-	m.lg.Debugf("Token type deploy response: %+v; metadata: %v", deployResponse, meta)
+	m.lg.Debugf("Token type deploy response: %+v; metadata: %v", desc, meta)
 
-	return deployResponse, nil
+	return desc, nil
 }
 
 func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error) {
@@ -739,7 +723,7 @@ func (m *Manager) GetTokensByOwner(tokenTypeId string, owner string) ([]*types.T
 // Generic tokens API (cont.)
 // ====================================================
 
-func (m *Manager) GetTokenTypes() ([]*types.DeployResponse, error) {
+func (m *Manager) GetTokenTypes() ([]*types.TokenDescription, error) {
 	jq, err := m.custodianSession.Query()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create JSONQuery")
@@ -751,9 +735,9 @@ func (m *Manager) GetTokenTypes() ([]*types.DeployResponse, error) {
 		return nil, errors.Wrap(err, "failed to execute JSONQuery")
 	}
 
-	var records []*types.DeployResponse
+	var records []*types.TokenDescription
 	for _, res := range results {
-		record := &types.DeployResponse{}
+		record := &types.TokenDescription{}
 		err = json.Unmarshal(res.GetValue(), record)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
@@ -1242,13 +1226,13 @@ func (m *Manager) FungibleDeploy(request *types.FungibleDeployRequest) (*types.F
 		return nil, err
 	}
 
-	desc := FungibleTokenDescription{
-		CommonTokenDescription: CommonTokenDescription{
-			Name:        request.Name,
-			Description: request.Description,
-			Class:       constants.TokenClass_FUNGIBLE,
+	desc := types.TokenDescription{
+		Name:        request.Name,
+		Description: request.Description,
+		Class:       constants.TokenClass_FUNGIBLE,
+		Extension: map[string]string{
+			"reserveOwner": request.ReserveOwner,
 		},
-		ReserveOwner: request.ReserveOwner,
 	}
 	if err = m.deployNewTokenType(&desc, "owner", "account"); err != nil {
 		return nil, err
@@ -1265,7 +1249,7 @@ func (m *Manager) FungibleDeploy(request *types.FungibleDeployRequest) (*types.F
 		TypeId:       desc.TypeId,
 		Name:         desc.Name,
 		Description:  desc.Description,
-		ReserveOwner: desc.ReserveOwner,
+		ReserveOwner: desc.Extension["reserveOwner"],
 		Supply:       0,
 		Url:          FungibleTypeURL(desc.TypeId),
 	}, nil
@@ -1285,9 +1269,9 @@ func (m *Manager) FungibleDescribe(typeId string) (*types.FungibleDescribeRespon
 
 	return &types.FungibleDescribeResponse{
 		TypeId:       typeId,
-		Name:         ctx.desc.Name,
-		Description:  ctx.desc.Description,
-		ReserveOwner: ctx.desc.ReserveOwner,
+		Name:         ctx.Desc.Name,
+		Description:  ctx.Desc.Description,
+		ReserveOwner: ctx.ReserveOwner,
 		Supply:       reserve.Supply,
 		Url:          FungibleTypeURL(typeId),
 	}, nil
@@ -1319,7 +1303,7 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 	if err = ctx.prepare(); err != nil {
 		return nil, err
 	}
-	m.lg.Debugf("Processed mint request for token: %+v", ctx.desc)
+	m.lg.Debugf("Processed mint request for token: %+v", ctx.Desc)
 
 	return &types.FungibleMintResponse{
 		TypeId:        typeId,
@@ -1350,7 +1334,7 @@ func (m *Manager) FungiblePrepareTransfer(typeId string, request *types.Fungible
 
 	// The reserve account owner can be implicit as there is only one
 	if request.Account == reserveAccount && request.Owner == "" {
-		request.Owner = ctx.desc.ReserveOwner
+		request.Owner = ctx.ReserveOwner
 	}
 
 	// Retry until we got a response.

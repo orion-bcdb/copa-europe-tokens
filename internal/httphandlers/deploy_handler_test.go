@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"testing"
 
 	"github.com/copa-europe-tokens/internal/tokens"
@@ -218,7 +219,7 @@ func TestDeployHandler_GetTokenType(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mockManager := &mocks.Operations{}
 		mockManager.GetTokenTypeReturns(
-			&types.DeployResponse{
+			&types.TokenDescription{
 				TypeId:      "aAbBcCdDeEfFgG",
 				Name:        "myNFT",
 				Description: "it is my NFT",
@@ -302,7 +303,7 @@ func TestDeployHandler_GetTokenType(t *testing.T) {
 
 func TestDeployHandler_ListTokenTypes(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		expectedTypes := []*types.DeployResponse{
+		expectedTypes := []*types.TokenDescription{
 			{
 				TypeId:      "xXyYzZ09-_",
 				Name:        "hisNFT",
@@ -332,7 +333,7 @@ func TestDeployHandler_ListTokenTypes(t *testing.T) {
 
 		h.ServeHTTP(rr, req)
 		require.Equal(t, http.StatusOK, rr.Code)
-		var tokenTypes []*types.DeployResponse
+		var tokenTypes []*types.TokenDescription
 		err = json.NewDecoder(rr.Body).Decode(&tokenTypes)
 		require.NoError(t, err)
 		require.Len(t, tokenTypes, 2)
@@ -340,7 +341,7 @@ func TestDeployHandler_ListTokenTypes(t *testing.T) {
 		for _, expectedTT := range expectedTypes {
 			found := false
 			for _, actualTT := range tokenTypes {
-				if *expectedTT == *actualTT {
+				if reflect.DeepEqual(expectedTT, actualTT) {
 					found = true
 					break
 				}

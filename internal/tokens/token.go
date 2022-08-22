@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 
 	"github.com/copa-europe-tokens/internal/common"
+	"github.com/copa-europe-tokens/pkg/types"
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
 	oriontypes "github.com/hyperledger-labs/orion-server/pkg/types"
@@ -103,26 +104,27 @@ func (ctx *TokenContext) prepare() error {
 	return nil
 }
 
-func (ctx *TokenContext) getTokenDescription(result interface{}) error {
+func (ctx *TokenContext) getTokenDescription() (*types.TokenDescription, error) {
 	dataTx, err := ctx.m.adminSession.DataTx()
 	if err != nil {
-		return errors.Wrap(err, "failed to create DataTx")
+		return nil, errors.Wrap(err, "failed to create DataTx")
 	}
 	defer abort(dataTx)
 
 	val, meta, err := dataTx.Get(TypesDBName, ctx.tokenDBName)
 	if err != nil {
-		return errors.Wrapf(err, "failed to Get %s", ctx.tokenDBName)
+		return nil, errors.Wrapf(err, "failed to Get %s", ctx.tokenDBName)
 	}
 	if val == nil {
-		return common.NewErrNotFound("token type not found: %v", ctx.typeId)
+		return nil, common.NewErrNotFound("token type not found: %v", ctx.typeId)
 	}
 
-	if err = json.Unmarshal(val, result); err != nil {
-		return errors.Wrapf(err, "failed to json.Unmarshal %s for DB %s", val, ctx.tokenDBName)
+	desc := types.TokenDescription{}
+	if err = json.Unmarshal(val, &desc); err != nil {
+		return nil, errors.Wrapf(err, "failed to json.Unmarshal %s for DB %s", val, ctx.tokenDBName)
 	}
 
-	ctx.m.lg.Debugf("Token type description: %+v; metadata: %v", result, meta)
+	ctx.m.lg.Debugf("Token type description: %+v; metadata: %v", &desc, meta)
 
-	return nil
+	return &desc, nil
 }

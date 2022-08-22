@@ -1229,7 +1229,7 @@ func TestManager_Users(t *testing.T) {
 // Test helpers
 // ============================================================
 
-func assertEqualDeployResponse(t *testing.T, expected, actual *types.DeployResponse) {
+func assertEqualDeployResponse(t *testing.T, expected *types.DeployResponse, actual *types.TokenDescription) {
 	assert.Equal(t, expected.Name, actual.Name)
 	assert.Equal(t, expected.TypeId, actual.TypeId)
 	assert.Equal(t, expected.Description, actual.Description)
