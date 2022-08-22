@@ -451,60 +451,150 @@ func TestTokensServer(t *testing.T) {
 	require.Len(t, tokenRecords, 0)
 
 	t.Run("Fungible", func(t *testing.T) {
-		fungibleResponse := types.FungibleDeployResponse{}
-		env.testPostRequest(t, "deploy",
-			constants.FungibleDeploy,
-			&types.FungibleDeployRequest{
-				Name:         "Fungible test",
-				ReserveOwner: "bob",
-			},
-			&fungibleResponse,
-			http.StatusCreated,
-		)
-		assert.NotEmpty(t, fungibleResponse.TypeId)
-		lg.Infof("Fung resp: %v", fungibleResponse)
+		var typeId string
+		deployRequest := types.FungibleDeployRequest{
+			Name:         "Fungible test",
+			Description:  "Fungible test description",
+			ReserveOwner: "bob",
+		}
 
-		env.testGetRequest(t, "describe",
-			common.URLForType(constants.FungibleTypeRoot, fungibleResponse.TypeId),
-			&types.FungibleDescribeResponse{},
-		)
+		t.Run("deploy", func(t *testing.T) {
+			response := types.FungibleDeployResponse{}
+			env.testPostRequest(t,
+				constants.FungibleDeploy,
+				&deployRequest,
+				&response,
+				http.StatusCreated,
+			)
+			assert.NotEmpty(t, response.TypeId)
+			typeId = response.TypeId
+			assert.Equal(t, uint64(0), response.Supply)
+			assert.Equal(t, deployRequest.Name, response.Name)
+			assert.Equal(t, deployRequest.Description, response.Description)
+			lg.Infof("Fung resp: %v", response)
+		})
+		require.NotEmpty(t, typeId)
 
-		env.testPostSignAndSubmit(t, "mint",
-			common.URLForType(constants.FungibleMint, fungibleResponse.TypeId),
-			&types.FungibleMintRequest{Supply: 5},
-			&tokens.FungibleMintResponse{},
-			http.StatusOK,
-			signerBob,
-		)
+		t.Run("describe", func(t *testing.T) {
+			response := types.FungibleDescribeResponse{}
+			env.testGetRequest(t,
+				common.URLForType(constants.FungibleTypeRoot, typeId),
+				&response,
+			)
+			assert.Equal(t, typeId, response.TypeId)
+			assert.Equal(t, uint64(0), response.Supply)
+			assert.Equal(t, deployRequest.Name, response.Name)
+			assert.Equal(t, deployRequest.Description, response.Description)
+		})
 
-		env.testPostSignAndSubmit(t, "transfer",
-			common.URLForType(constants.FungibleTransfer, fungibleResponse.TypeId),
-			&types.FungibleTransferRequest{
+		supply := uint64(5)
+		t.Run("mint", func(t *testing.T) {
+			mintReq := types.FungibleMintRequest{Supply: supply}
+			mintResp := tokens.FungibleMintResponse{}
+			env.testPostSignAndSubmit(t,
+				common.URLForType(constants.FungibleMint, typeId),
+				&mintReq,
+				&mintResp,
+				http.StatusOK,
+				signerBob,
+			)
+			assert.Equal(t, typeId, mintResp.TypeId)
+
+			describeResp := types.FungibleDescribeResponse{}
+			env.testGetRequest(t,
+				common.URLForType(constants.FungibleTypeRoot, typeId),
+				&describeResp,
+			)
+			assert.Equal(t, typeId, describeResp.TypeId)
+			assert.Equal(t, supply, describeResp.Supply)
+		})
+
+		charlieQuantity := uint64(1)
+		t.Run("transfer", func(t *testing.T) {
+			transReq := types.FungibleTransferRequest{
 				Owner:    "bob",
 				Account:  "reserve",
 				NewOwner: "charlie",
-				Quantity: 1,
-			},
-			&tokens.FungibleTransferResponse{},
-			http.StatusOK,
-			signerBob,
-		)
+				Quantity: charlieQuantity,
+			}
+			transResp := tokens.FungibleTransferResponse{}
+			env.testPostSignAndSubmit(t,
+				common.URLForType(constants.FungibleTransfer, typeId),
+				&transReq,
+				&transResp,
+				http.StatusOK,
+				signerBob,
+			)
+			assert.Equal(t, typeId, transResp.TypeId)
+			assert.Equal(t, transReq.Owner, transResp.Owner)
+			assert.Equal(t, transReq.Account, transResp.Account)
+			assert.Equal(t, transReq.NewOwner, transResp.NewOwner)
+			assert.NotEmpty(t, transResp.NewAccount)
 
-		env.testPostSignAndSubmit(t, "consolidate",
-			common.URLForType(constants.FungibleConsolidate, fungibleResponse.TypeId),
-			&types.FungibleConsolidateRequest{
+			describeResp := types.FungibleDescribeResponse{}
+			env.testGetRequest(t,
+				common.URLForType(constants.FungibleTypeRoot, typeId),
+				&describeResp,
+			)
+			assert.Equal(t, typeId, describeResp.TypeId)
+			assert.Equal(t, supply, describeResp.Supply)
+		})
+
+		t.Run("bob's main account", func(t *testing.T) {
+			var accounts []types.FungibleAccountRecord
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.FungibleAccounts, typeId),
+				url.Values{"owner": []string{"bob"}}.Encode(),
+				&accounts,
+			)
+			assert.Len(t, accounts, 1)
+			assert.Equal(t, "bob", accounts[0].Owner)
+			assert.Equal(t, "reserve", accounts[0].Account)
+			assert.Equal(t, supply-charlieQuantity, accounts[0].Balance)
+		})
+
+		t.Run("charlie's accounts", func(t *testing.T) {
+			var accounts []types.FungibleAccountRecord
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.FungibleAccounts, typeId),
+				url.Values{"owner": []string{"charlie"}}.Encode(),
+				&accounts,
+			)
+			assert.Len(t, accounts, 1)
+			assert.Equal(t, "charlie", accounts[0].Owner)
+			assert.NotEmpty(t, accounts[0].Account)
+			assert.NotEqual(t, "main", accounts[0].Account)
+			assert.Equal(t, charlieQuantity, accounts[0].Balance)
+		})
+
+		t.Run("consolidate", func(t *testing.T) {
+			request := types.FungibleConsolidateRequest{
 				Owner: "charlie",
-			},
-			&tokens.FungibleConsolidateResponse{},
-			http.StatusOK,
-			signerCharlie,
-		)
+			}
+			response := tokens.FungibleConsolidateResponse{}
+			env.testPostSignAndSubmit(t,
+				common.URLForType(constants.FungibleConsolidate, typeId),
+				&request,
+				&response,
+				http.StatusOK,
+				signerCharlie,
+			)
+			assert.Equal(t, typeId, response.TypeId)
+			assert.Equal(t, request.Owner, response.Owner)
+		})
 
-		env.testGetRequestWithQuery(t, "accounts",
-			common.URLForType(constants.FungibleAccounts, fungibleResponse.TypeId),
-			url.Values{"owner": []string{"charlie"}}.Encode(),
-			&[]types.FungibleAccountRecord{},
-		)
+		t.Run("charlie's main account", func(t *testing.T) {
+			var accounts []types.FungibleAccountRecord
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.FungibleAccounts, typeId),
+				url.Values{"owner": []string{"charlie"}}.Encode(),
+				&accounts,
+			)
+			assert.Len(t, accounts, 1)
+			assert.Equal(t, "charlie", accounts[0].Owner)
+			assert.Equal(t, "main", accounts[0].Account)
+			assert.Equal(t, charlieQuantity, accounts[0].Balance)
+		})
 	})
 
 	wg.Add(1)
@@ -535,53 +625,29 @@ func assertResponse(t *testing.T, expectedStatus int, resp *http.Response, respo
 	return false
 }
 
-func (e *serverTestEnv) testPostRequestRaw(
+func (e *serverTestEnv) testPostRequest(
 	t *testing.T, path string, request interface{}, response interface{}, expectedStatus int,
 ) {
 	assertResponse(t, expectedStatus, e.Post(t, path, request), response)
 }
 
-func (e *serverTestEnv) testPostRequest(
-	t *testing.T, name string, path string, request interface{}, response interface{}, status int,
-) {
-	t.Run(name, func(t *testing.T) {
-		e.testPostRequestRaw(t, path, request, response, status)
-	})
-}
-
-func (e *serverTestEnv) testGetRequestRaw(
+func (e *serverTestEnv) testGetRequest(
 	t *testing.T, path string, response interface{},
 ) {
 	assertResponse(t, http.StatusOK, e.Get(t, path), response)
 }
 
-func (e *serverTestEnv) testGetRequestWithQueryRaw(
+func (e *serverTestEnv) testGetRequestWithQuery(
 	t *testing.T, path string, query string, response interface{},
 ) {
 	assertResponse(t, http.StatusOK, e.GetWithQuery(t, path, query), response)
 }
 
-func (e *serverTestEnv) testGetRequest(
-	t *testing.T, name string, path string, response interface{},
-) {
-	t.Run(name, func(t *testing.T) {
-		e.testGetRequestRaw(t, path, response)
-	})
-}
-
-func (e *serverTestEnv) testGetRequestWithQuery(
-	t *testing.T, name string, path string, query string, response interface{},
-) {
-	t.Run(name, func(t *testing.T) {
-		e.testGetRequestWithQueryRaw(t, path, query, response)
-	})
-}
-
-func (e *serverTestEnv) testPostSignAndSubmitRaw(
+func (e *serverTestEnv) testPostSignAndSubmit(
 	t *testing.T, path string, request interface{}, response tokens.SignatureRequester, status int, signer crypto.Signer,
 ) *types.FungibleSubmitResponse {
 	// Prepare
-	e.testPostRequestRaw(t, path, request, response, status)
+	e.testPostRequest(t, path, request, response, status)
 
 	// Sign
 	submitRequest, err := tokens.SignTransactionResponse(signer, response)
@@ -589,7 +655,7 @@ func (e *serverTestEnv) testPostSignAndSubmitRaw(
 
 	submitResponse := types.FungibleSubmitResponse{}
 	// Submit
-	e.testPostRequestRaw(
+	e.testPostRequest(
 		t,
 		constants.FungibleSubmit,
 		submitRequest.ToFungibleRequest(),
@@ -598,14 +664,6 @@ func (e *serverTestEnv) testPostSignAndSubmitRaw(
 	)
 
 	return &submitResponse
-}
-
-func (e *serverTestEnv) testPostSignAndSubmit(
-	t *testing.T, name string, path string, request interface{}, response tokens.SignatureRequester, status int, signer crypto.Signer,
-) {
-	t.Run(name, func(t *testing.T) {
-		e.testPostSignAndSubmitRaw(t, path, request, response, status, signer)
-	})
 }
 
 func deployTokenType(t *testing.T, httpClient *http.Client, baseURL *url.URL, deployReq2 *types.DeployRequest) *types.DeployResponse {
