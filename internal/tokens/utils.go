@@ -14,6 +14,7 @@ import (
 	"github.com/copa-europe-tokens/internal/common"
 	"github.com/copa-europe-tokens/pkg/types"
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
 	orioncrypto "github.com/hyperledger-labs/orion-server/pkg/crypto"
 	"github.com/hyperledger-labs/orion-server/pkg/cryptoservice"
 	oriontypes "github.com/hyperledger-labs/orion-server/pkg/types"
@@ -111,14 +112,55 @@ func convertErrorType(err error) error {
 }
 
 // ====================================================
-// Generic submit helper
+// Helpers for handling orion errors
 // ====================================================
 
-// Detects unauthorized (401) error message
-var unauthorizedRegexp = regexp.MustCompile(`(?i)status\s*:\s*401\s*unauthorized`)
+var orionErrorDetectors = map[int][]*regexp.Regexp{
+	http.StatusForbidden: {
+		// Detects unauthorized (401) error message
+		regexp.MustCompile(`(?i)status\s*:\s*401\s*unauthorized.*message:\s*(.*)`),
+		// Workaround for issue: missing signature return bad-request (400) instead of unauthorized (401)
+		regexp.MustCompile(`(?i)message:\s*(users\s*\[.*]\s*in\s*the\s*must\s*sign\s*list\s*have\s*not\s*signed\s*the\s*transaction.*)`),
+	},
+	http.StatusNotFound: {
+		// Detects that a user was not found
+		regexp.MustCompile(`(?i)reason:\s*(the\s*user\s*\[.*]\s*defined\s*in\s*the\s*access\s*control\s*for\s*the\s*key\s*\[.*]\s*does\s*not\s*exist.*)`),
+		// Detects that a DB does not exist
+		regexp.MustCompile(`(?i)message:\s*((?:error\s*db)?\s*'.*'\s*(?:doesn't|does\s*not)\s*exist.*)`),
+	},
+	http.StatusConflict: {
+		// Detects attempt to create a DB with an existing name
+		regexp.MustCompile(`(?i)reason:\s*(.*\[.*]\s*already\s*exists.*)`),
+	},
+}
 
-// Workaround for issue: missing signature return bad-request (400) instead of unauthorized (401)
-var mustSignRegexp = regexp.MustCompile(`(?i)users\s*\[.*]\s*in\s*the\s*must\s*sign\s*list\s*have\s*not\s*signed\s*the\s*transaction`)
+func wrapOrionError(err error, format string, a ...interface{}) error {
+	format += ": %s"
+	errStr := err.Error()
+	for status, expressions := range orionErrorDetectors {
+		for _, exp := range expressions {
+			if m := exp.FindStringSubmatch(errStr); m != nil {
+				return common.NewTokenHttpErr(status, format, append(a, m[1])...)
+			}
+		}
+	}
+
+	a = append(a, errStr)
+	if errV, ok := err.(*bcdb.ErrorTxValidation); ok {
+		switch oriontypes.Flag_value[errV.Flag] {
+		case int32(oriontypes.Flag_INVALID_NO_PERMISSION), int32(oriontypes.Flag_INVALID_UNAUTHORISED), int32(oriontypes.Flag_INVALID_MISSING_SIGNATURE):
+			return common.NewErrPermission(format, a...)
+		default:
+			return common.NewErrInvalid(format, a...)
+		}
+	}
+
+	return common.NewErrInternal(format, a...)
+}
+
+// ====================================================
+// Generic submit helper
+// ====================================================
 
 type SubmitContext struct {
 	TxContext     string

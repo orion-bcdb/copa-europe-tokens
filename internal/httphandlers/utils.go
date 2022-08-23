@@ -46,7 +46,7 @@ func decode(request *http.Request, requestBody interface{}) error {
 	dec := json.NewDecoder(request.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&requestBody); err != nil {
-		return common.WrapErrInvalid(err)
+		return common.NewErrInvalid("Request does not follow the required format: %s", err)
 	}
 	return nil
 }

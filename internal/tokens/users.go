@@ -3,97 +3,106 @@ package tokens
 import (
 	"github.com/copa-europe-tokens/internal/common"
 	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
+	"github.com/hyperledger-labs/orion-server/pkg/logger"
 	oriontypes "github.com/hyperledger-labs/orion-server/pkg/types"
 	"github.com/pkg/errors"
 )
 
-type UserContext struct {
-	m      *Manager
+// UserTxContext handles a user transaction from start to finish
+type UserTxContext struct {
+	lg           *logger.SugarLogger
+	userId       string
+	adminSession bcdb.DBSession
+
+	// Evaluated lazily
 	userTx bcdb.UsersTxContext
-	userId string
 	record *oriontypes.User
 }
 
-func validateUserId(m *Manager, userId string) error {
-	if userId == "" {
-		return common.NewErrInvalid("Invalid user ID: empty.")
+func newUserTxContext(m *Manager, userId string) (*UserTxContext, error) {
+	err := m.validateUserId(userId)
+	if err != nil {
+		return nil, err
+	}
+	return &UserTxContext{
+		lg:           m.lg,
+		adminSession: m.adminSession,
+		userId:       userId,
+	}, nil
+}
+
+// ResetTx creates a new transaction. It will abort previous transaction if existed.
+func (ctx *UserTxContext) ResetTx() error {
+	if ctx.userTx != nil {
+		if err := ctx.userTx.Abort(); err != nil {
+			return err
+		}
 	}
 
-	if userId == m.config.Users.Custodian.UserID || userId == m.config.Users.Admin.UserID {
-		return common.NewErrInvalid("Invalid user ID: the user '%s' cannot participate in token activities.", userId)
+	userTx, err := ctx.adminSession.UsersTx()
+	if err != nil {
+		return errors.Wrap(err, "failed to create UsersTx")
 	}
+	ctx.userTx = userTx
 
 	return nil
 }
 
-func newUserContextTx(m *Manager, userId string) (*UserContext, error) {
-	err := validateUserId(m, userId)
-	if err != nil {
-		return nil, err
+// Returns an existing transaction or creates a new one
+func (ctx *UserTxContext) tx() (bcdb.UsersTxContext, error) {
+	if ctx.userTx == nil {
+		if err := ctx.ResetTx(); err != nil {
+			return nil, err
+		}
 	}
-
-	userTx, err := m.adminSession.UsersTx()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create UserTx")
-	}
-
-	return &UserContext{
-		m:      m,
-		userId: userId,
-		userTx: userTx,
-	}, nil
+	return ctx.userTx, nil
 }
 
-func newExistingUserContextTx(m *Manager, userId string) (*UserContext, error) {
-	ctx, err := newUserContextTx(m, userId)
-	if err != nil {
-		return nil, err
-	}
-
-	err = ctx.fetchExistingUser()
-	if err != nil {
-		ctx.abort()
-		return nil, err
-	}
-
-	return ctx, nil
-}
-
-// Aborts a TX if it was initiated
-func (ctx *UserContext) abort() {
+// Abort a TX if it was initiated
+func (ctx *UserTxContext) Abort() {
 	if ctx != nil && ctx.userTx != nil {
 		abort(ctx.userTx)
+		ctx.userTx = nil
 	}
 }
 
-func (ctx *UserContext) commit() error {
+func (ctx *UserTxContext) Commit() error {
+	if ctx.userTx == nil {
+		return errors.New("Attempt to commit a transaction, but transaction was not created.")
+	}
+
 	txID, receiptEnv, err := ctx.userTx.Commit(true)
 	if err != nil {
 		return errors.Wrap(err, "failed to commit user")
 	}
 
-	ctx.m.lg.Infof("User [%s] written to database, txID: %s, receipt: %+v", ctx.userId, txID, receiptEnv.GetResponse().GetReceipt())
+	ctx.lg.Infof("User [%s] written to database, txID: %s, receipt: %+v", ctx.userId, txID, receiptEnv.GetResponse().GetReceipt())
 	return nil
 }
 
-func (ctx *UserContext) fetchUser() error {
+func (ctx *UserTxContext) fetchUser() error {
 	if ctx.record != nil {
 		return nil
 	}
 
-	user, err := ctx.userTx.GetUser(ctx.userId)
+	tx, err := ctx.tx()
 	if err != nil {
-		return errors.Wrapf(err, "failed to get user: %s", ctx.userId)
+		return err
+	}
+
+	user, err := tx.GetUser(ctx.userId)
+	if err != nil {
+		return wrapOrionError(err, "failed to get user [%s]", ctx.userId)
 	}
 
 	ctx.record = user
 	return nil
 }
 
-func (ctx *UserContext) fetchExistingUser() error {
+func (ctx *UserTxContext) ValidateUserExists() error {
 	err := ctx.fetchUser()
 	if err != nil {
-		return nil
+		return err
 	}
 
 	if ctx.record == nil {
@@ -103,19 +112,42 @@ func (ctx *UserContext) fetchExistingUser() error {
 	return nil
 }
 
-func (ctx *UserContext) addUserPrivilege(typeIds ...string) error {
+func (ctx *UserTxContext) Get() (*oriontypes.User, error) {
+	err := ctx.ValidateUserExists()
+	if err != nil {
+		return nil, err
+	}
+	return ctx.record, nil
+}
+
+func (ctx *UserTxContext) Put(record *oriontypes.User) error {
+	tx, err := ctx.tx()
+	if err != nil {
+		return err
+	}
+	err = tx.PutUser(record, nil)
+	if err != nil {
+		return errors.Wrapf(err, "failed to put user: %s", ctx.record.Id)
+	}
+	ctx.record = record
+
+	return nil
+}
+
+func (ctx *UserTxContext) AddPrivilege(typeIds ...string) error {
 	if len(typeIds) == 0 {
 		return nil
 	}
 
-	err := ctx.fetchExistingUser()
+	record, err := ctx.Get()
 	if err != nil {
 		return err
 	}
 
-	dbPerm := ctx.record.Privilege.DbPermission
+	dbPerm := record.Privilege.DbPermission
 	if dbPerm == nil {
 		dbPerm = make(map[string]oriontypes.Privilege_Access)
+		record.Privilege.DbPermission = dbPerm
 	}
 
 	for _, typeId := range typeIds {
@@ -123,18 +155,8 @@ func (ctx *UserContext) addUserPrivilege(typeIds ...string) error {
 		if err != nil {
 			return err
 		}
-		if _, ok := ctx.m.tokenTypesDBs[dbName]; !ok {
-			return common.NewErrInvalid("token type does not exist: %s", typeId)
-		}
 		dbPerm[dbName] = oriontypes.Privilege_ReadWrite
 	}
 
-	ctx.record.Privilege.DbPermission = dbPerm
-
-	err = ctx.userTx.PutUser(ctx.record, nil)
-	if err != nil {
-		return errors.Wrapf(err, "failed to put user: %s", ctx.record.Id)
-	}
-
-	return nil
+	return ctx.Put(record)
 }

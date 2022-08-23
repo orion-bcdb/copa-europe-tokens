@@ -87,6 +87,7 @@ type Manager struct {
 	adminSession     bcdb.DBSession
 	custodianSession bcdb.DBSession
 
+	//TODO support multiple instances of the token server
 	tokenTypesDBs map[string]bool
 }
 
@@ -201,7 +202,7 @@ func (m *Manager) deployNewTokenType(desc *types.TokenDescription, indices ...st
 
 	custodian, err := userTx.GetUser(m.config.Users.Custodian.UserID)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get user: %s", m.config.Users.Custodian.UserID)
+		return wrapOrionError(err, "failed to get user [%s]", m.config.Users.Custodian.UserID)
 	}
 	if _, exists := custodian.GetPrivilege().GetDbPermission()[tokenDBName]; exists {
 		return common.NewErrExist("token type already exists")
@@ -216,7 +217,7 @@ func (m *Manager) deployNewTokenType(desc *types.TokenDescription, indices ...st
 
 	existingTokenDesc, _, err := dataTx.Get(TypesDBName, tokenDBName)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get %s %s", TypesDBName, tokenDBName)
+		return wrapOrionError(err, "failed to get key [%s] from [%s]", tokenDBName, TypesDBName)
 	}
 	if existingTokenDesc != nil {
 		return errors.Errorf("failed to deploy token: custodian does not have privilege, but token type description exists: %s", string(existingTokenDesc))
@@ -229,12 +230,12 @@ func (m *Manager) deployNewTokenType(desc *types.TokenDescription, indices ...st
 	}
 	err = dataTx.Put(TypesDBName, tokenDBName, serializedDescription, nil)
 	if err != nil {
-		return errors.Wrapf(err, "failed to put %s %s", TypesDBName, tokenDBName)
+		return wrapOrionError(err, "failed to put key [%s] to [%s]", tokenDBName, TypesDBName)
 	}
 
 	txID, receiptEnv, err := dataTx.Commit(true)
 	if err != nil {
-		return errors.Wrapf(err, "failed to commit %s %s", TypesDBName, tokenDBName)
+		return wrapOrionError(err, "failed to commit [%s] to [%s]", tokenDBName, TypesDBName)
 	}
 
 	m.lg.Infof("Saved token description: %+v; txID: %s, receipt: %+v", desc, txID, receiptEnv.GetResponse().GetReceipt())
@@ -248,12 +249,12 @@ func (m *Manager) deployNewTokenType(desc *types.TokenDescription, indices ...st
 
 	err = userTx.PutUser(custodian, nil)
 	if err != nil {
-		return errors.Wrap(err, "failed to put user")
+		return wrapOrionError(err, "failed to put user [%s]", m.config.Users.Custodian.UserID)
 	}
 
 	txID, receiptEnv, err = userTx.Commit(true)
 	if err != nil {
-		return errors.Wrap(err, "failed to commit user")
+		return wrapOrionError(err, "failed to commit user [%s]", m.config.Users.Custodian.UserID)
 	}
 
 	m.tokenTypesDBs[tokenDBName] = true
@@ -289,10 +290,7 @@ func (m *Manager) createTokenDBTable(tokenDBName string, indices ...string) erro
 	txID, receiptEnv, err := dBsTx.Commit(true)
 	if err != nil {
 		m.lg.Errorf("Failed to deploy: commit failed: %s", err.Error())
-		if strings.Contains(err.Error(), fmt.Sprintf("[%s] already exists", tokenDBName)) {
-			return common.NewErrExist("token type already exists")
-		}
-		return errors.Wrap(err, "failed to deploy token type")
+		return wrapOrionError(err, "failed to deploy token type [%s]", tokenDBName)
 	}
 
 	m.lg.Infof("Database created: %s, txID: %s, receipt: %+v", tokenDBName, txID, receiptEnv.GetResponse().GetReceipt())
@@ -622,20 +620,7 @@ func (m *Manager) submitTx(ctx *SubmitContext) error {
 
 	txID, receiptEnv, err := loadedTx.Commit(true)
 	if err != nil {
-		if unauthorizedRegexp.MatchString(err.Error()) || mustSignRegexp.MatchString(err.Error()) {
-			return common.WrapErrPermission(err)
-		}
-
-		if errV, ok := err.(*bcdb.ErrorTxValidation); ok {
-			switch oriontypes.Flag_value[errV.Flag] {
-			case int32(oriontypes.Flag_INVALID_NO_PERMISSION), int32(oriontypes.Flag_INVALID_UNAUTHORISED), int32(oriontypes.Flag_INVALID_MISSING_SIGNATURE):
-				return common.WrapErrPermission(err)
-			default:
-				return common.WrapErrInvalid(err)
-			}
-		}
-
-		return err
+		return wrapOrionError(err, "failed to submit transaction for %s", ctx.TxContext)
 	}
 
 	m.lg.Infof("Custodian [%s] committed the Tx to the database, txID: %s, receipt: %+v", m.config.Users.Custodian.UserID, txID, receiptEnv.GetResponse().GetReceipt())
@@ -1214,15 +1199,30 @@ func (m *Manager) createTypesDB() (err error) {
 	return nil
 }
 
+func (m *Manager) validateUserId(userId string) error {
+	if userId == "" {
+		return common.NewErrInvalid("Invalid user ID: empty.")
+	}
+
+	if userId == m.config.Users.Custodian.UserID || userId == m.config.Users.Admin.UserID {
+		return common.NewErrInvalid("Invalid user ID: the user '%s' cannot participate in token activities.", userId)
+	}
+
+	return nil
+}
+
 // ====================================================
 // Fungible functional API implementation
 // ====================================================
 
 func (m *Manager) FungibleDeploy(request *types.FungibleDeployRequest) (*types.FungibleDeployResponse, error) {
-	// Validates user to fail fast
-	userCtx, err := newExistingUserContextTx(m, request.ReserveOwner)
-	defer userCtx.abort()
+	// Validates user to avoid creating a token with an invalid owner
+	userCtx, err := newUserTxContext(m, request.ReserveOwner)
 	if err != nil {
+		return nil, err
+	}
+	defer userCtx.Abort()
+	if err = userCtx.ValidateUserExists(); err != nil {
 		return nil, err
 	}
 
@@ -1238,10 +1238,10 @@ func (m *Manager) FungibleDeploy(request *types.FungibleDeployRequest) (*types.F
 		return nil, err
 	}
 
-	if err = userCtx.addUserPrivilege(desc.TypeId); err != nil {
+	if err = userCtx.AddPrivilege(desc.TypeId); err != nil {
 		return nil, err
 	}
-	if err = userCtx.commit(); err != nil {
+	if err = userCtx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -1256,22 +1256,27 @@ func (m *Manager) FungibleDeploy(request *types.FungibleDeployRequest) (*types.F
 }
 
 func (m *Manager) FungibleDescribe(typeId string) (*types.FungibleDescribeResponse, error) {
-	ctx, err := newFungibleContextTx(m, typeId)
+	ctx, err := newFungibleTxContext(m, typeId)
 	if err != nil {
 		return nil, err
 	}
-	defer ctx.abort()
+	defer ctx.Abort()
 
 	reserve, err := ctx.getReserveAccount()
 	if err != nil {
 		return nil, err
 	}
 
+	reserveOwner, err := ctx.getReserveOwner()
+	if err != nil {
+		return nil, err
+	}
+
 	return &types.FungibleDescribeResponse{
 		TypeId:       typeId,
-		Name:         ctx.Desc.Name,
-		Description:  ctx.Desc.Description,
-		ReserveOwner: ctx.ReserveOwner,
+		Name:         ctx.description.Name,
+		Description:  ctx.description.Description,
+		ReserveOwner: reserveOwner,
 		Supply:       reserve.Supply,
 		Url:          FungibleTypeURL(typeId),
 	}, nil
@@ -1282,11 +1287,11 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 		return nil, common.NewErrInvalid("Supply must be a positive integer (supply > 0).")
 	}
 
-	ctx, err := newFungibleContextTx(m, typeId)
+	ctx, err := newFungibleTxContext(m, typeId)
 	if err != nil {
 		return nil, err
 	}
-	defer ctx.abort()
+	defer ctx.Abort()
 
 	reserve, err := ctx.getReserveAccount()
 	if err != nil {
@@ -1300,10 +1305,10 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 		return nil, err
 	}
 
-	if err = ctx.prepare(); err != nil {
+	if err = ctx.Prepare(); err != nil {
 		return nil, err
 	}
-	m.lg.Debugf("Processed mint request for token: %+v", ctx.Desc)
+	m.lg.Debugf("Processed mint request for token: %+v", ctx.description)
 
 	return &types.FungibleMintResponse{
 		TypeId:        typeId,
@@ -1313,28 +1318,22 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 }
 
 func (m *Manager) FungiblePrepareTransfer(typeId string, request *types.FungibleTransferRequest) (*types.FungibleTransferResponse, error) {
-	// Validate new owner to fail fast
-	userCtx, err := newExistingUserContextTx(m, request.NewOwner)
-	defer userCtx.abort()
+	// No need to validate the existing owner. We will fail later if the owner's account does not exist.
+	// If the new owner doesn't exist, then we will fail during the submit phase.
+	err := m.validateUserId(request.NewOwner)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validates type to fail fast
-	ctx, err := newFungibleContext(m, typeId)
+	ctx, err := newFungibleTxContext(m, typeId)
 	if err != nil {
 		return nil, err
 	}
-	defer ctx.abort()
+	defer ctx.Abort()
 
 	// If account isn't specified, the main account is used
 	if request.Account == "" {
 		request.Account = mainAccount
-	}
-
-	// The reserve account owner can be implicit as there is only one
-	if request.Account == reserveAccount && request.Owner == "" {
-		request.Owner = ctx.ReserveOwner
 	}
 
 	// Retry until we got a response.
@@ -1346,28 +1345,20 @@ func (m *Manager) FungiblePrepareTransfer(typeId string, request *types.Fungible
 		}
 	}
 
-	if err = userCtx.addUserPrivilege(ctx.typeId); err != nil {
-		return nil, err
-	}
-	if err = userCtx.commit(); err != nil {
-		return nil, err
-	}
-
 	return response, nil
 }
 
 func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.FungibleConsolidateRequest) (*types.FungibleConsolidateResponse, error) {
-	// Validates type to fail fast
-	ctx, err := newFungibleContext(m, typeId)
+	ctx, err := newFungibleTxContext(m, typeId)
 	if err != nil {
 		return nil, err
 	}
-	defer ctx.abort()
+	defer ctx.Abort()
 
 	// We don't need to validate the user since an invalid user will not have any accounts anyway.
 
 	if request.Accounts != nil {
-		// Validate the list before the TX  starts
+		// Validate the list before the TX starts.
 		if len(request.Accounts) == 0 {
 			return nil, common.NewErrInvalid("If an account list is specified, it must have at least one account.")
 		}
@@ -1375,35 +1366,31 @@ func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.Fungi
 		for _, accName := range request.Accounts {
 			if accName == "" {
 				return nil, common.NewErrInvalid("Account name cannot be empty")
-			} else if accName == mainAccount || accName == reserveAccount {
+			} else if accName == mainAccount {
 				return nil, common.NewErrInvalid("'%v' account cannot be consolidated", accName)
 			}
 		}
 	} else {
-		// We query all user's accounts ahead of TX.
-		// Yet, we need to read all records again inside the TX context, so it will be included in the read-set
-		records, err := ctx.queryFungibleAccounts(request.Owner, "")
+		// We query all user's accounts before the TX starts.
+		// Yet, we need to read all records again inside the TX context, so it will be included in the read-set.
+		records, err := ctx.queryAccounts(request.Owner, "")
 		if err != nil {
 			return nil, err
 		}
 
 		for _, record := range records {
-			if record.Account == reserveAccount || record.Account == mainAccount {
+			if record.Account == mainAccount {
 				continue
 			}
 			request.Accounts = append(request.Accounts, record.Account)
 		}
 
 		if len(request.Accounts) == 0 {
-			return nil, common.NewErrNotFound("Did not found accounts to consolidate for user: %v", request.Owner)
+			return nil, common.NewErrNotFound("Did not found accounts to consolidate for user [%s]", request.Owner)
 		}
 	}
 
-	if err := ctx.initTx(); err != nil {
-		return nil, err
-	}
-
-	rawMainRecord, err := ctx.getAccountRecordTxRaw(request.Owner, mainAccount)
+	rawMainRecord, err := ctx.getAccountRecordRaw(request.Owner, mainAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -1424,23 +1411,23 @@ func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.Fungi
 	}
 
 	for _, accName := range request.Accounts {
-		accRecord, err := ctx.getAccountRecordTx(request.Owner, accName)
+		accRecord, err := ctx.getAccountRecord(request.Owner, accName)
 		if err != nil {
 			return nil, err
 		}
 
 		mainRecord.Balance += accRecord.Balance
 
-		if err = ctx.deleteAccountRecordTx(accRecord); err != nil {
-			return nil, errors.Wrapf(err, "Failed to delete tx account: %v of %v", accRecord.Account, accRecord.Owner)
+		if err = ctx.deleteAccountRecord(accRecord); err != nil {
+			return nil, err
 		}
 	}
 
-	if err = ctx.putAccountRecordTx(mainRecord); err != nil {
+	if err = ctx.putAccountRecord(mainRecord); err != nil {
 		return nil, err
 	}
 
-	if err = ctx.prepare(); err != nil {
+	if err = ctx.Prepare(); err != nil {
 		return nil, err
 	}
 
@@ -1461,11 +1448,10 @@ func (m *Manager) FungibleSubmitTx(submitRequest *types.FungibleSubmitRequest) (
 }
 
 func (m *Manager) FungibleAccounts(typeId string, owner string, account string) ([]types.FungibleAccountRecord, error) {
-	// Validates type to fail fast
-	ctx, err := newFungibleContext(m, typeId)
+	ctx, err := newFungibleTxContext(m, typeId)
 	if err != nil {
 		return nil, err
 	}
-
-	return ctx.queryFungibleAccounts(owner, account)
+	defer ctx.Abort()
+	return ctx.queryAccounts(owner, account)
 }

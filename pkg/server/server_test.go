@@ -200,31 +200,12 @@ func TestTokensServer(t *testing.T) {
 	certBob, signerBob := testutils.LoadTestCrypto(t, c.GetUserCertDir(), "bob")
 	_, bobKeyPath := c.GetUserCertKeyPath("bob")
 	hashSignerBob, err := tokenscrypto.NewSigner("bob", bobKeyPath)
+	require.NoError(t, err)
 
 	certCharlie, signerCharlie := testutils.LoadTestCrypto(t, c.GetUserCertDir(), "charlie")
 	_, charlieKeyPath := c.GetUserCertKeyPath("charlie")
 	hashSignerCharlie, err := tokenscrypto.NewSigner("charlie", charlieKeyPath)
-
-	// Add 2 users
-	// The test environment prepares crypto material for: server, admin, alice, bob, and charlie; alice is the custodian.
-
-	// Add "bob"
-	userRecordBob := &types.UserRecord{
-		Identity:    "bob",
-		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
-		Privilege:   nil,
-	}
-	userResp := env.Post(t, constants.TokensUsersEndpoint, userRecordBob)
-	require.Equal(t, http.StatusCreated, userResp.StatusCode)
-
-	// Add "charlie"
-	userRecordCharlie := &types.UserRecord{
-		Identity:    "charlie",
-		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
-		Privilege:   nil,
-	}
-	userResp = env.Post(t, constants.TokensUsersEndpoint, userRecordCharlie)
-	require.Equal(t, http.StatusCreated, userResp.StatusCode)
+	require.NoError(t, err)
 
 	// GET /status
 	// make sure the token server is connected to Orion cluster
@@ -296,15 +277,37 @@ func TestTokensServer(t *testing.T) {
 		require.True(t, found, "exp not found: %v", expectedTT)
 	}
 
-	// Update "bob"
-	userRecordBob.Privilege = nil // empty means all token types, can own copyright and lease
-	resp = env.Put(t, constants.TokensUsersSubTree+"bob", userRecordBob)
-	assertResponse(t, http.StatusOK, resp, &types.UserRecord{})
+	// Add 2 users
+	// The test environment prepares crypto material for: server, admin, alice, bob, and charlie; alice is the custodian.
+	u = baseURL.ResolveReference(&url.URL{Path: constants.TokensUsersEndpoint})
 
-	// Update "charlie"
-	userRecordCharlie.Privilege = []string{deployResp2.TypeId} // can only own token 2, i.e. only lease
-	resp = env.Put(t, constants.TokensUsersSubTree+"charlie", userRecordCharlie)
-	assertResponse(t, http.StatusOK, resp, &types.UserRecord{})
+	// Add "bob"
+	userRecordBob := &types.UserRecord{
+		Identity:    "bob",
+		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
+		Privilege:   nil, // empty means all token types, can own copyright and lease
+	}
+	requestBytes, err := json.Marshal(userRecordBob)
+	require.NoError(t, err)
+	reader := bytes.NewReader(requestBytes)
+	require.NotNil(t, reader)
+	resp, err = httpClient.Post(u.String(), "application/json", reader)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Add "charlie"
+	userRecordCharlie := &types.UserRecord{
+		Identity:    "charlie",
+		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
+		Privilege:   []string{deployResp2.TypeId}, // can only own token 2, i.e. only lease
+	}
+	requestBytes, err = json.Marshal(userRecordCharlie)
+	require.NoError(t, err)
+	reader = bytes.NewReader(requestBytes)
+	require.NotNil(t, reader)
+	resp, err = httpClient.Post(u.String(), "application/json", reader)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	// Mint some content tokens
 	mintRequest1 := &types.MintRequest{
@@ -475,6 +478,16 @@ func TestTokensServer(t *testing.T) {
 		})
 		require.NotEmpty(t, typeId)
 
+		// Update "bob"
+		userRecordBob.Privilege = nil
+		resp = env.Put(t, constants.TokensUsersSubTree+"bob", userRecordBob)
+		assertResponse(t, http.StatusOK, resp, &types.UserRecord{})
+
+		// Update "charlie"
+		userRecordCharlie.Privilege = nil
+		resp = env.Put(t, constants.TokensUsersSubTree+"charlie", userRecordCharlie)
+		assertResponse(t, http.StatusOK, resp, &types.UserRecord{})
+
 		t.Run("describe", func(t *testing.T) {
 			response := types.FungibleDescribeResponse{}
 			env.testGetRequest(t,
@@ -512,8 +525,7 @@ func TestTokensServer(t *testing.T) {
 		charlieQuantity := uint64(1)
 		t.Run("transfer", func(t *testing.T) {
 			transReq := types.FungibleTransferRequest{
-				Owner:    "bob",
-				Account:  "reserve",
+				Owner:    "reserve",
 				NewOwner: "charlie",
 				Quantity: charlieQuantity,
 			}
@@ -527,7 +539,7 @@ func TestTokensServer(t *testing.T) {
 			)
 			assert.Equal(t, typeId, transResp.TypeId)
 			assert.Equal(t, transReq.Owner, transResp.Owner)
-			assert.Equal(t, transReq.Account, transResp.Account)
+			assert.Equal(t, "main", transResp.Account)
 			assert.Equal(t, transReq.NewOwner, transResp.NewOwner)
 			assert.NotEmpty(t, transResp.NewAccount)
 
@@ -540,16 +552,16 @@ func TestTokensServer(t *testing.T) {
 			assert.Equal(t, supply, describeResp.Supply)
 		})
 
-		t.Run("bob's main account", func(t *testing.T) {
+		t.Run("reserve account", func(t *testing.T) {
 			var accounts []types.FungibleAccountRecord
 			env.testGetRequestWithQuery(t,
 				common.URLForType(constants.FungibleAccounts, typeId),
-				url.Values{"owner": []string{"bob"}}.Encode(),
+				url.Values{"owner": []string{"reserve"}}.Encode(),
 				&accounts,
 			)
 			assert.Len(t, accounts, 1)
-			assert.Equal(t, "bob", accounts[0].Owner)
-			assert.Equal(t, "reserve", accounts[0].Account)
+			assert.Equal(t, "reserve", accounts[0].Owner)
+			assert.Equal(t, "main", accounts[0].Account)
 			assert.Equal(t, supply-charlieQuantity, accounts[0].Balance)
 		})
 

@@ -11,58 +11,57 @@ import (
 	"github.com/copa-europe-tokens/pkg/types"
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
+	"github.com/hyperledger-labs/orion-server/pkg/logger"
 	oriontypes "github.com/hyperledger-labs/orion-server/pkg/types"
 	"github.com/pkg/errors"
 )
 
-type TokenContext struct {
-	m             *Manager
+// TokenTxContext handles a token transaction from start to finish
+type TokenTxContext struct {
+	lg               *logger.SugarLogger
+	typeId           string
+	tokenDBName      string
+	custodianId      string
+	custodianSession bcdb.DBSession
+
+	// Evaluated lazily
 	dataTx        bcdb.DataTxContext
-	tokenDBName   string
-	typeId        string
+	description   *types.TokenDescription
 	TxEnvelope    string
 	TxPayloadHash string
 }
 
 func getTokenTypeDBName(typeId string) (string, error) {
 	if err := validateMD5Base64ID(typeId, "token type"); err != nil {
-		return "", common.WrapErrInvalid(err)
+		return "", common.NewErrInvalid("Invalid type ID: %s", err)
 	}
-
 	return TokenTypeDBNamePrefix + typeId, nil
 }
 
 // Create a new common token context without initiating a TX.
-func newTokenContext(m *Manager, typeId string) (*TokenContext, error) {
+func newTokenTxContext(m *Manager, typeId string) (*TokenTxContext, error) {
 	tokenDBName, err := getTokenTypeDBName(typeId)
 	if err != nil {
 		return nil, err
 	}
-
-	return &TokenContext{
-		m:           m,
-		tokenDBName: tokenDBName,
-		typeId:      typeId,
+	return &TokenTxContext{
+		lg:               m.lg,
+		custodianSession: m.custodianSession,
+		custodianId:      m.config.Users.Custodian.UserID,
+		tokenDBName:      tokenDBName,
+		typeId:           typeId,
 	}, nil
 }
 
-// Create a new common token context and initiating a TX.
-func newTokenContextTx(m *Manager, typeId string) (*TokenContext, error) {
-	ctx, err := newTokenContext(m, typeId)
-	if err != nil {
-		return nil, err
-	}
-
-	return ctx, ctx.initTx()
-}
-
-// Initialize a TX.
-func (ctx *TokenContext) initTx() error {
+// ResetTx creates a new transaction. It will abort previous transaction if existed.
+func (ctx *TokenTxContext) ResetTx() error {
 	if ctx.dataTx != nil {
-		abort(ctx.dataTx)
+		if err := ctx.dataTx.Abort(); err != nil {
+			return err
+		}
 	}
 
-	dataTx, err := ctx.m.custodianSession.DataTx()
+	dataTx, err := ctx.custodianSession.DataTx()
 	if err != nil {
 		return errors.Wrap(err, "failed to create DataTx")
 	}
@@ -71,14 +70,75 @@ func (ctx *TokenContext) initTx() error {
 	return nil
 }
 
-// Aborts a TX if it was initiated
-func (ctx *TokenContext) abort() {
+// Returns an existing transaction or creates a new one
+func (ctx *TokenTxContext) tx() (bcdb.DataTxContext, error) {
+	if ctx.dataTx == nil {
+		if err := ctx.ResetTx(); err != nil {
+			return nil, err
+		}
+	}
+	return ctx.dataTx, nil
+}
+
+func (ctx *TokenTxContext) Get(key string) ([]byte, error) {
+	tx, err := ctx.tx()
+	if err != nil {
+		return nil, err
+	}
+	val, meta, err := tx.Get(ctx.tokenDBName, key)
+	if err != nil {
+		return nil, wrapOrionError(err, "failed to get ket [%v] from db [%s] with metadata [%+v]", key, ctx.tokenDBName, meta)
+	}
+	return val, nil
+}
+
+func (ctx *TokenTxContext) Put(key string, val []byte, owner string, mustSign bool) error {
+	tx, err := ctx.tx()
+	if err != nil {
+		return err
+	}
+	err = tx.Put(ctx.tokenDBName, key, val, &oriontypes.AccessControl{
+		ReadWriteUsers: map[string]bool{
+			ctx.custodianId: true,
+			owner:           true,
+		},
+		SignPolicyForWrite: oriontypes.AccessControl_ALL,
+	})
+	if err != nil {
+		return wrapOrionError(err, "failed to put [%s] in db [%s]", key, ctx.tokenDBName)
+	}
+
+	if mustSign {
+		tx.AddMustSignUser(owner)
+	}
+
+	return nil
+}
+
+func (ctx *TokenTxContext) Delete(key string) error {
+	tx, err := ctx.tx()
+	if err != nil {
+		return err
+	}
+	if err = tx.Delete(ctx.tokenDBName, key); err != nil {
+		return wrapOrionError(err, "Fail to delete [%s] from db [%s]", key, ctx.tokenDBName)
+	}
+	return nil
+}
+
+// Abort a TX if it was initiated
+func (ctx *TokenTxContext) Abort() {
 	if ctx != nil && ctx.dataTx != nil {
 		abort(ctx.dataTx)
+		ctx.dataTx = nil
 	}
 }
 
-func (ctx *TokenContext) prepare() error {
+func (ctx *TokenTxContext) Prepare() error {
+	if ctx.dataTx == nil {
+		return errors.New("Attempt to prepare a transaction, but transaction was not created.")
+	}
+
 	txEnv, err := ctx.dataTx.SignConstructedTxEnvelopeAndCloseTx()
 	if err != nil {
 		return errors.Wrap(err, "failed to construct Tx envelope")
@@ -104,27 +164,33 @@ func (ctx *TokenContext) prepare() error {
 	return nil
 }
 
-func (ctx *TokenContext) getTokenDescription() (*types.TokenDescription, error) {
-	dataTx, err := ctx.m.adminSession.DataTx()
+func (ctx *TokenTxContext) fetchTokenDescription() error {
+	if ctx.description != nil {
+		return nil
+	}
+
+	// We create a new session since other users don't have read permissions to the types DB
+	dataTx, err := ctx.custodianSession.DataTx()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create DataTx")
+		return errors.Wrap(err, "failed to create DataTx")
 	}
 	defer abort(dataTx)
 
 	val, meta, err := dataTx.Get(TypesDBName, ctx.tokenDBName)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to Get %s", ctx.tokenDBName)
+		return wrapOrionError(err, "failed to Get description of type [%s]", ctx.typeId)
 	}
 	if val == nil {
-		return nil, common.NewErrNotFound("token type not found: %v", ctx.typeId)
+		return common.NewErrNotFound("token type not found")
 	}
 
 	desc := types.TokenDescription{}
 	if err = json.Unmarshal(val, &desc); err != nil {
-		return nil, errors.Wrapf(err, "failed to json.Unmarshal %s for DB %s", val, ctx.tokenDBName)
+		return errors.Wrapf(err, "failed to json.Unmarshal %s for type %s", val, ctx.typeId)
 	}
+	ctx.lg.Debugf("Token type description: %+v; metadata: %v", &desc, meta)
 
-	ctx.m.lg.Debugf("Token type description: %+v; metadata: %v", &desc, meta)
+	ctx.description = &desc
 
-	return &desc, nil
+	return nil
 }
