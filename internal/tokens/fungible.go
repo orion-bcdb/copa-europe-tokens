@@ -53,10 +53,15 @@ func getAccountKeyFromRecord(record *types.FungibleAccountRecord) string {
 }
 
 func (ctx *FungibleTxContext) getReserveOwner() (string, error) {
-	if err := ctx.fetchTokenDescription(); err != nil {
+	desc, err := ctx.getDescription()
+	if err != nil {
 		return "", err
 	}
-	return ctx.description.Extension["reserveOwner"], nil
+	owner, ok := desc.Extension["reserveOwner"]
+	if !ok {
+		return "", common.NewErrInternal("reserve owner is not specified for token type [%s]", ctx.typeId)
+	}
+	return owner, nil
 }
 
 func (ctx *FungibleTxContext) getAccountRecordRaw(owner string, account string) ([]byte, error) {

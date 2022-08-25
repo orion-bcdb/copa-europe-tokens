@@ -80,44 +80,41 @@ func (ctx *UserTxContext) Commit() error {
 	return nil
 }
 
-func (ctx *UserTxContext) fetchUser() error {
+func (ctx *UserTxContext) getUserRecord() (*oriontypes.User, error) {
 	if ctx.record != nil {
-		return nil
+		return ctx.record, nil
 	}
 
 	tx, err := ctx.tx()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	user, err := tx.GetUser(ctx.userId)
 	if err != nil {
-		return wrapOrionError(err, "failed to get user [%s]", ctx.userId)
+		return nil, wrapOrionError(err, "failed to get user [%s]", ctx.userId)
 	}
 
 	ctx.record = user
-	return nil
-}
-
-func (ctx *UserTxContext) ValidateUserExists() error {
-	err := ctx.fetchUser()
-	if err != nil {
-		return err
-	}
-
-	if ctx.record == nil {
-		return common.NewErrNotFound("user not found: %s", ctx.userId)
-	}
-
-	return nil
+	return ctx.record, nil
 }
 
 func (ctx *UserTxContext) Get() (*oriontypes.User, error) {
-	err := ctx.ValidateUserExists()
+	record, err := ctx.getUserRecord()
 	if err != nil {
 		return nil, err
 	}
-	return ctx.record, nil
+
+	if record == nil {
+		return nil, common.NewErrNotFound("user not found: %s", ctx.userId)
+	}
+
+	return record, nil
+}
+
+func (ctx *UserTxContext) ValidateUserExists() error {
+	_, err := ctx.Get()
+	return err
 }
 
 func (ctx *UserTxContext) Put(record *oriontypes.User) error {
@@ -127,7 +124,7 @@ func (ctx *UserTxContext) Put(record *oriontypes.User) error {
 	}
 	err = tx.PutUser(record, nil)
 	if err != nil {
-		return errors.Wrapf(err, "failed to put user: %s", ctx.record.Id)
+		return errors.Wrapf(err, "failed to put user: %s", record.Id)
 	}
 	ctx.record = record
 

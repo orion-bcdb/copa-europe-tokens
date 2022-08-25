@@ -164,33 +164,32 @@ func (ctx *TokenTxContext) Prepare() error {
 	return nil
 }
 
-func (ctx *TokenTxContext) fetchTokenDescription() error {
+func (ctx *TokenTxContext) getDescription() (*types.TokenDescription, error) {
 	if ctx.description != nil {
-		return nil
+		return ctx.description, nil
 	}
 
 	// We create a new session since other users don't have read permissions to the types DB
 	dataTx, err := ctx.custodianSession.DataTx()
 	if err != nil {
-		return errors.Wrap(err, "failed to create DataTx")
+		return nil, errors.Wrap(err, "failed to create DataTx")
 	}
 	defer abort(dataTx)
 
 	val, meta, err := dataTx.Get(TypesDBName, ctx.tokenDBName)
 	if err != nil {
-		return wrapOrionError(err, "failed to Get description of type [%s]", ctx.typeId)
+		return nil, wrapOrionError(err, "failed to Get description of type [%s]", ctx.typeId)
 	}
 	if val == nil {
-		return common.NewErrNotFound("token type not found")
+		return nil, common.NewErrNotFound("token type not found")
 	}
 
 	desc := types.TokenDescription{}
 	if err = json.Unmarshal(val, &desc); err != nil {
-		return errors.Wrapf(err, "failed to json.Unmarshal %s for type %s", val, ctx.typeId)
+		return nil, errors.Wrapf(err, "failed to json.Unmarshal %s for type %s", val, ctx.typeId)
 	}
 	ctx.lg.Debugf("Token type description: %+v; metadata: %v", &desc, meta)
 
 	ctx.description = &desc
-
-	return nil
+	return ctx.description, nil
 }

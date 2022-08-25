@@ -1249,7 +1249,7 @@ func (m *Manager) FungibleDeploy(request *types.FungibleDeployRequest) (*types.F
 		TypeId:       desc.TypeId,
 		Name:         desc.Name,
 		Description:  desc.Description,
-		ReserveOwner: desc.Extension["reserveOwner"],
+		ReserveOwner: request.ReserveOwner,
 		Supply:       0,
 		Url:          FungibleTypeURL(desc.TypeId),
 	}, nil
@@ -1262,6 +1262,11 @@ func (m *Manager) FungibleDescribe(typeId string) (*types.FungibleDescribeRespon
 	}
 	defer ctx.Abort()
 
+	desc, err := ctx.getDescription()
+	if err != nil {
+		return nil, err
+	}
+
 	reserve, err := ctx.getReserveAccount()
 	if err != nil {
 		return nil, err
@@ -1273,12 +1278,12 @@ func (m *Manager) FungibleDescribe(typeId string) (*types.FungibleDescribeRespon
 	}
 
 	return &types.FungibleDescribeResponse{
-		TypeId:       typeId,
-		Name:         ctx.description.Name,
-		Description:  ctx.description.Description,
+		TypeId:       desc.TypeId,
+		Name:         desc.Name,
+		Description:  desc.Description,
 		ReserveOwner: reserveOwner,
 		Supply:       reserve.Supply,
-		Url:          FungibleTypeURL(typeId),
+		Url:          FungibleTypeURL(desc.TypeId),
 	}, nil
 }
 
@@ -1308,7 +1313,7 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 	if err = ctx.Prepare(); err != nil {
 		return nil, err
 	}
-	m.lg.Debugf("Processed mint request for token: %+v", ctx.description)
+	m.lg.Debugf("Processed mint request for token: %s", ctx.typeId)
 
 	return &types.FungibleMintResponse{
 		TypeId:        typeId,
