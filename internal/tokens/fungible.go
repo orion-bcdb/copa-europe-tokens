@@ -10,7 +10,6 @@ import (
 	"github.com/copa-europe-tokens/internal/common"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 )
 
@@ -218,67 +217,4 @@ func (ctx *FungibleTxContext) queryAccounts(owner string, account string) ([]typ
 		}
 	}
 	return records, nil
-}
-
-func (ctx *FungibleTxContext) internalFungiblePrepareTransfer(request *types.FungibleTransferRequest) (*types.FungibleTransferResponse, error) {
-	txUUID, err := uuid.NewRandom()
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to generate tx ID")
-	}
-	newRecord := types.FungibleAccountRecord{
-		Account: txUUID.String(),
-		Owner:   request.NewOwner,
-		Balance: request.Quantity,
-		Comment: request.Comment,
-	}
-
-	// Make sure we start a new TX to avoid false sharing with previous attempts
-	if err = ctx.ResetTx(); err != nil {
-		return nil, err
-	}
-
-	// Verify that the new generated account does not exist
-	val, err := ctx.getAccountRecordRaw(newRecord.Owner, newRecord.Account)
-	if err != nil {
-		return nil, err
-	}
-	if val != nil {
-		// Account already exist. We need to retry with a new TX
-		// to avoid false sharing between the existing account.
-		return nil, nil // Signify the calling method to retry.
-	}
-
-	fromRecord, err := ctx.getAccountRecord(request.Owner, request.Account)
-	if err != nil {
-		return nil, err
-	}
-
-	if request.Quantity > fromRecord.Balance {
-		return nil, common.NewErrInvalid("Insufficient funds in account %v of %v. Requested %v, Balance: %v", fromRecord.Account, fromRecord.Owner, request.Quantity, fromRecord.Balance)
-	}
-
-	fromRecord.Balance -= request.Quantity
-
-	if err = ctx.putAccountRecord(fromRecord); err != nil {
-		return nil, err
-	}
-
-	err = ctx.putAccountRecord(&newRecord)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = ctx.Prepare(); err != nil {
-		return nil, err
-	}
-
-	return &types.FungibleTransferResponse{
-		TypeId:        ctx.typeId,
-		Owner:         request.Owner,
-		Account:       request.Account,
-		NewOwner:      newRecord.Owner,
-		NewAccount:    newRecord.Account,
-		TxEnvelope:    ctx.TxEnvelope,
-		TxPayloadHash: ctx.TxPayloadHash,
-	}, nil
 }

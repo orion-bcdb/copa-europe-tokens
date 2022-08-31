@@ -1869,6 +1869,16 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 		assertTokenHttpErr(t, http.StatusBadRequest, response, err)
 	})
 
+	t.Run("error: owner==new-owner", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    "charlie",
+			NewOwner: "charlie",
+			Quantity: 10,
+		}
+		response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		assertTokenHttpErr(t, http.StatusBadRequest, response, err)
+	})
+
 	for _, user := range []string{"admin", "alice"} {
 		t.Run(fmt.Sprintf("error: transfer to %v", user), func(t *testing.T) {
 			transferRequest := &types.FungibleTransferRequest{
@@ -1982,8 +1992,10 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 
 	env.requireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
 
+	nUsers := len(env.users)
 	accounts := map[string][]string{}
-	for _, user := range append(env.users, reserveAccountUser) {
+	for _, user := range env.users {
+		// All users get 5 tokens from the reserve
 		for i := 0; i < 5; i++ {
 			transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, &types.FungibleTransferRequest{
 				Owner:    reserveAccountUser,
@@ -1997,10 +2009,28 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 
 			accounts[user] = append(accounts[user], transferResponse.NewAccount)
 		}
+
+		// Then each use transfer one token back to the reserve account
+		transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, &types.FungibleTransferRequest{
+			Owner:    user,
+			Account:  accounts[user][0],
+			NewOwner: reserveAccountUser,
+			Quantity: 1,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+
+		env.requireSignAndSubmit(t, user, (*FungibleTransferResponse)(transferResponse))
+		accounts[reserveAccountUser] = append(accounts[reserveAccountUser], transferResponse.NewAccount)
 	}
 
 	t.Run("success: all reserve (implicit)", func(t *testing.T) {
-		accList, err := env.manager.FungibleAccounts(typeId, reserveAccountUser, mainAccount)
+		accList, err := env.manager.FungibleAccounts(typeId, reserveAccountUser, "")
+		assert.NoError(t, err)
+		assert.Equal(t, nUsers+1, len(accList))
+
+		accList, err = env.manager.FungibleAccounts(typeId, reserveAccountUser, mainAccount)
 		assert.NoError(t, err)
 		assert.Equal(t, 1, len(accList))
 		reserveAccount := accList[0]
@@ -2014,13 +2044,13 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 
 		env.requireSignAndSubmit(t, "bob", (*FungibleConsolidateResponse)(response))
 
-		accList, err = env.manager.FungibleAccounts(typeId, reserveAccountUser, mainAccount)
+		accList, err = env.manager.FungibleAccounts(typeId, reserveAccountUser, "")
 		assert.NoError(t, err)
 		assert.Equal(t, 1, len(accList))
 		assertRecordEqual(t, types.FungibleAccountRecord{
 			Account: mainAccount,
 			Owner:   reserveAccountUser,
-			Balance: reserveAccount.Balance + 5,
+			Balance: reserveAccount.Balance + uint64(nUsers),
 		}, accList[0])
 	})
 
@@ -2040,7 +2070,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		assertRecordEqual(t, types.FungibleAccountRecord{
 			Account: mainAccount,
 			Owner:   "bob",
-			Balance: 5,
+			Balance: 4,
 			Comment: mainAccount,
 		}, accList[0])
 	})
@@ -2064,7 +2094,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		assertRecordEqual(t, types.FungibleAccountRecord{
 			Account: mainAccount,
 			Owner:   "charlie",
-			Balance: 5,
+			Balance: 4,
 			Comment: mainAccount,
 		}, accList[0])
 
@@ -2092,13 +2122,19 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		assertRecordEqual(t, types.FungibleAccountRecord{
 			Account: mainAccount,
 			Owner:   "dave",
-			Balance: 3,
+			Balance: 2,
 			Comment: mainAccount,
 		}, accList[0])
 
 		accList, err = env.manager.FungibleAccounts(typeId, "dave", "")
 		require.NoError(t, err)
 		assert.Equal(t, 3, len(accList))
+		expectedAccounts := append(accounts["dave"][3:], "main")
+		actualAccount := make([]string, len(accList))
+		for i, acc := range accList {
+			actualAccount[i] = acc.Account
+		}
+		assert.ElementsMatch(t, expectedAccounts, actualAccount)
 	})
 
 	t.Run("success: 1 additional dave account", func(t *testing.T) {
@@ -2120,13 +2156,19 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		assertRecordEqual(t, types.FungibleAccountRecord{
 			Account: mainAccount,
 			Owner:   "dave",
-			Balance: 4,
+			Balance: 3,
 			Comment: mainAccount,
 		}, accList[0])
 
 		accList, err = env.manager.FungibleAccounts(typeId, "dave", "")
 		require.NoError(t, err)
 		assert.Equal(t, 2, len(accList))
+		expectedAccounts := append(accounts["dave"][4:], "main")
+		actualAccount := make([]string, len(accList))
+		for i, acc := range accList {
+			actualAccount[i] = acc.Account
+		}
+		assert.ElementsMatch(t, expectedAccounts, actualAccount)
 	})
 
 	t.Run("error: no accounts to consolidate", func(t *testing.T) {

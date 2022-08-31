@@ -478,6 +478,20 @@ func TestTokensServer(t *testing.T) {
 		})
 		require.NotEmpty(t, typeId)
 
+		t.Run("get-types", func(t *testing.T) {
+			var response []types.TokenDescription
+			env.testGetRequest(t,
+				constants.TokensTypesEndpoint,
+				&response,
+			)
+			assert.GreaterOrEqual(t, len(response), 1)
+			tokenTypes := make([]string, len(response))
+			for i, token := range response {
+				tokenTypes[i] = token.TypeId
+			}
+			assert.Contains(t, tokenTypes, typeId)
+		})
+
 		// Update "bob"
 		userRecordBob.Privilege = nil
 		resp = env.Put(t, constants.TokensUsersSubTree+"bob", userRecordBob)
