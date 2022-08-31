@@ -58,7 +58,7 @@ func (ctx *FungibleTxContext) getReserveOwner() (string, error) {
 	}
 	owner, ok := desc.Extension["reserveOwner"]
 	if !ok {
-		return "", common.NewErrInternal("reserve owner is not specified for token type [%s]", ctx.typeId)
+		return "", common.NewErrInternal("Reserve owner is not specified for token type [%s]", ctx.typeId)
 	}
 	return owner, nil
 }
@@ -70,7 +70,7 @@ func (ctx *FungibleTxContext) getAccountRecordRaw(owner string, account string) 
 func unmarshalAccountRecord(rawRecord []byte) (*types.FungibleAccountRecord, error) {
 	record := types.FungibleAccountRecord{}
 	if err := json.Unmarshal(rawRecord, &record); err != nil {
-		return nil, errors.Wrapf(err, "failed to json.Unmarshal %s", rawRecord)
+		return nil, errors.Wrapf(err, "Failed to json.Unmarshal %s", rawRecord)
 	}
 	return &record, nil
 }
@@ -82,7 +82,7 @@ func (ctx *FungibleTxContext) getAccountRecord(owner string, account string) (*t
 	}
 	if val == nil {
 		ctx.lg.Debugf("Account does not exists: DB: %s, user %s, account: %s", ctx.tokenDBName, owner, account)
-		return nil, common.NewErrNotFound("account [%v] of user [%s] does not exists", account, owner)
+		return nil, common.NewErrNotFound("Account does not exists [%v:%v]", owner, account)
 	}
 
 	return unmarshalAccountRecord(val)
@@ -203,17 +203,17 @@ func (ctx *FungibleTxContext) queryAccounts(owner string, account string) ([]typ
 
 	jq, err := ctx.custodianSession.Query()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create JSONQuery")
+		return nil, errors.Wrap(err, "Failed to create JSONQuery")
 	}
 	queryResults, err := jq.ExecuteJSONQuery(ctx.tokenDBName, query)
 	if err != nil {
-		return nil, wrapOrionError(err, "failed to execute JSONQuery for token type [%s]", ctx.typeId)
+		return nil, wrapOrionError(err, "Failed to execute JSONQuery for token type [%s]", ctx.typeId)
 	}
 
 	records := make([]types.FungibleAccountRecord, len(queryResults))
 	for i, res := range queryResults {
 		if err = json.Unmarshal(res.GetValue(), &records[i]); err != nil {
-			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
+			return nil, errors.Wrap(err, "Failed to json.Unmarshal JSONQuery result")
 		}
 	}
 	return records, nil

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"regexp"
 	"sort"
 	"testing"
 	"time"
@@ -97,7 +98,7 @@ func TestTokensManager_Deploy(t *testing.T) {
 	t.Run("error: deploy again", func(t *testing.T) {
 		deployResponseBad, err := manager.DeployTokenType(deployRequestMy)
 		assert.Error(t, err)
-		assert.EqualError(t, err, "token type already exists")
+		assert.EqualError(t, err, "Token type already exists")
 		assert.Nil(t, deployResponseBad)
 	})
 
@@ -1368,7 +1369,7 @@ func assertTokenHttpErrMessage(t *testing.T, expectedStatus int, expectedMessage
 		return false
 	}
 
-	return assert.EqualError(t, actualErr, expectedMessage)
+	return assert.Regexp(t, regexp.MustCompile(fmt.Sprintf("(?i)%s", expectedMessage)), actualErr)
 }
 
 type fungibleTestEnv struct {
@@ -1526,7 +1527,7 @@ func TestTokensManager_FungibleDeploy(t *testing.T) {
 
 	t.Run("error: deploy again", func(t *testing.T) {
 		deployResponseBad, err := env.manager.FungibleDeploy(getDeployRequest("bob", 0))
-		assertTokenHttpErr(t, http.StatusConflict, deployResponseBad, err)
+		assertTokenHttpErrMessage(t, http.StatusConflict, "token type already exists", deployResponseBad, err)
 	})
 
 	t.Run("error: empty name", func(t *testing.T) {
@@ -1536,7 +1537,7 @@ func TestTokensManager_FungibleDeploy(t *testing.T) {
 			ReserveOwner: "bob",
 		}
 		deployResponseBad, err := env.manager.FungibleDeploy(deployRequestEmpty)
-		assertTokenHttpErr(t, http.StatusBadRequest, deployResponseBad, err)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "name is empty", deployResponseBad, err)
 	})
 
 	t.Run("error: empty owner", func(t *testing.T) {
@@ -1545,7 +1546,7 @@ func TestTokensManager_FungibleDeploy(t *testing.T) {
 			Description: "some description",
 		}
 		deployResponseBad, err := env.manager.FungibleDeploy(deployRequestEmpty)
-		assertTokenHttpErr(t, http.StatusBadRequest, deployResponseBad, err)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "Invalid user ID: empty", deployResponseBad, err)
 	})
 
 	t.Run("error: invalid owner", func(t *testing.T) {
@@ -1555,7 +1556,7 @@ func TestTokensManager_FungibleDeploy(t *testing.T) {
 			ReserveOwner: "nonuser",
 		}
 		deployResponseBad, err := env.manager.FungibleDeploy(deployRequestEmpty)
-		assertTokenHttpErr(t, http.StatusNotFound, deployResponseBad, err)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "user not found", deployResponseBad, err)
 	})
 
 	t.Run("error: admin/custodian owner", func(t *testing.T) {
@@ -1566,7 +1567,7 @@ func TestTokensManager_FungibleDeploy(t *testing.T) {
 				ReserveOwner: user,
 			}
 			deployResponseBad, err := env.manager.FungibleDeploy(deployRequestEmpty)
-			assertTokenHttpErr(t, http.StatusBadRequest, deployResponseBad, err)
+			assertTokenHttpErrMessage(t, http.StatusBadRequest, "cannot participate in token activities", deployResponseBad, err)
 		}
 	})
 }
@@ -1649,20 +1650,20 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 	t.Run("error: zero supply", func(t *testing.T) {
 		mintRequest := &types.FungibleMintRequest{Supply: 0}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
-		assertTokenHttpErr(t, http.StatusBadRequest, mintResponse, err)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "must be a positive", mintResponse, err)
 	})
 
 	t.Run("error: type does not exists", func(t *testing.T) {
 		mintRequest := &types.FungibleMintRequest{Supply: 1}
 		tokenTypeIDBase64, _ := NameToID("FakeToken")
-		mintResponse, err := env.manager.FungiblePrepareMint(tokenTypeIDBase64, mintRequest)
-		assertTokenHttpErr(t, http.StatusNotFound, mintResponse, err)
+		response, err := env.manager.FungiblePrepareMint(tokenTypeIDBase64, mintRequest)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "db '.*' doesn't exist", response, err)
 	})
 
 	t.Run("error: invalid type", func(t *testing.T) {
 		mintRequest := &types.FungibleMintRequest{Supply: 1}
-		mintResponse, err := env.manager.FungiblePrepareMint("a", mintRequest)
-		assertTokenHttpErr(t, http.StatusBadRequest, mintResponse, err)
+		response, err := env.manager.FungiblePrepareMint("a", mintRequest)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
 	})
 }
 
@@ -1866,7 +1867,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 			Quantity: 10,
 		}
 		response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
-		assertTokenHttpErr(t, http.StatusBadRequest, response, err)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "insufficient funds", response, err)
 	})
 
 	t.Run("error: owner==new-owner", func(t *testing.T) {
@@ -1876,7 +1877,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 			Quantity: 10,
 		}
 		response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
-		assertTokenHttpErr(t, http.StatusBadRequest, response, err)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "must be different", response, err)
 	})
 
 	for _, user := range []string{"admin", "alice"} {
@@ -1887,7 +1888,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 				Quantity: 1,
 			}
 			response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
-			assertTokenHttpErr(t, http.StatusBadRequest, response, err)
+			assertTokenHttpErrMessage(t, http.StatusBadRequest, "cannot participate in token activities", response, err)
 		})
 	}
 
@@ -1899,7 +1900,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 			Quantity: 1,
 		}
 		response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
-		assertTokenHttpErr(t, http.StatusNotFound, response, err)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "account does not exists", response, err)
 	})
 
 	t.Run("error: owner does not exists", func(t *testing.T) {
@@ -1909,7 +1910,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 			Quantity: 1,
 		}
 		response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
-		assertTokenHttpErr(t, http.StatusNotFound, response, err)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "account does not exists", response, err)
 	})
 
 	t.Run("error: new owner does not exists", func(t *testing.T) {
@@ -1923,7 +1924,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 		require.NotNil(t, transferResponse)
 
 		response, err := env.fungibleSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
-		assertTokenHttpErr(t, http.StatusNotFound, response, err)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "the user .* does not exist", response, err)
 	})
 
 	t.Run("error: wrong signature", func(t *testing.T) {
@@ -1963,7 +1964,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 
 		tokenTypeIDBase64, _ := NameToID("FakeToken")
 		response, err := env.manager.FungiblePrepareTransfer(tokenTypeIDBase64, transferRequest)
-		assertTokenHttpErr(t, http.StatusNotFound, response, err)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "db '.*' doesn't exist", response, err)
 	})
 
 	t.Run("error: invalid type", func(t *testing.T) {
@@ -1973,7 +1974,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 			Quantity: 1,
 		}
 		response, err := env.manager.FungiblePrepareTransfer("a", transferRequest)
-		assertTokenHttpErr(t, http.StatusBadRequest, response, err)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
 	})
 }
 
@@ -2176,7 +2177,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 			Owner: "bob",
 		}
 		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
-		assertTokenHttpErr(t, http.StatusNotFound, response, err)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "did not found accounts", response, err)
 	})
 
 	t.Run("error: empty account list", func(t *testing.T) {
@@ -2185,7 +2186,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 			Accounts: []string{},
 		}
 		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
-		assertTokenHttpErr(t, http.StatusBadRequest, response, err)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "must have at least one account", response, err)
 	})
 
 	t.Run("error: include 'main' in list", func(t *testing.T) {
@@ -2194,7 +2195,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 			Accounts: []string{"main"},
 		}
 		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
-		assertTokenHttpErr(t, http.StatusBadRequest, response, err)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "account cannot be consolidated", response, err)
 	})
 
 	t.Run("error: account does not exist", func(t *testing.T) {
@@ -2203,13 +2204,13 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 			Accounts: []string{"fake-account"},
 		}
 		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
-		assertTokenHttpErr(t, http.StatusNotFound, response, err)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "account does not exists", response, err)
 	})
 
 	t.Run("error: owner does not exists", func(t *testing.T) {
 		request := &types.FungibleConsolidateRequest{Owner: "non-user"}
 		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
-		assertTokenHttpErr(t, http.StatusNotFound, response, err)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "did not found accounts", response, err)
 	})
 
 	t.Run("error: wrong signature", func(t *testing.T) {
@@ -2236,12 +2237,16 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		request := &types.FungibleConsolidateRequest{Owner: "dave"}
 		tokenTypeIDBase64, _ := NameToID("FakeToken")
 		response, err := env.manager.FungiblePrepareConsolidate(tokenTypeIDBase64, request)
-		assertTokenHttpErr(t, http.StatusNotFound, response, err)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "'.*' does not exist", response, err)
+
+		request.Accounts = []string{"fake-account"}
+		response, err = env.manager.FungiblePrepareConsolidate(tokenTypeIDBase64, request)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "db '.*' doesn't exist", response, err)
 	})
 
 	t.Run("error: invalid type", func(t *testing.T) {
 		request := &types.FungibleConsolidateRequest{Owner: "dave"}
 		response, err := env.manager.FungiblePrepareConsolidate("a", request)
-		assertTokenHttpErr(t, http.StatusBadRequest, response, err)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
 	})
 }

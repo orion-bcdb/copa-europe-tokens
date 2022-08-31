@@ -206,7 +206,7 @@ func (m *Manager) deployNewTokenType(desc *types.TokenDescription, indices ...st
 		return wrapOrionError(err, "failed to get user [%s]", m.config.Users.Custodian.UserID)
 	}
 	if _, exists := custodian.GetPrivilege().GetDbPermission()[tokenDBName]; exists {
-		return common.NewErrExist("token type already exists")
+		return common.NewErrExist("Token type already exists")
 	}
 
 	// Save token description to Types-DB
@@ -1418,7 +1418,7 @@ func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.Fungi
 			if accName == "" {
 				return nil, common.NewErrInvalid("Account name cannot be empty")
 			} else if accName == mainAccount {
-				return nil, common.NewErrInvalid("'%v' account cannot be consolidated", accName)
+				return nil, common.NewErrInvalid("The main account cannot be consolidated")
 			}
 		}
 	} else {
