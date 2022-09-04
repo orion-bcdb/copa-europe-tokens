@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -14,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/copa-europe-tokens/internal/common"
+	"github.com/copa-europe-tokens/internal/tokens"
 	"github.com/copa-europe-tokens/pkg/config"
 	"github.com/copa-europe-tokens/pkg/constants"
 	tokenscrypto "github.com/copa-europe-tokens/pkg/crypto"
@@ -25,12 +28,61 @@ import (
 	"github.com/hyperledger-labs/orion-server/pkg/server/testutils"
 	oriontypes "github.com/hyperledger-labs/orion-server/pkg/types"
 	"github.com/hyperledger-labs/orion-server/test/setup"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-func TestTokensServer_MainFlow(t *testing.T) {
+type serverTestEnv struct {
+	httpClient *http.Client
+	baseURL    *url.URL
+}
+
+func (e *serverTestEnv) resolveUrl(ref *url.URL) string {
+	return e.baseURL.ResolveReference(ref).String()
+}
+
+func (e *serverTestEnv) resolvePath(path string) string {
+	return e.baseURL.ResolveReference(&url.URL{Path: path}).String()
+}
+
+func (e *serverTestEnv) marshal(t *testing.T, body interface{}) io.Reader {
+	requestBytes, err := json.Marshal(&body)
+	require.NoError(t, err)
+	reader := bytes.NewReader(requestBytes)
+	require.NotNil(t, reader)
+	return reader
+}
+
+func (e *serverTestEnv) Get(t *testing.T, path string) *http.Response {
+	resp, err := e.httpClient.Get(e.resolvePath(path))
+	require.NoError(t, err)
+	return resp
+}
+
+func (e *serverTestEnv) GetWithQuery(t *testing.T, path string, query string) *http.Response {
+	resp, err := e.httpClient.Get(e.resolveUrl(&url.URL{Path: path, RawQuery: query}))
+	require.NoError(t, err)
+	return resp
+}
+
+func (e *serverTestEnv) Post(t *testing.T, path string, body interface{}) *http.Response {
+	resp, err := e.httpClient.Post(e.resolvePath(path), "application/json", e.marshal(t, body))
+	require.NoError(t, err)
+	return resp
+}
+
+func (e *serverTestEnv) Put(t *testing.T, path string, body interface{}) *http.Response {
+	req, err := http.NewRequest("PUT", e.resolvePath(path), e.marshal(t, body))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := e.httpClient.Do(req)
+	require.NoError(t, err)
+	return resp
+}
+
+func TestTokensServer(t *testing.T) {
 	dir, err := ioutil.TempDir("", "tokens-server-test")
 	require.NoError(t, err)
 
@@ -140,6 +192,21 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	baseURL, err := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", httpPort))
 	require.NoError(t, err)
 
+	env := serverTestEnv{
+		httpClient: httpClient,
+		baseURL:    baseURL,
+	}
+
+	certBob, signerBob := testutils.LoadTestCrypto(t, c.GetUserCertDir(), "bob")
+	_, bobKeyPath := c.GetUserCertKeyPath("bob")
+	hashSignerBob, err := tokenscrypto.NewSigner("bob", bobKeyPath)
+	require.NoError(t, err)
+
+	certCharlie, signerCharlie := testutils.LoadTestCrypto(t, c.GetUserCertDir(), "charlie")
+	_, charlieKeyPath := c.GetUserCertKeyPath("charlie")
+	hashSignerCharlie, err := tokenscrypto.NewSigner("charlie", charlieKeyPath)
+	require.NoError(t, err)
+
 	// GET /status
 	// make sure the token server is connected to Orion cluster
 	u := baseURL.ResolveReference(&url.URL{Path: constants.StatusEndpoint})
@@ -215,7 +282,6 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	u = baseURL.ResolveReference(&url.URL{Path: constants.TokensUsersEndpoint})
 
 	// Add "bob"
-	certBob, signerBob := testutils.LoadTestCrypto(t, c.GetUserCertDir(), "bob")
 	userRecordBob := &types.UserRecord{
 		Identity:    "bob",
 		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
@@ -230,7 +296,6 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	// Add "charlie"
-	certCharlie, signerCharlie := testutils.LoadTestCrypto(t, c.GetUserCertDir(), "charlie")
 	userRecordCharlie := &types.UserRecord{
 		Identity:    "charlie",
 		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
@@ -245,9 +310,6 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	// Mint some content tokens
-	_, bobKeyPath := c.GetUserCertKeyPath("bob")
-	hashSignerBob, err := tokenscrypto.NewSigner("bob", bobKeyPath)
-	require.NoError(t, err)
 	mintRequest1 := &types.MintRequest{
 		Owner:         "bob",
 		AssetData:     "Title: game 1",
@@ -273,9 +335,6 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	t.Logf("Minted: tokenId: %s, txId: %s", submitResponse3.TokenId, submitResponse3.TxId)
 
 	// Mint some rights tokens
-	_, charlieKeyPath := c.GetUserCertKeyPath("charlie")
-	hashSignerCharlie, err := tokenscrypto.NewSigner("charlie", charlieKeyPath)
-	require.NoError(t, err)
 	mintRequest4 := &types.MintRequest{
 		Owner:         "charlie",
 		AssetData:     "Lease: No. 1: " + submitResponse1.TokenId,
@@ -394,10 +453,243 @@ func TestTokensServer_MainFlow(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tokenRecords, 0)
 
+	t.Run("Fungible", func(t *testing.T) {
+		var typeId string
+		deployRequest := types.FungibleDeployRequest{
+			Name:         "Fungible test",
+			Description:  "Fungible test description",
+			ReserveOwner: "bob",
+		}
+
+		t.Run("deploy", func(t *testing.T) {
+			response := types.FungibleDeployResponse{}
+			env.testPostRequest(t,
+				constants.FungibleDeploy,
+				&deployRequest,
+				&response,
+				http.StatusCreated,
+			)
+			assert.NotEmpty(t, response.TypeId)
+			typeId = response.TypeId
+			assert.Equal(t, uint64(0), response.Supply)
+			assert.Equal(t, deployRequest.Name, response.Name)
+			assert.Equal(t, deployRequest.Description, response.Description)
+			lg.Infof("Fung resp: %v", response)
+		})
+		require.NotEmpty(t, typeId)
+
+		t.Run("get-types", func(t *testing.T) {
+			var response []types.TokenDescription
+			env.testGetRequest(t,
+				constants.TokensTypesEndpoint,
+				&response,
+			)
+			assert.GreaterOrEqual(t, len(response), 1)
+			tokenTypes := make([]string, len(response))
+			for i, token := range response {
+				tokenTypes[i] = token.TypeId
+			}
+			assert.Contains(t, tokenTypes, typeId)
+		})
+
+		// Update "bob"
+		userRecordBob.Privilege = nil
+		resp = env.Put(t, constants.TokensUsersSubTree+"bob", userRecordBob)
+		assertResponse(t, http.StatusOK, resp, &types.UserRecord{})
+
+		// Update "charlie"
+		userRecordCharlie.Privilege = nil
+		resp = env.Put(t, constants.TokensUsersSubTree+"charlie", userRecordCharlie)
+		assertResponse(t, http.StatusOK, resp, &types.UserRecord{})
+
+		t.Run("describe", func(t *testing.T) {
+			response := types.FungibleDescribeResponse{}
+			env.testGetRequest(t,
+				common.URLForType(constants.FungibleTypeRoot, typeId),
+				&response,
+			)
+			assert.Equal(t, typeId, response.TypeId)
+			assert.Equal(t, uint64(0), response.Supply)
+			assert.Equal(t, deployRequest.Name, response.Name)
+			assert.Equal(t, deployRequest.Description, response.Description)
+		})
+
+		supply := uint64(5)
+		t.Run("mint", func(t *testing.T) {
+			mintReq := types.FungibleMintRequest{Supply: supply}
+			mintResp := tokens.FungibleMintResponse{}
+			env.testPostSignAndSubmit(t,
+				common.URLForType(constants.FungibleMint, typeId),
+				&mintReq,
+				&mintResp,
+				http.StatusOK,
+				signerBob,
+			)
+			assert.Equal(t, typeId, mintResp.TypeId)
+
+			describeResp := types.FungibleDescribeResponse{}
+			env.testGetRequest(t,
+				common.URLForType(constants.FungibleTypeRoot, typeId),
+				&describeResp,
+			)
+			assert.Equal(t, typeId, describeResp.TypeId)
+			assert.Equal(t, supply, describeResp.Supply)
+		})
+
+		charlieQuantity := uint64(1)
+		t.Run("transfer", func(t *testing.T) {
+			transReq := types.FungibleTransferRequest{
+				Owner:    "reserve",
+				NewOwner: "charlie",
+				Quantity: charlieQuantity,
+			}
+			transResp := tokens.FungibleTransferResponse{}
+			env.testPostSignAndSubmit(t,
+				common.URLForType(constants.FungibleTransfer, typeId),
+				&transReq,
+				&transResp,
+				http.StatusOK,
+				signerBob,
+			)
+			assert.Equal(t, typeId, transResp.TypeId)
+			assert.Equal(t, transReq.Owner, transResp.Owner)
+			assert.Equal(t, "main", transResp.Account)
+			assert.Equal(t, transReq.NewOwner, transResp.NewOwner)
+			assert.NotEmpty(t, transResp.NewAccount)
+
+			describeResp := types.FungibleDescribeResponse{}
+			env.testGetRequest(t,
+				common.URLForType(constants.FungibleTypeRoot, typeId),
+				&describeResp,
+			)
+			assert.Equal(t, typeId, describeResp.TypeId)
+			assert.Equal(t, supply, describeResp.Supply)
+		})
+
+		t.Run("reserve account", func(t *testing.T) {
+			var accounts []types.FungibleAccountRecord
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.FungibleAccounts, typeId),
+				url.Values{"owner": []string{"reserve"}}.Encode(),
+				&accounts,
+			)
+			assert.Len(t, accounts, 1)
+			assert.Equal(t, "reserve", accounts[0].Owner)
+			assert.Equal(t, "main", accounts[0].Account)
+			assert.Equal(t, supply-charlieQuantity, accounts[0].Balance)
+		})
+
+		t.Run("charlie's accounts", func(t *testing.T) {
+			var accounts []types.FungibleAccountRecord
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.FungibleAccounts, typeId),
+				url.Values{"owner": []string{"charlie"}}.Encode(),
+				&accounts,
+			)
+			assert.Len(t, accounts, 1)
+			assert.Equal(t, "charlie", accounts[0].Owner)
+			assert.NotEmpty(t, accounts[0].Account)
+			assert.NotEqual(t, "main", accounts[0].Account)
+			assert.Equal(t, charlieQuantity, accounts[0].Balance)
+		})
+
+		t.Run("consolidate", func(t *testing.T) {
+			request := types.FungibleConsolidateRequest{
+				Owner: "charlie",
+			}
+			response := tokens.FungibleConsolidateResponse{}
+			env.testPostSignAndSubmit(t,
+				common.URLForType(constants.FungibleConsolidate, typeId),
+				&request,
+				&response,
+				http.StatusOK,
+				signerCharlie,
+			)
+			assert.Equal(t, typeId, response.TypeId)
+			assert.Equal(t, request.Owner, response.Owner)
+		})
+
+		t.Run("charlie's main account", func(t *testing.T) {
+			var accounts []types.FungibleAccountRecord
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.FungibleAccounts, typeId),
+				url.Values{"owner": []string{"charlie"}}.Encode(),
+				&accounts,
+			)
+			assert.Len(t, accounts, 1)
+			assert.Equal(t, "charlie", accounts[0].Owner)
+			assert.Equal(t, "main", accounts[0].Account)
+			assert.Equal(t, charlieQuantity, accounts[0].Balance)
+		})
+	})
+
 	wg.Add(1)
 	err = tokensServer.Stop()
 	require.NoError(t, err)
 	wg.Wait()
+}
+
+// =================================================
+// Helpers
+// =================================================
+
+// assertResponse validates the status code and the response fields
+func assertResponse(t *testing.T, expectedStatus int, resp *http.Response, responseBody interface{}) bool {
+	// Read the response body into a buffer, so we could print it in case of an error
+	buf := new(bytes.Buffer)
+	_, err := buf.ReadFrom(resp.Body)
+	require.NoError(t, err)
+
+	if assert.Equal(t, expectedStatus, resp.StatusCode, "Status: %d, Response: %s", resp.StatusCode, buf.String()) {
+		// If status code matches, then attempt to validate the response fields
+		decoder := json.NewDecoder(buf)
+		decoder.DisallowUnknownFields()
+		err = decoder.Decode(&responseBody)
+		return assert.NoError(t, err, "Status: %d, Response: %s", resp.StatusCode, buf.String())
+	}
+
+	return false
+}
+
+func (e *serverTestEnv) testPostRequest(
+	t *testing.T, path string, request interface{}, response interface{}, expectedStatus int,
+) {
+	assertResponse(t, expectedStatus, e.Post(t, path, request), response)
+}
+
+func (e *serverTestEnv) testGetRequest(
+	t *testing.T, path string, response interface{},
+) {
+	assertResponse(t, http.StatusOK, e.Get(t, path), response)
+}
+
+func (e *serverTestEnv) testGetRequestWithQuery(
+	t *testing.T, path string, query string, response interface{},
+) {
+	assertResponse(t, http.StatusOK, e.GetWithQuery(t, path, query), response)
+}
+
+func (e *serverTestEnv) testPostSignAndSubmit(
+	t *testing.T, path string, request interface{}, response tokens.SignatureRequester, status int, signer crypto.Signer,
+) *types.FungibleSubmitResponse {
+	// Prepare
+	e.testPostRequest(t, path, request, response, status)
+
+	// Sign
+	submitRequest, err := tokens.SignTransactionResponse(signer, response)
+	require.NoError(t, err)
+
+	submitResponse := types.FungibleSubmitResponse{}
+	// Submit
+	e.testPostRequest(
+		t,
+		constants.FungibleSubmit,
+		submitRequest.ToFungibleRequest(),
+		&submitResponse,
+		http.StatusOK,
+	)
+
+	return &submitResponse
 }
 
 func deployTokenType(t *testing.T, httpClient *http.Client, baseURL *url.URL, deployReq2 *types.DeployRequest) *types.DeployResponse {

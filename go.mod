@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/golang/protobuf v1.5.2
+	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/hyperledger-labs/orion-sdk-go v0.0.0-20220628135226-31c863fdb78d
 	github.com/hyperledger-labs/orion-server v0.2.4-0.20220621134147-6a9aeaf38f9a

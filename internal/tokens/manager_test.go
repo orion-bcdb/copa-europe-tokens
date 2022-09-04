@@ -4,15 +4,20 @@
 package tokens
 
 import (
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path"
+	"reflect"
+	"regexp"
 	"sort"
 	"testing"
 	"time"
 
+	"github.com/copa-europe-tokens/internal/common"
 	"github.com/copa-europe-tokens/pkg/config"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
@@ -93,7 +98,7 @@ func TestTokensManager_Deploy(t *testing.T) {
 	t.Run("error: deploy again", func(t *testing.T) {
 		deployResponseBad, err := manager.DeployTokenType(deployRequestMy)
 		assert.Error(t, err)
-		assert.EqualError(t, err, "token type already exists")
+		assert.EqualError(t, err, "Token type already exists")
 		assert.Nil(t, deployResponseBad)
 	})
 
@@ -396,8 +401,9 @@ func TestTokensManager_MintToken(t *testing.T) {
 		}
 
 		submitResponse, err := manager.SubmitTx(submitRequest)
-		require.EqualError(t, err, "failed to submit transaction, server returned: status: 401 Unauthorized, message: signature verification failed")
-		require.IsType(t, &ErrPermission{}, err)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "signature verification failed")
+		require.IsType(t, &ErrPermission{}, err, "Error: %v", err)
 		require.Nil(t, submitResponse)
 	})
 
@@ -603,8 +609,8 @@ func TestTokensManager_TransferToken(t *testing.T) {
 		}
 
 		submitResponse, err := manager.SubmitTx(submitRequest)
-		assert.Contains(t, err.Error(), "is not valid, flag: INVALID_INCORRECT_ENTRIES, reason: the user [david] defined in the access control for the key [gm8Ndnh5x9firTQ2FLrIcQ] does not exist")
-		assert.IsType(t, &ErrInvalid{}, err)
+		assert.Contains(t, err.Error(), "the user [david] defined in the access control for the key [gm8Ndnh5x9firTQ2FLrIcQ] does not exist")
+		assert.IsType(t, &ErrNotFound{}, err, "Error: %v", err)
 		require.Nil(t, submitResponse)
 	})
 
@@ -934,8 +940,9 @@ func TestTokensManager_RegisterAnnotation(t *testing.T) {
 		}
 
 		submitResponse, err := manager.SubmitTx(submitRequest)
-		require.EqualError(t, err, "failed to submit transaction, server returned: status: 401 Unauthorized, message: signature verification failed")
-		require.IsType(t, &ErrPermission{}, err)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "signature verification failed")
+		require.IsType(t, &ErrPermission{}, err, "Error: %v", err)
 		require.Nil(t, submitResponse)
 	})
 
@@ -1193,6 +1200,17 @@ func TestManager_Users(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
+	// Update user with non-existing type
+	fakeType, err := NameToID("bogus-type")
+	require.NoError(t, err)
+	err = manager.UpdateUser(&types.UserRecord{
+		Identity:    "bob",
+		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
+		Privilege:   []string{fakeType},
+	})
+	assert.Error(t, err)
+	assert.IsType(t, &ErrInvalid{}, err, "Error: %v", err)
+
 	// Get updated user
 	userRecord, err = manager.GetUser("bob")
 	assert.NoError(t, err)
@@ -1221,7 +1239,11 @@ func TestManager_Users(t *testing.T) {
 	assert.IsType(t, &ErrNotFound{}, err)
 }
 
-func assertEqualDeployResponse(t *testing.T, expected, actual *types.DeployResponse) {
+// ============================================================
+// Test helpers
+// ============================================================
+
+func assertEqualDeployResponse(t *testing.T, expected *types.DeployResponse, actual *types.TokenDescription) {
 	assert.Equal(t, expected.Name, actual.Name)
 	assert.Equal(t, expected.TypeId, actual.TypeId)
 	assert.Equal(t, expected.Description, actual.Description)
@@ -1319,4 +1341,912 @@ func (e *testEnv) clean() {
 		_ = e.cluster.ShutdownAndCleanup()
 	}
 	_ = os.RemoveAll(e.dir)
+}
+
+// ============================================================
+// Fungible test helpers
+// ============================================================
+
+func assertTokenHttpErr(t *testing.T, expectedStatus int, actualResponse interface{}, actualErr error) bool {
+	if !assert.Nil(t, actualResponse, "Response %+v, Error: %v", actualResponse, actualErr) {
+		return false
+	}
+
+	if !assert.Error(t, actualErr) {
+		return false
+	}
+
+	tknErr, ok := actualErr.(*common.TokenHttpErr)
+	if !ok {
+		return assert.Fail(t, fmt.Sprintf("Error expected to implement TokenHttpErr, but was %v.",
+			reflect.TypeOf(actualErr)), "Error: %v", actualErr)
+	}
+	return assert.Equal(t, expectedStatus, tknErr.StatusCode, "Error: %v", actualErr)
+}
+
+func assertTokenHttpErrMessage(t *testing.T, expectedStatus int, expectedMessage string, actualResponse interface{}, actualErr error) bool {
+	if !assertTokenHttpErr(t, expectedStatus, actualResponse, actualErr) {
+		return false
+	}
+
+	return assert.Regexp(t, regexp.MustCompile(fmt.Sprintf("(?i)%s", expectedMessage)), actualErr)
+}
+
+type fungibleTestEnv struct {
+	testEnv
+	manager     *Manager
+	users       []string
+	userRecords map[string]*types.UserRecord
+	certs       map[string]*x509.Certificate
+	signers     map[string]crypto.Signer
+}
+
+func newFungibleTestEnv(t *testing.T) *fungibleTestEnv {
+	e := &fungibleTestEnv{
+		testEnv:     *newTestEnv(t),
+		userRecords: map[string]*types.UserRecord{},
+		certs:       map[string]*x509.Certificate{},
+		signers:     map[string]crypto.Signer{},
+	}
+
+	manager, err := NewManager(e.conf, e.lg)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+	e.manager = manager
+
+	stat, err := e.manager.GetStatus()
+	require.NoError(t, err)
+	require.Contains(t, stat, "connected:")
+
+	keyPair, err := e.cluster.GetX509KeyPair()
+	require.NoError(t, err)
+	require.NoError(t, e.cluster.CreateUserCerts("dave", keyPair))
+
+	for _, user := range []string{"alice", "admin"} {
+		e.certs[user], e.signers[user] = testutils.LoadTestCrypto(t, e.cluster.GetUserCertDir(), user)
+	}
+
+	e.addUser(t, "bob")
+	e.addUser(t, "charlie")
+	e.addUser(t, "dave")
+
+	return e
+}
+
+func (e *fungibleTestEnv) addUser(t *testing.T, user string) {
+	cert, signer := testutils.LoadTestCrypto(t, e.cluster.GetUserCertDir(), user)
+	record := &types.UserRecord{
+		Identity:    user,
+		Certificate: base64.StdEncoding.EncodeToString(cert.Raw),
+		Privilege:   nil,
+	}
+	err := e.manager.AddUser(record)
+	require.NoError(t, err)
+	e.userRecords[user] = record
+	e.certs[user] = cert
+	e.signers[user] = signer
+	e.users = append(e.users, user)
+}
+
+func (e *fungibleTestEnv) updateUsers(t *testing.T) {
+	for _, record := range e.userRecords {
+		err := e.manager.UpdateUser(record)
+		require.NoError(t, err)
+	}
+}
+
+func (e *fungibleTestEnv) fungibleSignAndSubmit(t *testing.T, user string, response SignatureRequester) (*types.FungibleSubmitResponse, error) {
+	submitCtx, err := SignTransactionResponse(e.signers[user], response)
+	require.NoError(t, err)
+	return e.manager.FungibleSubmitTx(submitCtx.ToFungibleRequest())
+}
+
+func (e *fungibleTestEnv) requireSignAndSubmit(t *testing.T, user string, response SignatureRequester) *types.FungibleSubmitResponse {
+	submitResponse, err := e.fungibleSignAndSubmit(t, user, response)
+	require.NoError(t, err)
+	require.NotNil(t, submitResponse)
+	return submitResponse
+}
+
+func (e *fungibleTestEnv) wrongSignAndSubmit(user string, response SignatureRequester) (*types.FungibleSubmitResponse, error) {
+	submitRequest := response.PrepareSubmit()
+	submitRequest.Signer = user
+	submitRequest.Signature = base64.StdEncoding.EncodeToString([]byte("bogus-sig"))
+	return e.manager.FungibleSubmitTx(submitRequest.ToFungibleRequest())
+}
+
+// ============================================================
+// Fungible
+// ============================================================
+
+func getDeployRequest(owner string, index int) *types.FungibleDeployRequest {
+	return &types.FungibleDeployRequest{
+		Name:         fmt.Sprintf("%v's Fungible #%v", owner, index),
+		Description:  fmt.Sprintf("%v's  Test Fungible #%v", owner, index),
+		ReserveOwner: owner,
+	}
+}
+
+func getDeployRequests(owner string, num int) []*types.FungibleDeployRequest {
+	var requests []*types.FungibleDeployRequest
+	for i := 0; i < num; i++ {
+		requests = append(requests, getDeployRequest(owner, i))
+	}
+	return requests
+}
+
+func assertRecordEqual(t *testing.T, expected types.FungibleAccountRecord, actual types.FungibleAccountRecord) bool {
+	if expected.Account == "" {
+		expected.Account = mainAccount
+	}
+
+	if expected.Comment == "__ignore__" || (expected.Owner == reserveAccountUser && expected.Account == mainAccount) {
+		expected.Comment = ""
+		actual.Comment = ""
+	}
+
+	return assert.Equal(t, expected, actual)
+}
+
+func TestTokensManager_FungibleDeploy(t *testing.T) {
+	env := newFungibleTestEnv(t)
+
+	const messageCount = 3
+
+	t.Run("success: deploy fungible and describe", func(t *testing.T) {
+		for user := range env.userRecords {
+			requests := getDeployRequests(user, messageCount)
+
+			for _, request := range requests {
+				deployResponse, err := env.manager.FungibleDeploy(request)
+				require.NoError(t, err)
+				require.NotNil(t, deployResponse)
+
+				expectedIdMy, _ := NameToID(request.Name)
+				expectedDescribe := types.FungibleDescribeResponse{
+					TypeId:       expectedIdMy,
+					Name:         request.Name,
+					Description:  request.Description,
+					Supply:       0,
+					ReserveOwner: request.ReserveOwner,
+					Url:          common.URLForType(constants.FungibleTypeRoot, expectedIdMy),
+				}
+				assert.Equal(t, (*types.FungibleDeployResponse)(&expectedDescribe), deployResponse)
+
+				describeResponse, err := env.manager.FungibleDescribe(expectedIdMy)
+				require.NoError(t, err)
+				require.NotNil(t, deployResponse)
+				assert.Equal(t, &expectedDescribe, describeResponse)
+			}
+		}
+
+		allTypes, err := env.manager.GetTokenTypes()
+		assert.NoError(t, err)
+		assert.Equal(t, messageCount*len(env.userRecords), len(allTypes))
+	})
+
+	t.Run("error: deploy again", func(t *testing.T) {
+		deployResponseBad, err := env.manager.FungibleDeploy(getDeployRequest("bob", 0))
+		assertTokenHttpErrMessage(t, http.StatusConflict, "token type already exists", deployResponseBad, err)
+	})
+
+	t.Run("error: empty name", func(t *testing.T) {
+		deployRequestEmpty := &types.FungibleDeployRequest{
+			Name:         "",
+			Description:  "",
+			ReserveOwner: "bob",
+		}
+		deployResponseBad, err := env.manager.FungibleDeploy(deployRequestEmpty)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "name is empty", deployResponseBad, err)
+	})
+
+	t.Run("error: empty owner", func(t *testing.T) {
+		deployRequestEmpty := &types.FungibleDeployRequest{
+			Name:        "new-name",
+			Description: "some description",
+		}
+		deployResponseBad, err := env.manager.FungibleDeploy(deployRequestEmpty)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "Invalid user ID: empty", deployResponseBad, err)
+	})
+
+	t.Run("error: invalid owner", func(t *testing.T) {
+		deployRequestEmpty := &types.FungibleDeployRequest{
+			Name:         "new-name",
+			Description:  "some description",
+			ReserveOwner: "nonuser",
+		}
+		deployResponseBad, err := env.manager.FungibleDeploy(deployRequestEmpty)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "user not found", deployResponseBad, err)
+	})
+
+	t.Run("error: admin/custodian owner", func(t *testing.T) {
+		for _, user := range []string{"admin", "alice"} {
+			deployRequestEmpty := &types.FungibleDeployRequest{
+				Name:         "new-name",
+				Description:  "some description",
+				ReserveOwner: user,
+			}
+			deployResponseBad, err := env.manager.FungibleDeploy(deployRequestEmpty)
+			assertTokenHttpErrMessage(t, http.StatusBadRequest, "cannot participate in token activities", deployResponseBad, err)
+		}
+	})
+}
+
+func TestTokensManager_FungibleMintToken(t *testing.T) {
+	env := newFungibleTestEnv(t)
+
+	response, err := env.manager.FungibleDeploy(getDeployRequest("bob", 0))
+	require.NoError(t, err)
+	typeId := response.TypeId
+
+	t.Run("error: wrong signature (before mint)", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		submitResponse, err := env.wrongSignAndSubmit("bob", (*FungibleMintResponse)(mintResponse))
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: wrong signer (before mint)", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		submitResponse, err := env.fungibleSignAndSubmit(t, "charlie", (*FungibleMintResponse)(mintResponse))
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("success: signed by owner", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		submitResponse := env.requireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+		require.Equal(t, typeId, submitResponse.TypeId)
+
+		desc, err := env.manager.FungibleDescribe(typeId)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(5), desc.Supply)
+	})
+
+	t.Run("success: second mint", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		submitResponse := env.requireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+		require.Equal(t, typeId, submitResponse.TypeId)
+
+		desc, err := env.manager.FungibleDescribe(typeId)
+		require.NoError(t, err)
+		require.Equal(t, uint64(10), desc.Supply)
+	})
+
+	t.Run("error: wrong signature (after mint)", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		submitResponse, err := env.wrongSignAndSubmit("bob", (*FungibleMintResponse)(mintResponse))
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: wrong signer (after mint)", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		submitResponse, err := env.fungibleSignAndSubmit(t, "charlie", (*FungibleMintResponse)(mintResponse))
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: zero supply", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Supply: 0}
+		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "must be a positive", mintResponse, err)
+	})
+
+	t.Run("error: type does not exists", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Supply: 1}
+		tokenTypeIDBase64, _ := NameToID("FakeToken")
+		response, err := env.manager.FungiblePrepareMint(tokenTypeIDBase64, mintRequest)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "db '.*' doesn't exist", response, err)
+	})
+
+	t.Run("error: invalid type", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Supply: 1}
+		response, err := env.manager.FungiblePrepareMint("a", mintRequest)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
+	})
+}
+
+func TestTokensManager_FungibleTransferToken(t *testing.T) {
+	env := newFungibleTestEnv(t)
+
+	deployResponse, err := env.manager.FungibleDeploy(getDeployRequest("bob", 0))
+	require.NoError(t, err)
+	typeId := deployResponse.TypeId
+
+	mintRequest := &types.FungibleMintRequest{Supply: 10}
+	mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+	require.NoError(t, err)
+	require.NotNil(t, mintResponse)
+
+	env.requireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+
+	t.Run("success: reserve to bob", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			Account:  mainAccount,
+			NewOwner: "bob",
+			Quantity: 2,
+			Comment:  "tip",
+		}
+		transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+		assert.Equal(t, typeId, transferResponse.TypeId)
+		assert.Equal(t, reserveAccountUser, transferResponse.Owner)
+		assert.Equal(t, mainAccount, transferResponse.Account)
+		assert.Equal(t, "bob", transferResponse.NewOwner)
+		assert.NotEmpty(t, transferResponse.NewAccount)
+
+		env.requireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
+
+		desc, err := env.manager.FungibleDescribe(typeId)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(10), desc.Supply)
+
+		accList, err := env.manager.FungibleAccounts(typeId, reserveAccountUser, mainAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Owner:   reserveAccountUser,
+			Account: mainAccount,
+			Balance: 8,
+		}, accList[0])
+
+		accList, err = env.manager.FungibleAccounts(typeId, "bob", transferResponse.NewAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: transferResponse.NewAccount,
+			Owner:   "bob",
+			Balance: 2,
+			Comment: transferRequest.Comment,
+		}, accList[0])
+	})
+
+	t.Run("success: reserve to charlie", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			Account:  mainAccount,
+			NewOwner: "charlie",
+			Quantity: 2,
+			Comment:  "tip",
+		}
+		transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+		assert.Equal(t, typeId, transferResponse.TypeId)
+		assert.Equal(t, reserveAccountUser, transferResponse.Owner)
+		assert.Equal(t, mainAccount, transferResponse.Account)
+		assert.Equal(t, "charlie", transferResponse.NewOwner)
+		assert.NotEmpty(t, transferResponse.NewAccount)
+
+		env.requireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
+
+		desc, err := env.manager.FungibleDescribe(typeId)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(10), desc.Supply)
+
+		accList, err := env.manager.FungibleAccounts(typeId, reserveAccountUser, mainAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: mainAccount,
+			Owner:   reserveAccountUser,
+			Balance: 6,
+		}, accList[0])
+
+		accList, err = env.manager.FungibleAccounts(typeId, "charlie", "")
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: transferResponse.NewAccount,
+			Owner:   "charlie",
+			Balance: 2,
+			Comment: transferRequest.Comment,
+		}, accList[0])
+	})
+
+	var charlieTxAccount string
+	t.Run("success: reserve to charlie (implicit account)", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			NewOwner: "charlie",
+			Quantity: 2,
+			Comment:  "tip",
+		}
+		transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+		assert.Equal(t, typeId, transferResponse.TypeId)
+		assert.Equal(t, reserveAccountUser, transferResponse.Owner)
+		assert.Equal(t, mainAccount, transferResponse.Account)
+		assert.Equal(t, "charlie", transferResponse.NewOwner)
+		assert.NotEmpty(t, transferResponse.NewAccount)
+		charlieTxAccount = transferResponse.NewAccount
+
+		env.requireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
+
+		desc, err := env.manager.FungibleDescribe(typeId)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(10), desc.Supply)
+
+		accList, err := env.manager.FungibleAccounts(typeId, reserveAccountUser, mainAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: mainAccount,
+			Owner:   reserveAccountUser,
+			Balance: 4,
+		}, accList[0])
+
+		accList, err = env.manager.FungibleAccounts(typeId, "charlie", charlieTxAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: charlieTxAccount,
+			Owner:   "charlie",
+			Balance: 2,
+			Comment: transferRequest.Comment,
+		}, accList[0])
+	})
+
+	t.Run("success: charlie to reserve", func(t *testing.T) {
+		// Make sure charlie has permissions
+
+		env.updateUsers(t)
+		require.NotNil(t, charlieTxAccount)
+
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    "charlie",
+			Account:  charlieTxAccount,
+			NewOwner: reserveAccountUser,
+			Quantity: 1,
+			Comment:  "return",
+		}
+		transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+		assert.Equal(t, typeId, transferResponse.TypeId)
+		assert.Equal(t, "charlie", transferResponse.Owner)
+		assert.Equal(t, charlieTxAccount, transferResponse.Account)
+		assert.Equal(t, reserveAccountUser, transferResponse.NewOwner)
+		assert.NotEmpty(t, transferResponse.NewAccount)
+
+		env.requireSignAndSubmit(t, "charlie", (*FungibleTransferResponse)(transferResponse))
+
+		desc, err := env.manager.FungibleDescribe(typeId)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(10), desc.Supply)
+
+		accList, err := env.manager.FungibleAccounts(typeId, reserveAccountUser, transferResponse.NewAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: transferResponse.NewAccount,
+			Owner:   reserveAccountUser,
+			Comment: transferRequest.Comment,
+			Balance: 1,
+		}, accList[0])
+
+		accList, err = env.manager.FungibleAccounts(typeId, "charlie", charlieTxAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: charlieTxAccount,
+			Owner:   "charlie",
+			Balance: 1,
+			Comment: "__ignore__",
+		}, accList[0])
+	})
+
+	t.Run("error: insufficient funds", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			NewOwner: "charlie",
+			Quantity: 10,
+		}
+		response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "insufficient funds", response, err)
+	})
+
+	t.Run("error: owner==new-owner", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    "charlie",
+			NewOwner: "charlie",
+			Quantity: 10,
+		}
+		response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "must be different", response, err)
+	})
+
+	for _, user := range []string{"admin", "alice"} {
+		t.Run(fmt.Sprintf("error: transfer to %v", user), func(t *testing.T) {
+			transferRequest := &types.FungibleTransferRequest{
+				Owner:    reserveAccountUser,
+				NewOwner: user,
+				Quantity: 1,
+			}
+			response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+			assertTokenHttpErrMessage(t, http.StatusBadRequest, "cannot participate in token activities", response, err)
+		})
+	}
+
+	t.Run("error: account does not exists", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    "bob",
+			Account:  "fake",
+			NewOwner: "charlie",
+			Quantity: 1,
+		}
+		response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "account does not exists", response, err)
+	})
+
+	t.Run("error: owner does not exists", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    "nonuser",
+			NewOwner: "bob",
+			Quantity: 1,
+		}
+		response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "account does not exists", response, err)
+	})
+
+	t.Run("error: new owner does not exists", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			NewOwner: "nonuser",
+			Quantity: 1,
+		}
+		transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+
+		response, err := env.fungibleSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "the user .* does not exist", response, err)
+	})
+
+	t.Run("error: wrong signature", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			NewOwner: "charlie",
+			Quantity: 1,
+		}
+		response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		submitResponse, err := env.wrongSignAndSubmit("bob", (*FungibleTransferResponse)(response))
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: wrong signer", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			NewOwner: "charlie",
+			Quantity: 1,
+		}
+		response, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		submitResponse, err := env.fungibleSignAndSubmit(t, "dave", (*FungibleTransferResponse)(response))
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: type does not exists", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			NewOwner: "charlie",
+			Quantity: 1,
+		}
+
+		tokenTypeIDBase64, _ := NameToID("FakeToken")
+		response, err := env.manager.FungiblePrepareTransfer(tokenTypeIDBase64, transferRequest)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "db '.*' doesn't exist", response, err)
+	})
+
+	t.Run("error: invalid type", func(t *testing.T) {
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			NewOwner: "charlie",
+			Quantity: 1,
+		}
+		response, err := env.manager.FungiblePrepareTransfer("a", transferRequest)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
+	})
+}
+
+func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
+	env := newFungibleTestEnv(t)
+
+	deployResponse, err := env.manager.FungibleDeploy(getDeployRequest("bob", 0))
+	assert.NoError(t, err)
+	typeId := deployResponse.TypeId
+
+	env.updateUsers(t)
+
+	mintResponse, err := env.manager.FungiblePrepareMint(typeId, &types.FungibleMintRequest{Supply: 100})
+	require.NoError(t, err)
+	require.NotNil(t, mintResponse)
+
+	env.requireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+
+	nUsers := len(env.users)
+	accounts := map[string][]string{}
+	for _, user := range env.users {
+		// All users get 5 tokens from the reserve
+		for i := 0; i < 5; i++ {
+			transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, &types.FungibleTransferRequest{
+				Owner:    reserveAccountUser,
+				NewOwner: user,
+				Quantity: 1,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, transferResponse)
+
+			env.requireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
+
+			accounts[user] = append(accounts[user], transferResponse.NewAccount)
+		}
+
+		// Then each use transfer one token back to the reserve account
+		transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, &types.FungibleTransferRequest{
+			Owner:    user,
+			Account:  accounts[user][0],
+			NewOwner: reserveAccountUser,
+			Quantity: 1,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+
+		env.requireSignAndSubmit(t, user, (*FungibleTransferResponse)(transferResponse))
+		accounts[reserveAccountUser] = append(accounts[reserveAccountUser], transferResponse.NewAccount)
+	}
+
+	t.Run("success: all reserve (implicit)", func(t *testing.T) {
+		accList, err := env.manager.FungibleAccounts(typeId, reserveAccountUser, "")
+		assert.NoError(t, err)
+		assert.Equal(t, nUsers+1, len(accList))
+
+		accList, err = env.manager.FungibleAccounts(typeId, reserveAccountUser, mainAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		reserveAccount := accList[0]
+
+		request := &types.FungibleConsolidateRequest{Owner: reserveAccountUser}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+		assert.Equal(t, typeId, response.TypeId)
+		assert.Equal(t, reserveAccountUser, response.Owner)
+
+		env.requireSignAndSubmit(t, "bob", (*FungibleConsolidateResponse)(response))
+
+		accList, err = env.manager.FungibleAccounts(typeId, reserveAccountUser, "")
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: mainAccount,
+			Owner:   reserveAccountUser,
+			Balance: reserveAccount.Balance + uint64(nUsers),
+		}, accList[0])
+	})
+
+	t.Run("success: all bob (implicit)", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{Owner: "bob"}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+		assert.Equal(t, typeId, response.TypeId)
+		assert.Equal(t, "bob", response.Owner)
+
+		env.requireSignAndSubmit(t, "bob", (*FungibleConsolidateResponse)(response))
+
+		accList, err := env.manager.FungibleAccounts(typeId, "bob", mainAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: mainAccount,
+			Owner:   "bob",
+			Balance: 4,
+			Comment: mainAccount,
+		}, accList[0])
+	})
+
+	t.Run("success: all charlie (explicit)", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{
+			Owner:    "charlie",
+			Accounts: accounts["charlie"],
+		}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+		assert.Equal(t, typeId, response.TypeId)
+		assert.Equal(t, "charlie", response.Owner)
+
+		env.requireSignAndSubmit(t, "charlie", (*FungibleConsolidateResponse)(response))
+
+		accList, err := env.manager.FungibleAccounts(typeId, "charlie", mainAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: mainAccount,
+			Owner:   "charlie",
+			Balance: 4,
+			Comment: mainAccount,
+		}, accList[0])
+
+		accList, err = env.manager.FungibleAccounts(typeId, "charlie", "")
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+	})
+
+	t.Run("success: 3 dave", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{
+			Owner:    "dave",
+			Accounts: accounts["dave"][:3],
+		}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+		assert.Equal(t, typeId, response.TypeId)
+		assert.Equal(t, "dave", response.Owner)
+
+		env.requireSignAndSubmit(t, "dave", (*FungibleConsolidateResponse)(response))
+
+		accList, err := env.manager.FungibleAccounts(typeId, "dave", mainAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: mainAccount,
+			Owner:   "dave",
+			Balance: 2,
+			Comment: mainAccount,
+		}, accList[0])
+
+		accList, err = env.manager.FungibleAccounts(typeId, "dave", "")
+		require.NoError(t, err)
+		assert.Equal(t, 3, len(accList))
+		expectedAccounts := append(accounts["dave"][3:], "main")
+		actualAccount := make([]string, len(accList))
+		for i, acc := range accList {
+			actualAccount[i] = acc.Account
+		}
+		assert.ElementsMatch(t, expectedAccounts, actualAccount)
+	})
+
+	t.Run("success: 1 additional dave account", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{
+			Owner:    "dave",
+			Accounts: accounts["dave"][3:4],
+		}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+		assert.Equal(t, typeId, response.TypeId)
+		assert.Equal(t, "dave", response.Owner)
+
+		env.requireSignAndSubmit(t, "dave", (*FungibleConsolidateResponse)(response))
+
+		accList, err := env.manager.FungibleAccounts(typeId, "dave", mainAccount)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(accList))
+		assertRecordEqual(t, types.FungibleAccountRecord{
+			Account: mainAccount,
+			Owner:   "dave",
+			Balance: 3,
+			Comment: mainAccount,
+		}, accList[0])
+
+		accList, err = env.manager.FungibleAccounts(typeId, "dave", "")
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(accList))
+		expectedAccounts := append(accounts["dave"][4:], "main")
+		actualAccount := make([]string, len(accList))
+		for i, acc := range accList {
+			actualAccount[i] = acc.Account
+		}
+		assert.ElementsMatch(t, expectedAccounts, actualAccount)
+	})
+
+	t.Run("error: no accounts to consolidate", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{
+			Owner: "bob",
+		}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "did not found accounts", response, err)
+	})
+
+	t.Run("error: empty account list", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{
+			Owner:    "dave",
+			Accounts: []string{},
+		}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "must have at least one account", response, err)
+	})
+
+	t.Run("error: include 'main' in list", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{
+			Owner:    "dave",
+			Accounts: []string{"main"},
+		}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "account cannot be consolidated", response, err)
+	})
+
+	t.Run("error: account does not exist", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{
+			Owner:    "dave",
+			Accounts: []string{"fake-account"},
+		}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "account does not exists", response, err)
+	})
+
+	t.Run("error: owner does not exists", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{Owner: "non-user"}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "did not found accounts", response, err)
+	})
+
+	t.Run("error: wrong signature", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{Owner: "dave"}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		submitResponse, err := env.wrongSignAndSubmit("dave", (*FungibleConsolidateResponse)(response))
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: wrong signer", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{Owner: "dave"}
+		response, err := env.manager.FungiblePrepareConsolidate(typeId, request)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		submitResponse, err := env.fungibleSignAndSubmit(t, "charlie", (*FungibleConsolidateResponse)(response))
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: type does not exists", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{Owner: "dave"}
+		tokenTypeIDBase64, _ := NameToID("FakeToken")
+		response, err := env.manager.FungiblePrepareConsolidate(tokenTypeIDBase64, request)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "'.*' does not exist", response, err)
+
+		request.Accounts = []string{"fake-account"}
+		response, err = env.manager.FungiblePrepareConsolidate(tokenTypeIDBase64, request)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "db '.*' doesn't exist", response, err)
+	})
+
+	t.Run("error: invalid type", func(t *testing.T) {
+		request := &types.FungibleConsolidateRequest{Owner: "dave"}
+		response, err := env.manager.FungiblePrepareConsolidate("a", request)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
+	})
 }

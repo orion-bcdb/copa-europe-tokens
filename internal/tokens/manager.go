@@ -13,10 +13,12 @@ import (
 	"io/ioutil"
 	"strings"
 
+	"github.com/copa-europe-tokens/internal/common"
 	"github.com/copa-europe-tokens/pkg/config"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
 	"github.com/golang/protobuf/proto"
+	"github.com/google/uuid"
 	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
 	sdkconfig "github.com/hyperledger-labs/orion-sdk-go/pkg/config"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
@@ -41,8 +43,8 @@ type Operations interface {
 	// Generic token type API
 
 	DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error)
-	GetTokenType(tokenTypeId string) (*types.DeployResponse, error)
-	GetTokenTypes() ([]*types.DeployResponse, error)
+	GetTokenType(tokenTypeId string) (*types.TokenDescription, error)
+	GetTokenTypes() ([]*types.TokenDescription, error)
 
 	// Non fungible token type (NFT) API
 
@@ -86,15 +88,14 @@ type Manager struct {
 	adminSession     bcdb.DBSession
 	custodianSession bcdb.DBSession
 
+	//TODO support multiple instances of the token server
 	tokenTypesDBs map[string]bool
 }
 
-type TokenDescription struct {
-	TypeId      string `json:"typeId"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Class       string `json:"class"`
-	Url         string `json:"url,omitempty"`
+func abort(ctx bcdb.TxContext) {
+	if ctx != nil {
+		_ = ctx.Abort()
+	}
 }
 
 func NewManager(config *config.Configuration, lg *logger.SugarLogger) (*Manager, error) {
@@ -145,6 +146,10 @@ func NewManager(config *config.Configuration, lg *logger.SugarLogger) (*Manager,
 	return m, nil
 }
 
+// ====================================================
+// Management API
+// ====================================================
+
 func (m *Manager) Close() error {
 	//TODO
 	return nil
@@ -155,16 +160,16 @@ func (m *Manager) GetStatus() (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err, "failed to get status")
 	}
-	config, err := tx.GetClusterConfig()
+	clusterConfig, err := tx.GetClusterConfig()
 	if err != nil {
 		return "", errors.Wrap(err, "failed to get status")
 	}
 
 	b := strings.Builder{}
 	b.WriteString("{")
-	for i, n := range config.Nodes {
+	for i, n := range clusterConfig.Nodes {
 		b.WriteString(nodeConfigToString(n))
-		if i < len(config.Nodes)-1 {
+		if i < len(clusterConfig.Nodes)-1 {
 			b.WriteString("; ")
 		}
 	}
@@ -172,102 +177,72 @@ func (m *Manager) GetStatus() (string, error) {
 	return fmt.Sprintf("connected: %s", b.String()), nil
 }
 
-func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error) {
-	if deployRequest.Name == "" {
-		return nil, &ErrInvalid{ErrMsg: "token type name is empty"}
+// ====================================================
+// Generic token helpers
+// ====================================================
+
+func (m *Manager) deployNewTokenType(desc *types.TokenDescription, indices ...string) error {
+	if desc.Name == "" {
+		return common.NewErrInvalid("token type name is empty")
 	}
 
 	// Compute TypeId
-	tokenTypeIDBase64, err := NameToID(deployRequest.Name)
+	tokenTypeIDBase64, err := NameToID(desc.Name)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to compute hash of token type name")
+		return errors.Wrap(err, "failed to compute hash of token type name")
 	}
 	tokenDBName := TokenTypeDBNamePrefix + tokenTypeIDBase64
-
-	switch deployRequest.Class {
-	case "": //backward compatibility
-		deployRequest.Class = constants.TokenClass_NFT
-	case constants.TokenClass_NFT:
-	case constants.TokenClass_FUNGIBLE:
-	case constants.TokenClass_ANNOTATIONS:
-	default:
-		return nil, &ErrInvalid{ErrMsg: "unsupported token class: " + deployRequest.Class}
-	}
-
-	tokenDesc := &TokenDescription{
-		TypeId:      tokenTypeIDBase64,
-		Name:        deployRequest.Name,
-		Class:       deployRequest.Class,
-		Description: deployRequest.Description,
-	}
+	desc.TypeId = tokenTypeIDBase64
 
 	// Check existence by looking into the custodian privileges
 	userTx, err := m.adminSession.UsersTx()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create UsersTx")
+		return errors.Wrap(err, "failed to create UsersTx")
 	}
+	defer abort(userTx)
+
 	custodian, err := userTx.GetUser(m.config.Users.Custodian.UserID)
 	if err != nil {
-		userTx.Abort()
-		return nil, errors.Wrapf(err, "failed to get user: %s", m.config.Users.Custodian.UserID)
+		return wrapOrionError(err, "failed to get user [%s]", m.config.Users.Custodian.UserID)
 	}
 	if _, exists := custodian.GetPrivilege().GetDbPermission()[tokenDBName]; exists {
-		userTx.Abort()
-		return nil, &ErrExist{ErrMsg: "token type already exists"}
+		return common.NewErrExist("Token type already exists")
 	}
 
 	// Save token description to Types-DB
 	dataTx, err := m.adminSession.DataTx()
 	if err != nil {
-		userTx.Abort()
-		return nil, errors.Wrap(err, "failed to create DataTx")
+		return errors.Wrap(err, "failed to create DataTx")
+	}
+	defer abort(dataTx)
+
+	existingTokenDesc, _, err := dataTx.Get(TypesDBName, tokenDBName)
+	if err != nil {
+		return wrapOrionError(err, "failed to get key [%s] from [%s]", tokenDBName, TypesDBName)
+	}
+	if existingTokenDesc != nil {
+		return errors.Errorf("failed to deploy token: custodian does not have privilege, but token type description exists: %s", string(existingTokenDesc))
 	}
 
-	data, _, err := dataTx.Get(TypesDBName, tokenDBName)
+	serializedDescription, err := json.Marshal(desc)
 	if err != nil {
-		userTx.Abort()
-		dataTx.Abort()
-		return nil, errors.Wrapf(err, "failed to get %s %s", TypesDBName, tokenDBName)
+		m.lg.Panicf("failed to json.Marshal description: %s", err)
+		return err
 	}
-	if data != nil {
-		userTx.Abort()
-		dataTx.Abort()
-		return nil, errors.Errorf("failed to deploy token: custodian does not have privilege, but token type description exists: %s", string(data))
+	err = dataTx.Put(TypesDBName, tokenDBName, serializedDescription, nil)
+	if err != nil {
+		return wrapOrionError(err, "failed to put key [%s] to [%s]", tokenDBName, TypesDBName)
 	}
 
-	data, err = json.Marshal(tokenDesc)
-	if err != nil {
-		m.lg.Panicf("failed to json.Marshal TokenDescription: %s", err)
-	}
-	err = dataTx.Put(TypesDBName, tokenDBName, data, nil)
-	if err != nil {
-		userTx.Abort()
-		dataTx.Abort()
-		return nil, errors.Wrapf(err, "failed to put %s %s", TypesDBName, tokenDBName)
-	}
 	txID, receiptEnv, err := dataTx.Commit(true)
 	if err != nil {
-		userTx.Abort()
-		return nil, errors.Wrapf(err, "failed to commit %s %s", TypesDBName, tokenDBName)
+		return wrapOrionError(err, "failed to commit [%s] to [%s]", tokenDBName, TypesDBName)
 	}
 
-	m.lg.Infof("Saved token description: %+v; txID: %s, receipt: %+v", tokenDesc, txID, receiptEnv.GetResponse().GetReceipt())
+	m.lg.Infof("Saved token description: %+v; txID: %s, receipt: %+v", desc, txID, receiptEnv.GetResponse().GetReceipt())
 
-	switch deployRequest.Class {
-	case constants.TokenClass_NFT:
-		err = m.deployNFT(deployRequest, tokenDBName, "owner")
-	case constants.TokenClass_ANNOTATIONS:
-		err = m.deployNFT(deployRequest, tokenDBName, "owner", "link")
-	case constants.TokenClass_FUNGIBLE:
-		err = errors.New("not implemented yet")
-
-	default:
-		err = &ErrInvalid{ErrMsg: "unsupported token class: " + deployRequest.Class}
-	}
-
-	if err != nil {
-		userTx.Abort()
-		return nil, err
+	if err = m.createTokenDBTable(tokenDBName, indices...); err != nil {
+		return err
 	}
 
 	// Add privilege to custodian
@@ -275,40 +250,32 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 
 	err = userTx.PutUser(custodian, nil)
 	if err != nil {
-		userTx.Abort()
-		return nil, errors.Wrap(err, "failed to put user")
+		return wrapOrionError(err, "failed to put user [%s]", m.config.Users.Custodian.UserID)
 	}
 
 	txID, receiptEnv, err = userTx.Commit(true)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to commit user")
+		return wrapOrionError(err, "failed to commit user [%s]", m.config.Users.Custodian.UserID)
 	}
 
 	m.tokenTypesDBs[tokenDBName] = true
-	m.lg.Infof("Custodian [%s] granted RW privilege to database: %s; txID: %s, receipt: %+v", m.config.Users.Custodian.UserID, tokenDBName, txID, receiptEnv.GetResponse().GetReceipt())
+	m.lg.Infof("Custodian [%s] granted RW privilege to database: %s; description: %s, txID: %s, receipt: %+v", m.config.Users.Custodian.UserID, desc, tokenDBName, txID, receiptEnv.GetResponse().GetReceipt())
 
-	return &types.DeployResponse{
-		TypeId:      tokenTypeIDBase64,
-		Name:        deployRequest.Name,
-		Class:       deployRequest.Class,
-		Description: deployRequest.Description,
-		Url:         constants.TokensTypesSubTree + tokenTypeIDBase64,
-	}, nil
+	return nil
 }
 
-func (m *Manager) deployNFT(deployRequest *types.DeployRequest, tokenDBName string, indices ...string) error {
+func (m *Manager) createTokenDBTable(tokenDBName string, indices ...string) error {
 	dBsTx, err := m.adminSession.DBsTx()
 	if err != nil {
 		return errors.Wrap(err, "failed to create DBsTx")
 	}
+	defer abort(dBsTx)
 
 	exists, err := dBsTx.Exists(tokenDBName)
 	if err != nil {
-		dBsTx.Abort()
 		return errors.Wrap(err, "failed to query DB existence")
 	}
 	if exists {
-		dBsTx.Abort()
 		return errors.Errorf("failed to deploy token: custodian does not have privilege, but token database exists: %s", tokenDBName)
 	}
 
@@ -318,29 +285,72 @@ func (m *Manager) deployNFT(deployRequest *types.DeployRequest, tokenDBName stri
 	}
 	err = dBsTx.CreateDB(tokenDBName, index)
 	if err != nil {
-		dBsTx.Abort()
 		return errors.Wrap(err, "failed to build DBsTx")
 	}
 
 	txID, receiptEnv, err := dBsTx.Commit(true)
 	if err != nil {
 		m.lg.Errorf("Failed to deploy: commit failed: %s", err.Error())
-		if strings.Contains(err.Error(), fmt.Sprintf("[%s] already exists", tokenDBName)) {
-			return &ErrExist{ErrMsg: "token type already exists"}
-		}
-		return errors.Wrap(err, "failed to deploy token type")
+		return wrapOrionError(err, "failed to deploy token type [%s]", tokenDBName)
 	}
 
-	m.lg.Infof("Database created: %s, for token-name: %s; token-class: %s txID: %s, receipt: %+v", tokenDBName, deployRequest.Name, deployRequest.Class, txID, receiptEnv.GetResponse().GetReceipt())
+	m.lg.Infof("Database created: %s, txID: %s, receipt: %+v", tokenDBName, txID, receiptEnv.GetResponse().GetReceipt())
 	return nil
 }
 
-func (m *Manager) GetTokenType(tokenTypeId string) (*types.DeployResponse, error) {
+// ====================================================
+// NFT functional API implementation
+// ====================================================
+
+func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error) {
+	switch deployRequest.Class {
+	case "": //backward compatibility
+		deployRequest.Class = constants.TokenClass_NFT
+	case constants.TokenClass_NFT:
+	case constants.TokenClass_FUNGIBLE:
+	case constants.TokenClass_ANNOTATIONS:
+	default:
+		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("unsupported token class: %s", deployRequest.Class)}
+	}
+
+	var indices []string
+	switch deployRequest.Class {
+	case constants.TokenClass_NFT:
+		indices = []string{"owner"}
+	case constants.TokenClass_FUNGIBLE:
+		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("Class is not supported via this API call: %s", deployRequest.Class)}
+	case constants.TokenClass_ANNOTATIONS:
+		indices = []string{"owner", "link"}
+	default:
+		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("unsupported token class: %s", deployRequest.Class)}
+	}
+
+	tokenDesc := types.TokenDescription{
+		Name:        deployRequest.Name,
+		Description: deployRequest.Description,
+		Class:       deployRequest.Class,
+	}
+
+	if err := m.deployNewTokenType(&tokenDesc, indices...); err != nil {
+		return nil, convertErrorType(err)
+	}
+
+	return &types.DeployResponse{
+		TypeId:      tokenDesc.TypeId,
+		Name:        tokenDesc.Name,
+		Class:       tokenDesc.Class,
+		Description: tokenDesc.Description,
+		Url:         constants.TokensTypesSubTree + tokenDesc.TypeId,
+	}, nil
+}
+
+func (m *Manager) GetTokenType(tokenTypeId string) (*types.TokenDescription, error) {
 	if err := validateMD5Base64ID(tokenTypeId, "token type"); err != nil {
 		return nil, err
 	}
 
 	dataTx, err := m.custodianSession.DataTx()
+	defer abort(dataTx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create DataTx")
 	}
@@ -355,16 +365,16 @@ func (m *Manager) GetTokenType(tokenTypeId string) (*types.DeployResponse, error
 		return nil, &ErrNotFound{ErrMsg: "not found"}
 	}
 
-	deployResponse := &types.DeployResponse{}
-	err = json.Unmarshal(val, deployResponse)
+	desc := &types.TokenDescription{}
+	err = json.Unmarshal(val, desc)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to json.Unmarshal %s", tokenDBName)
 	}
-	deployResponse.Url = constants.TokensTypesSubTree + deployResponse.TypeId
+	desc.Url = constants.TokensTypesSubTree + desc.TypeId
 
-	m.lg.Debugf("Token type deploy response: %+v; metadata: %v", deployResponse, meta)
+	m.lg.Debugf("Token type deploy response: %+v; metadata: %v", desc, meta)
 
-	return deployResponse, nil
+	return desc, nil
 }
 
 func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error) {
@@ -574,57 +584,57 @@ func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitRes
 	m.lg.Infof("Custodian [%s] preparing to submit the Tx to the database,  tokenTypeId: %s, assetId: %s, signer: %s",
 		m.config.Users.Custodian.UserID, tokenTypeId, assetId, submitRequest.Signer)
 
-	txEnvBytes, err := base64.StdEncoding.DecodeString(submitRequest.TxEnvelope)
+	ctx := submitContextFromNFT(submitRequest)
+	if err := m.submitTx(ctx); err != nil {
+		return nil, convertErrorType(err)
+	}
+	return ctx.ToNFTResponse(), nil
+}
+
+func (m *Manager) submitTx(ctx *SubmitContext) error {
+	m.lg.Infof("Custodian [%s] preparing to submit TX to the database, context: %s, signer: %s",
+		m.config.Users.Custodian.UserID, ctx.TxContext, ctx.Signer)
+
+	txEnvBytes, err := base64.StdEncoding.DecodeString(ctx.TxEnvelope)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode TxEnvelope")
+		return errors.Wrap(err, "failed to decode TxEnvelope")
 	}
 
 	txEnv := &oriontypes.DataTxEnvelope{}
 	err = proto.Unmarshal(txEnvBytes, txEnv)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to proto.Unmarshal TxEnvelope")
+		return errors.Wrap(err, "failed to proto.Unmarshal TxEnvelope")
 	}
 
-	sigBytes, err := base64.StdEncoding.DecodeString(submitRequest.Signature)
+	sigBytes, err := base64.StdEncoding.DecodeString(ctx.Signature)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode Signature")
+		return errors.Wrap(err, "failed to decode Signature")
 	}
 
-	txEnv.Signatures[submitRequest.Signer] = sigBytes
+	txEnv.Signatures[ctx.Signer] = sigBytes
 	loadedTx, err := m.custodianSession.LoadDataTx(txEnv)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to load tx envelope")
+		return errors.Wrap(err, "failed to load tx envelope")
 	}
 
 	m.lg.Debugf("signed users: %+v", loadedTx.SignedUsers())
 
 	txID, receiptEnv, err := loadedTx.Commit(true)
 	if err != nil {
-		if strings.Contains(err.Error(), "status: 401 Unauthorized") {
-			return nil, &ErrPermission{ErrMsg: err.Error()}
-		}
-
-		if errV, ok := err.(*bcdb.ErrorTxValidation); ok {
-			switch oriontypes.Flag_value[errV.Flag] {
-			case int32(oriontypes.Flag_INVALID_NO_PERMISSION), int32(oriontypes.Flag_INVALID_UNAUTHORISED), int32(oriontypes.Flag_INVALID_MISSING_SIGNATURE):
-				return nil, &ErrPermission{ErrMsg: err.Error()}
-			default:
-				return nil, &ErrInvalid{ErrMsg: err.Error()}
-			}
-		}
-
-		return nil, err
+		return wrapOrionError(err, "failed to submit transaction for %s", ctx.TxContext)
 	}
 
 	m.lg.Infof("Custodian [%s] committed the Tx to the database, txID: %s, receipt: %+v", m.config.Users.Custodian.UserID, txID, receiptEnv.GetResponse().GetReceipt())
 
 	receiptBytes, err := proto.Marshal(receiptEnv)
+	if err != nil {
+		return err
+	}
 
-	return &types.SubmitResponse{
-		TokenId:   submitRequest.TokenId,
-		TxId:      txID,
-		TxReceipt: base64.StdEncoding.EncodeToString(receiptBytes),
-	}, nil
+	ctx.TxId = txID
+	ctx.TxReceipt = base64.StdEncoding.EncodeToString(receiptBytes)
+
+	return nil
 }
 
 func (m *Manager) GetToken(tokenId string) (*types.TokenRecord, error) {
@@ -695,7 +705,11 @@ func (m *Manager) GetTokensByOwner(tokenTypeId string, owner string) ([]*types.T
 	return records, nil
 }
 
-func (m *Manager) GetTokenTypes() ([]*types.DeployResponse, error) {
+// ====================================================
+// Generic tokens API (cont.)
+// ====================================================
+
+func (m *Manager) GetTokenTypes() ([]*types.TokenDescription, error) {
 	jq, err := m.custodianSession.Query()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create JSONQuery")
@@ -707,9 +721,9 @@ func (m *Manager) GetTokenTypes() ([]*types.DeployResponse, error) {
 		return nil, errors.Wrap(err, "failed to execute JSONQuery")
 	}
 
-	var records []*types.DeployResponse
+	var records []*types.TokenDescription
 	for _, res := range results {
-		record := &types.DeployResponse{}
+		record := &types.TokenDescription{}
 		err = json.Unmarshal(res.GetValue(), record)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
@@ -720,6 +734,10 @@ func (m *Manager) GetTokenTypes() ([]*types.DeployResponse, error) {
 
 	return records, nil
 }
+
+// ====================================================
+// Annotations API
+// ====================================================
 
 func (m *Manager) PrepareRegister(tokenTypeId string, registerRequest *types.AnnotationRegisterRequest) (*types.AnnotationRegisterResponse, error) {
 	if err := validateMD5Base64ID(tokenTypeId, "token type"); err != nil {
@@ -901,6 +919,10 @@ func (m *Manager) GetAnnotationsByOwnerLink(tokenTypeId string, owner, link stri
 	return records, nil
 }
 
+// ====================================================
+// Users API
+// ====================================================
+
 func (m *Manager) AddUser(userRecord *types.UserRecord) error {
 	m.lg.Debugf("Add user: %v", userRecord)
 	return m.writeUser(userRecord, true)
@@ -1043,6 +1065,10 @@ func (m *Manager) GetUser(userId string) (*types.UserRecord, error) {
 	return userRecord, nil
 }
 
+// ====================================================
+// Generic tokens Helpers
+// ====================================================
+
 func nodeConfigToString(n *oriontypes.NodeConfig) string {
 	return fmt.Sprintf("Id: %s, Address: %s, Port: %d, Cert-hash: %x", n.Id, n.Address, n.Port, crc32.ChecksumIEEE(n.Certificate))
 }
@@ -1085,15 +1111,14 @@ func (m *Manager) enrollCustodian() (err error) {
 	if err != nil {
 		return err
 	}
+	defer abort(tx)
 
 	user, err := tx.GetUser(m.config.Users.Custodian.UserID)
 	if err != nil {
-		tx.Abort()
 		return err
 	}
 
 	if user != nil {
-		tx.Abort()
 		if bytes.Compare(user.Certificate, certBlock.Bytes) != 0 {
 			return errors.New("custodian certificate in DB is different than certificated in config")
 		}
@@ -1144,15 +1169,14 @@ func (m *Manager) createTypesDB() (err error) {
 	if err != nil {
 		return errors.Wrapf(err, "failed to create %s: failed to create DBsTx", TypesDBName)
 	}
+	defer abort(tx)
 
 	exists, err := tx.Exists(TypesDBName)
 	if err != nil {
-		tx.Abort()
 		return errors.Wrapf(err, "failed to query %s existence", TypesDBName)
 	}
 	if exists {
 		m.lg.Infof("DB: %s, already exists", TypesDBName)
-		tx.Abort()
 		return nil
 	}
 
@@ -1176,34 +1200,309 @@ func (m *Manager) createTypesDB() (err error) {
 	return nil
 }
 
+func (m *Manager) validateUserId(userId string) error {
+	if userId == "" {
+		return common.NewErrInvalid("Invalid user ID: empty.")
+	}
+
+	if userId == m.config.Users.Custodian.UserID || userId == m.config.Users.Admin.UserID {
+		return common.NewErrInvalid("Invalid user ID: the user '%s' cannot participate in token activities.", userId)
+	}
+
+	return nil
+}
+
 // ====================================================
 // Fungible functional API implementation
 // ====================================================
 
 func (m *Manager) FungibleDeploy(request *types.FungibleDeployRequest) (*types.FungibleDeployResponse, error) {
-	return nil, errors.New("Not implemented")
+	// Validates user to avoid creating a token with an invalid owner
+	userCtx, err := newUserTxContext(m, request.ReserveOwner)
+	if err != nil {
+		return nil, err
+	}
+	defer userCtx.Abort()
+	if err = userCtx.ValidateUserExists(); err != nil {
+		return nil, err
+	}
+
+	desc := types.TokenDescription{
+		Name:        request.Name,
+		Description: request.Description,
+		Class:       constants.TokenClass_FUNGIBLE,
+		Extension: map[string]string{
+			"reserveOwner": request.ReserveOwner,
+		},
+	}
+	if err = m.deployNewTokenType(&desc, "owner", "account"); err != nil {
+		return nil, err
+	}
+
+	if err = userCtx.AddPrivilege(desc.TypeId); err != nil {
+		return nil, err
+	}
+	if err = userCtx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &types.FungibleDeployResponse{
+		TypeId:       desc.TypeId,
+		Name:         desc.Name,
+		Description:  desc.Description,
+		ReserveOwner: request.ReserveOwner,
+		Supply:       0,
+		Url:          FungibleTypeURL(desc.TypeId),
+	}, nil
 }
 
 func (m *Manager) FungibleDescribe(typeId string) (*types.FungibleDescribeResponse, error) {
-	return nil, errors.New("Not implemented")
+	ctx, err := newFungibleTxContext(m, typeId)
+	if err != nil {
+		return nil, err
+	}
+	defer ctx.Abort()
+
+	desc, err := ctx.getDescription()
+	if err != nil {
+		return nil, err
+	}
+
+	reserve, err := ctx.getReserveAccount()
+	if err != nil {
+		return nil, err
+	}
+
+	reserveOwner, err := ctx.getReserveOwner()
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.FungibleDescribeResponse{
+		TypeId:       desc.TypeId,
+		Name:         desc.Name,
+		Description:  desc.Description,
+		ReserveOwner: reserveOwner,
+		Supply:       reserve.Supply,
+		Url:          FungibleTypeURL(desc.TypeId),
+	}, nil
 }
 
 func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMintRequest) (*types.FungibleMintResponse, error) {
-	return nil, errors.New("Not implemented")
+	if request.Supply == 0 {
+		return nil, common.NewErrInvalid("Supply must be a positive integer (supply > 0).")
+	}
+
+	ctx, err := newFungibleTxContext(m, typeId)
+	if err != nil {
+		return nil, err
+	}
+	defer ctx.Abort()
+
+	reserve, err := ctx.getReserveAccount()
+	if err != nil {
+		return nil, err
+	}
+
+	reserve.Balance += request.Supply
+	reserve.Supply += request.Supply
+
+	if err = ctx.putReserveAccount(reserve); err != nil {
+		return nil, err
+	}
+
+	if err = ctx.Prepare(); err != nil {
+		return nil, err
+	}
+	m.lg.Debugf("Processed mint request for token: %s", ctx.typeId)
+
+	return &types.FungibleMintResponse{
+		TypeId:        typeId,
+		TxEnvelope:    ctx.TxEnvelope,
+		TxPayloadHash: ctx.TxPayloadHash,
+	}, nil
 }
 
 func (m *Manager) FungiblePrepareTransfer(typeId string, request *types.FungibleTransferRequest) (*types.FungibleTransferResponse, error) {
-	return nil, errors.New("Not implemented")
+	// No need to validate the existing owner. We will fail later if the owner's account does not exist.
+	// If the new owner doesn't exist, then we will fail during the submit phase.
+	err := m.validateUserId(request.NewOwner)
+	if err != nil {
+		return nil, err
+	}
+
+	if request.NewOwner == request.Owner {
+		return nil, common.NewErrInvalid("The recipient of the transfer transaction must be different then the current owner")
+	}
+
+	ctx, err := newFungibleTxContext(m, typeId)
+	if err != nil {
+		return nil, err
+	}
+	defer ctx.Abort()
+
+	// If account isn't specified, the main account is used
+	if request.Account == "" {
+		request.Account = mainAccount
+	}
+
+	// TODO: use the actual orion TX ID
+	txUUID, err := uuid.NewRandom()
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to generate tx ID")
+	}
+	newRecord := &types.FungibleAccountRecord{
+		Account: txUUID.String(),
+		Owner:   request.NewOwner,
+		Balance: request.Quantity,
+		Comment: request.Comment,
+	}
+
+	// Verify that the new generated account does not exist
+	val, err := ctx.getAccountRecordRaw(newRecord.Owner, newRecord.Account)
+	if err != nil {
+		return nil, err
+	}
+	if val != nil {
+		return nil, common.NewErrInternal("Transaction ID collision. Please retry.")
+	}
+
+	fromRecord, err := ctx.getAccountRecord(request.Owner, request.Account)
+	if err != nil {
+		return nil, err
+	}
+
+	if request.Quantity > fromRecord.Balance {
+		return nil, common.NewErrInvalid("Insufficient funds in account %v of %v. Requested %v, Balance: %v", fromRecord.Account, fromRecord.Owner, request.Quantity, fromRecord.Balance)
+	}
+
+	fromRecord.Balance -= request.Quantity
+
+	if err = ctx.putAccountRecord(fromRecord); err != nil {
+		return nil, err
+	}
+	if err = ctx.putAccountRecord(newRecord); err != nil {
+		return nil, err
+	}
+	if err = ctx.Prepare(); err != nil {
+		return nil, err
+	}
+
+	return &types.FungibleTransferResponse{
+		TypeId:        ctx.typeId,
+		Owner:         request.Owner,
+		Account:       request.Account,
+		NewOwner:      newRecord.Owner,
+		NewAccount:    newRecord.Account,
+		TxEnvelope:    ctx.TxEnvelope,
+		TxPayloadHash: ctx.TxPayloadHash,
+	}, nil
 }
 
 func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.FungibleConsolidateRequest) (*types.FungibleConsolidateResponse, error) {
-	return nil, errors.New("Not implemented")
+	ctx, err := newFungibleTxContext(m, typeId)
+	if err != nil {
+		return nil, err
+	}
+	defer ctx.Abort()
+
+	// We don't need to validate the user since an invalid user will not have any accounts anyway.
+
+	if request.Accounts != nil {
+		// Validate the list before the TX starts.
+		if len(request.Accounts) == 0 {
+			return nil, common.NewErrInvalid("If an account list is specified, it must have at least one account.")
+		}
+
+		for _, accName := range request.Accounts {
+			if accName == "" {
+				return nil, common.NewErrInvalid("Account name cannot be empty")
+			} else if accName == mainAccount {
+				return nil, common.NewErrInvalid("The main account cannot be consolidated")
+			}
+		}
+	} else {
+		// We query all user's accounts before the TX starts.
+		// Yet, we need to read all records again inside the TX context, so it will be included in the read-set.
+		records, err := ctx.queryAccounts(request.Owner, "")
+		if err != nil {
+			return nil, err
+		}
+
+		for _, record := range records {
+			if record.Account == mainAccount {
+				continue
+			}
+			request.Accounts = append(request.Accounts, record.Account)
+		}
+
+		if len(request.Accounts) == 0 {
+			return nil, common.NewErrNotFound("Did not found accounts to consolidate for user [%s]", request.Owner)
+		}
+	}
+
+	rawMainRecord, err := ctx.getAccountRecordRaw(request.Owner, mainAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	var mainRecord *types.FungibleAccountRecord
+	if rawMainRecord == nil {
+		mainRecord = &types.FungibleAccountRecord{
+			Account: mainAccount,
+			Owner:   request.Owner,
+			Balance: 0,
+			Comment: mainAccount,
+		}
+	} else {
+		mainRecord, err = unmarshalAccountRecord(rawMainRecord)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	for _, accName := range request.Accounts {
+		accRecord, err := ctx.getAccountRecord(request.Owner, accName)
+		if err != nil {
+			return nil, err
+		}
+
+		mainRecord.Balance += accRecord.Balance
+
+		if err = ctx.deleteAccountRecord(accRecord); err != nil {
+			return nil, err
+		}
+	}
+
+	if err = ctx.putAccountRecord(mainRecord); err != nil {
+		return nil, err
+	}
+
+	if err = ctx.Prepare(); err != nil {
+		return nil, err
+	}
+
+	return &types.FungibleConsolidateResponse{
+		TypeId:        typeId,
+		Owner:         request.Owner,
+		TxEnvelope:    ctx.TxEnvelope,
+		TxPayloadHash: ctx.TxPayloadHash,
+	}, nil
 }
 
 func (m *Manager) FungibleSubmitTx(submitRequest *types.FungibleSubmitRequest) (*types.FungibleSubmitResponse, error) {
-	return nil, errors.New("Not implemented")
+	ctx := submitContextFromFungible(submitRequest)
+	if err := m.submitTx(ctx); err != nil {
+		return nil, err
+	}
+	return ctx.ToFungibleResponse(), nil
 }
 
 func (m *Manager) FungibleAccounts(typeId string, owner string, account string) ([]types.FungibleAccountRecord, error) {
-	return nil, errors.New("Not implemented")
+	ctx, err := newFungibleTxContext(m, typeId)
+	if err != nil {
+		return nil, err
+	}
+	defer ctx.Abort()
+	return ctx.queryAccounts(owner, account)
 }
