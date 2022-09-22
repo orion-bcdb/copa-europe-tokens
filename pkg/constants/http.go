@@ -31,7 +31,7 @@ const (
 	TokensAnnotationsPrepareRegister      = "/tokens/annotations/prepare-register/"
 	TokensAnnotationsPrepareRegisterMatch = "/tokens/annotations/prepare-register/{typeId}"
 	TokensAnnotationsSubmit               = "/tokens/annotations/submit"
-	TokensAnnotationsQuery                = "/tokens/annotations/{tokenId}"
+	TokensAnnotationsQuery                = "/tokens/annotations/{annotationId}"
 
 	// User API
 
