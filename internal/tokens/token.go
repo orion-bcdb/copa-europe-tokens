@@ -9,11 +9,12 @@ import (
 
 	"github.com/copa-europe-tokens/internal/common"
 	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
+	"github.com/hyperledger-labs/orion-server/pkg/marshal"
 	oriontypes "github.com/hyperledger-labs/orion-server/pkg/types"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 )
 
 // TokenTxContext handles a token transaction from start to finish
@@ -149,7 +150,7 @@ func (ctx *TokenTxContext) Prepare() error {
 		return errors.Wrap(err, "failed to proto.Marshal Tx envelope")
 	}
 
-	payloadBytes, err := json.Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	payloadBytes, err := marshal.DefaultMarshaler().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
 	if err != nil {
 		return errors.Wrap(err, "failed to json.Marshal DataTx")
 	}

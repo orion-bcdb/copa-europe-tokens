@@ -21,7 +21,6 @@ import (
 	"github.com/copa-europe-tokens/pkg/constants"
 	tokenscrypto "github.com/copa-europe-tokens/pkg/crypto"
 	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/golang/protobuf/proto"
 	sdkconfig "github.com/hyperledger-labs/orion-sdk-go/pkg/config"
 	"github.com/hyperledger-labs/orion-server/pkg/crypto"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
@@ -32,6 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/protobuf/proto"
 )
 
 type serverTestEnv struct {
@@ -453,6 +453,149 @@ func TestTokensServer(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tokenRecords, 0)
 
+	t.Run("Annotations", func(t *testing.T) {
+		var annotIDs []string
+		t.Run("register", func(t *testing.T) {
+			for i := 1; i <= 10; i++ {
+				annotRequest := &types.AnnotationRegisterRequest{
+					Owner:              "charlie",
+					Link:               submitResponse1.TokenId,
+					AnnotationData:     fmt.Sprintf("Charlie: Operation %d on %s", i, submitResponse1.TokenId),
+					AnnotationMetadata: "xxx",
+				}
+
+				annotSubmitResp := annotateToken(t, httpClient, baseURL, deployResp3.TypeId, annotRequest, hashSignerCharlie)
+				annotIDs = append(annotIDs, annotSubmitResp.TokenId)
+				t.Logf("Annotation: tokenId: %s, txId: %s", annotSubmitResp.TokenId, annotSubmitResp.TxId)
+
+				annotRequest = &types.AnnotationRegisterRequest{
+					Owner:              "charlie",
+					Link:               submitResponse2.TokenId,
+					AnnotationData:     fmt.Sprintf("Charlie: Operation %d on %s", i, submitResponse2.TokenId),
+					AnnotationMetadata: "yyy",
+				}
+
+				annotSubmitResp = annotateToken(t, httpClient, baseURL, deployResp3.TypeId, annotRequest, hashSignerCharlie)
+				annotIDs = append(annotIDs, annotSubmitResp.TokenId)
+				t.Logf("Annotation: tokenId: %s, txId: %s", annotSubmitResp.TokenId, annotSubmitResp.TxId)
+			}
+
+			for i := 1; i <= 7; i++ {
+				annotRequest := &types.AnnotationRegisterRequest{
+					Owner:              "bob",
+					Link:               submitResponse1.TokenId,
+					AnnotationData:     fmt.Sprintf("Bob: Operation %d on %s", i, submitResponse1.TokenId),
+					AnnotationMetadata: "zzz",
+				}
+
+				annotSubmitResp := annotateToken(t, httpClient, baseURL, deployResp3.TypeId, annotRequest, hashSignerBob)
+				annotIDs = append(annotIDs, annotSubmitResp.TokenId)
+				t.Logf("Annotation: tokenId: %s, txId: %s", annotSubmitResp.TokenId, annotSubmitResp.TxId)
+			}
+		})
+
+		t.Run("query by link 1", func(t *testing.T) {
+			u = baseURL.ResolveReference(&url.URL{
+				Path:     constants.TokensAnnotationsEndpoint,
+				RawQuery: "type=" + deployResp3.TypeId + "&" + "link=" + submitResponse1.TokenId,
+			})
+			t.Logf("GET: %s", u.String())
+			resp, err := httpClient.Get(u.String())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			annotationRecords := []*types.AnnotationRecord{}
+			err = json.NewDecoder(resp.Body).Decode(&annotationRecords)
+			require.NoError(t, err)
+			require.Len(t, annotationRecords, 17)
+		})
+
+		t.Run("query by link 2", func(t *testing.T) {
+			u = baseURL.ResolveReference(&url.URL{
+				Path:     constants.TokensAnnotationsEndpoint,
+				RawQuery: "type=" + deployResp3.TypeId + "&" + "link=" + submitResponse2.TokenId,
+			})
+			t.Logf("GET: %s", u.String())
+			resp, err := httpClient.Get(u.String())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			annotationRecords := []*types.AnnotationRecord{}
+			err = json.NewDecoder(resp.Body).Decode(&annotationRecords)
+			require.NoError(t, err)
+			require.Len(t, annotationRecords, 10)
+		})
+
+		t.Run("query by link: empty", func(t *testing.T) {
+			u = baseURL.ResolveReference(&url.URL{
+				Path:     constants.TokensAnnotationsEndpoint,
+				RawQuery: "type=" + deployResp3.TypeId + "&" + "link=xxx.yyy",
+			})
+			t.Logf("GET: %s", u.String())
+			resp, err := httpClient.Get(u.String())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			annotationRecords := []*types.AnnotationRecord{}
+			err = json.NewDecoder(resp.Body).Decode(&annotationRecords)
+			require.NoError(t, err)
+			require.Len(t, annotationRecords, 0)
+		})
+
+		t.Run("query by owner", func(t *testing.T) {
+			u = baseURL.ResolveReference(&url.URL{
+				Path:     constants.TokensAnnotationsEndpoint,
+				RawQuery: "type=" + deployResp3.TypeId + "&" + "owner=bob",
+			})
+			t.Logf("GET: %s", u.String())
+			resp, err := httpClient.Get(u.String())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			annotationRecords := []*types.AnnotationRecord{}
+			err = json.NewDecoder(resp.Body).Decode(&annotationRecords)
+			require.NoError(t, err)
+			require.Len(t, annotationRecords, 7)
+		})
+
+		t.Run("query by link & owner", func(t *testing.T) {
+			u = baseURL.ResolveReference(&url.URL{
+				Path:     constants.TokensAnnotationsEndpoint,
+				RawQuery: "type=" + deployResp3.TypeId + "&" + "link=" + submitResponse1.TokenId + "&owner=charlie",
+			})
+			t.Logf("GET: %s", u.String())
+			resp, err := httpClient.Get(u.String())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			annotationRecords := []*types.AnnotationRecord{}
+			err = json.NewDecoder(resp.Body).Decode(&annotationRecords)
+			require.NoError(t, err)
+			require.Len(t, annotationRecords, 10)
+		})
+
+		t.Run("get by annot-id", func(t *testing.T) {
+			for _, id := range annotIDs {
+				u = baseURL.ResolveReference(&url.URL{
+					Path: path.Join(constants.TokensAnnotationsEndpoint, id),
+				})
+				t.Logf("GET: %s", u.String())
+				resp, err := httpClient.Get(u.String())
+				require.NoError(t, err)
+				require.Equal(t, http.StatusOK, resp.StatusCode)
+				annotationRecord := &types.AnnotationRecord{}
+				err = json.NewDecoder(resp.Body).Decode(annotationRecord)
+				require.NoError(t, err)
+				require.Contains(t, annotationRecord.AnnotationData, "Operation")
+			}
+		})
+
+		t.Run("get by annot-id: not found", func(t *testing.T) {
+			u = baseURL.ResolveReference(&url.URL{
+				Path: path.Join(constants.TokensAnnotationsEndpoint, "xxx.yyy"),
+			})
+			t.Logf("GET: %s", u.String())
+			resp, err := httpClient.Get(u.String())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusNotFound, resp.StatusCode)
+		})
+	})
+
 	t.Run("Fungible", func(t *testing.T) {
 		var typeId string
 		deployRequest := types.FungibleDeployRequest{
@@ -782,6 +925,49 @@ func transferToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, toke
 		TxEnvelope:    transferResponse.TxEnvelope,
 		TxPayloadHash: transferResponse.TxPayloadHash,
 		Signer:        transferResponse.Owner,
+		Signature:     base64.StdEncoding.EncodeToString(sig),
+	}
+	requestBytes, err = json.Marshal(submitRequest)
+	require.NoError(t, err)
+	reader = bytes.NewReader(requestBytes)
+	require.NotNil(t, reader)
+	resp, err = httpClient.Post(u.String(), "application/json", reader)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	submitResponse := &types.SubmitResponse{}
+	err = json.NewDecoder(resp.Body).Decode(submitResponse)
+	require.NoError(t, err)
+	return submitResponse
+}
+
+func annotateToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, typeId string, annotRequest *types.AnnotationRegisterRequest, hashSigner tokenscrypto.Signer) *types.SubmitResponse {
+	// 1. Mint prepare
+	u := baseURL.ResolveReference(&url.URL{Path: constants.TokensAnnotationsPrepareRegister + typeId})
+	requestBytes, err := json.Marshal(annotRequest)
+	require.NoError(t, err)
+	reader := bytes.NewReader(requestBytes)
+	require.NotNil(t, reader)
+	resp, err := httpClient.Post(u.String(), "application/json", reader)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	annotResponse := &types.AnnotationRegisterResponse{}
+	err = json.NewDecoder(resp.Body).Decode(annotResponse)
+	require.NoError(t, err)
+
+	// 2. Sign by owner, using a Hash signer service that does not know Orion types
+	hashBytes, err := base64.StdEncoding.DecodeString(annotResponse.TxPayloadHash)
+	require.NoError(t, err)
+	sig, err := hashSigner.SignHash(hashBytes)
+	require.NoError(t, err)
+	require.NotNil(t, sig)
+
+	// 3. Submit
+	u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAnnotationsSubmit})
+	submitRequest := &types.SubmitRequest{
+		TokenId:       annotResponse.AnnotationId,
+		TxEnvelope:    annotResponse.TxEnvelope,
+		TxPayloadHash: annotResponse.TxPayloadHash,
+		Signer:        annotResponse.Owner,
 		Signature:     base64.StdEncoding.EncodeToString(sig),
 	}
 	requestBytes, err = json.Marshal(submitRequest)

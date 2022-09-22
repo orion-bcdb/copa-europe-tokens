@@ -27,7 +27,7 @@ func NewAnnotationsHandler(manager tokens.Operations, lg *logger.SugarLogger) *e
 		lg:      lg,
 	}
 
-	// GET /tokens/annotations/list/[tokenTypeId]?typeId="token-type-id"&owner="user-id"&link="token-id"
+	// GET /tokens/annotations?typeId="token-type-id"&owner="user-id"&link="token-id"
 	qAll := []string{"type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}", "link", "{linkId:.+}"}
 	handler.router.HandleFunc(constants.TokensAnnotationsEndpoint, handler.listAnnotations).Methods(http.MethodGet).Queries(qAll...)
 	qOwner := []string{"type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}"}

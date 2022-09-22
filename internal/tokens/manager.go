@@ -17,13 +17,14 @@ import (
 	"github.com/copa-europe-tokens/pkg/config"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
 	sdkconfig "github.com/hyperledger-labs/orion-sdk-go/pkg/config"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
+	"github.com/hyperledger-labs/orion-server/pkg/marshal"
 	oriontypes "github.com/hyperledger-labs/orion-server/pkg/types"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -454,7 +455,7 @@ func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest
 		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
 	}
 
-	payloadBytes, err := json.Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	payloadBytes, err := marshal.DefaultMarshaler().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
 	}
@@ -555,7 +556,7 @@ func (m *Manager) PrepareTransfer(tokenId string, transferRequest *types.Transfe
 		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
 	}
 
-	payloadBytes, err := json.Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	payloadBytes, err := marshal.DefaultMarshaler().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
 	}
@@ -818,7 +819,7 @@ func (m *Manager) PrepareRegister(tokenTypeId string, registerRequest *types.Ann
 		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
 	}
 
-	payloadBytes, err := json.Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	payloadBytes, err := marshal.DefaultMarshaler().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
 	}
