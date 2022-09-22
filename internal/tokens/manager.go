@@ -53,7 +53,7 @@ type Operations interface {
 	PrepareTransfer(tokenId string, transferRequest *types.TransferRequest) (*types.TransferResponse, error)
 	SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error)
 	GetToken(tokenId string) (*types.TokenRecord, error)
-	GetTokensByOwner(tokenTypeId string, owner string) ([]*types.TokenRecord, error)
+	GetTokensByOwnerLink(tokenTypeId string, owner string, link string) ([]*types.TokenRecord, error)
 
 	// Annotations API
 
@@ -317,7 +317,7 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 	var indices []string
 	switch deployRequest.Class {
 	case constants.TokenClass_NFT:
-		indices = []string{"owner"}
+		indices = []string{"owner", "link"}
 	case constants.TokenClass_FUNGIBLE:
 		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("Class is not supported via this API call: %s", deployRequest.Class)}
 	case constants.TokenClass_ANNOTATIONS:
@@ -423,6 +423,7 @@ func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest
 		Owner:         mintRequest.Owner,
 		AssetData:     mintRequest.AssetData,
 		AssetMetadata: mintRequest.AssetMetadata,
+		Link:          mintRequest.Link,
 	}
 
 	val, err = json.Marshal(record)
@@ -676,7 +677,7 @@ func (m *Manager) GetToken(tokenId string) (*types.TokenRecord, error) {
 	return record, nil
 }
 
-func (m *Manager) GetTokensByOwner(tokenTypeId string, owner string) ([]*types.TokenRecord, error) {
+func (m *Manager) GetTokensByOwnerLink(tokenTypeId string, owner string, link string) ([]*types.TokenRecord, error) {
 	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
 	if _, ok := m.tokenTypesDBs[tokenDBName]; !ok {
 		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
@@ -687,7 +688,16 @@ func (m *Manager) GetTokensByOwner(tokenTypeId string, owner string) ([]*types.T
 		return nil, errors.Wrap(err, "failed to create JSONQuery")
 	}
 
-	query := fmt.Sprintf(`{"selector": {"owner": {"$eq": "%s"}}}`, owner)
+
+	var query string
+	if owner != "" && link == "" {
+		query = fmt.Sprintf(`{"selector": {"owner": {"$eq": "%s"}}}`, owner)
+	} else if owner == "" && link != "" {
+		query = fmt.Sprintf(`{"selector": {"link": {"$eq": "%s"}}}`, link)
+	} else {
+		query = fmt.Sprintf(`{"selector": {"$and": {"owner": {"$eq": "%s"}, "link": {"$eq": "%s"}}}}`, owner, link)
+	}
+
 	results, err := jq.ExecuteJSONQuery(tokenDBName, query)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to execute JSONQuery")

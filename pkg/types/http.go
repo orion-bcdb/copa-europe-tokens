@@ -53,6 +53,7 @@ type DeployResponse struct {
 
 type MintRequest struct {
 	Owner         string `json:"owner"`
+	Link          string `json:"link"`
 	AssetData     string `json:"assetData"`
 	AssetMetadata string `json:"assetMetadata"`
 }
@@ -94,6 +95,7 @@ type SubmitResponse struct {
 type TokenRecord struct {
 	AssetDataId   string `json:"assetDataId"`
 	Owner         string `json:"owner"`
+	Link          string `json:"link"`
 	AssetData     string `json:"assetData"`
 	AssetMetadata string `json:"assetMetadata"`
 }
