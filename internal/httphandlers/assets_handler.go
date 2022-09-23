@@ -27,8 +27,14 @@ func NewAssetsHandler(manager tokens.Operations, lg *logger.SugarLogger) *assets
 		lg:      lg,
 	}
 
-	// GET /tokens/assets/?type=[token-type-id],owner=[user-id]
-	handler.router.HandleFunc(constants.TokensAssetsEndpoint, handler.queryAssetByOwner).Methods(http.MethodGet).Queries("type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}")
+	// GET /tokens/assets?typeId="token-type-id"&owner="user-id"&link="token-id"
+	qAll := []string{"type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}", "link", "{linkId:.+}"}
+	handler.router.HandleFunc(constants.TokensAssetsEndpoint, handler.queryAssetByOwnerLink).Methods(http.MethodGet).Queries(qAll...)
+	qOwner := []string{"type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}"}
+	handler.router.HandleFunc(constants.TokensAssetsEndpoint, handler.queryAssetByOwnerLink).Methods(http.MethodGet).Queries(qOwner...)
+	qLink := []string{"type", `{typeId:[A-Za-z0-9_\-]+}`, "link", "{linkId:.+}"}
+	handler.router.HandleFunc(constants.TokensAssetsEndpoint, handler.queryAssetByOwnerLink).Methods(http.MethodGet).Queries(qLink...)
+
 	// GET /tokens/assets/[token-id]
 	handler.router.HandleFunc(constants.TokensAssetsQuery, handler.queryAsset).Methods(http.MethodGet)
 	handler.router.HandleFunc(constants.TokensAssetsPrepareMintMatch, handler.prepareMint).Methods(http.MethodPost)
@@ -63,22 +69,13 @@ func (d *assetsHandler) queryAsset(response http.ResponseWriter, request *http.R
 	SendHTTPResponse(response, http.StatusOK, tokenRecord, d.lg)
 }
 
-func (d *assetsHandler) queryAssetByOwner(response http.ResponseWriter, request *http.Request) {
+func (d *assetsHandler) queryAssetByOwnerLink(response http.ResponseWriter, request *http.Request) {
 	params := mux.Vars(request)
 	typeId := params["typeId"]
 	ownerId := params["ownerId"]
+	linkId := params["linkId"]
 
-	if typeId == "" {
-		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: "missing typeId"}, d.lg)
-		return
-	}
-
-	if ownerId == "" {
-		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: "missing owner"}, d.lg)
-		return
-	}
-
-	tokenRecords, err := d.manager.GetTokensByOwner(typeId, ownerId)
+	tokenRecords, err := d.manager.GetTokensByOwnerLink(typeId, ownerId, linkId)
 	if err != nil {
 		switch err.(type) {
 		case *tokens.ErrInvalid:

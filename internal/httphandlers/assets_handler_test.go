@@ -113,26 +113,30 @@ func TestAssetsHandler_Get(t *testing.T) {
 	}
 }
 
-func TestAssetsHandler_GetTokensByOwner(t *testing.T) {
+func TestAssetsHandler_GetTokensByOwnerLink(t *testing.T) {
 	for _, query := range []string{
 		"type=abcbdef&owner=bob",
 		"type=abAB01_-&owner=the~dude",
 		"owner=bob&type=abcbdef",
+		"type=abcbdef&owner=bob&link=xxx.yyy",
+		"type=abcbdef&link=xxx.yyy",
 	} {
 		t.Run("success: "+query, func(t *testing.T) {
 			mockManager := &mocks.Operations{}
-			mockManager.GetTokensByOwnerReturns([]*types.TokenRecord{
+			mockManager.GetTokensByOwnerLinkReturns([]*types.TokenRecord{
 				{
 					AssetDataId:   "xXyYzZ",
 					Owner:         "bob",
 					AssetData:     "bob's data",
 					AssetMetadata: "metadata",
+					Link:          "xxx.yyy",
 				},
 				{
 					AssetDataId:   "uUvVwW",
 					Owner:         "charlie",
 					AssetData:     "charlie's data",
 					AssetMetadata: "metadata",
+					Link:          "xxx.yyy",
 				},
 			}, nil)
 
@@ -165,12 +169,14 @@ func TestAssetsHandler_GetTokensByOwner(t *testing.T) {
 				Owner:         "bob",
 				AssetData:     "bob's data",
 				AssetMetadata: "metadata",
+				Link:          "xxx.yyy",
 			}, resp[0])
 			require.Equal(t, &types.TokenRecord{
 				AssetDataId:   "uUvVwW",
 				Owner:         "charlie",
 				AssetData:     "charlie's data",
 				AssetMetadata: "metadata",
+				Link:          "xxx.yyy",
 			}, resp[1])
 		})
 	}
@@ -180,7 +186,7 @@ func TestAssetsHandler_GetTokensByOwner(t *testing.T) {
 		h := NewAssetsHandler(mockManager, testLogger(t, "debug"))
 		require.NotNil(t, h)
 
-		for _, query := range []string{"type=abcbdef", "owner=abcbdef", ""} {
+		for _, query := range []string{"type=abcbdef", "owner=abcbdef", "link=xxx.yyy"} {
 
 			rr := httptest.NewRecorder()
 			require.NotNil(t, rr)
@@ -210,7 +216,7 @@ func TestAssetsHandler_GetTokensByOwner(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokensByOwnerReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.GetTokensByOwnerLinkReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -220,7 +226,7 @@ func TestAssetsHandler_GetTokensByOwner(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokensByOwnerReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.GetTokensByOwnerLinkReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -230,7 +236,7 @@ func TestAssetsHandler_GetTokensByOwner(t *testing.T) {
 			name: "error: internal",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokensByOwnerReturns(nil, errors.New("oops internal"))
+				mockManager.GetTokensByOwnerLinkReturns(nil, errors.New("oops internal"))
 				return mockManager
 			},
 			expectedStatus: http.StatusInternalServerError,

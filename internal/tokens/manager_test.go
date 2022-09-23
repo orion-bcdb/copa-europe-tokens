@@ -265,25 +265,25 @@ func TestTokensManager_MintToken(t *testing.T) {
 	deployResponseMy, err := manager.DeployTokenType(deployRequest)
 	assert.NoError(t, err)
 
+	certBob, signerBob := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
+	err = manager.AddUser(&types.UserRecord{
+		Identity:    "bob",
+		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
+		Privilege:   nil,
+	})
+	assert.NoError(t, err)
+
+	getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
+	assert.NoError(t, err)
+	assertEqualDeployResponse(t, deployResponseMy, getResponse)
+
 	t.Run("success: owner is user bob", func(t *testing.T) {
-		getResponse, err := manager.GetTokenType(deployResponseMy.TypeId)
-		assert.NoError(t, err)
-		assertEqualDeployResponse(t, deployResponseMy, getResponse)
-
-		certBob, signerBob := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
-		err = manager.AddUser(&types.UserRecord{
-			Identity:    "bob",
-			Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
-			Privilege:   nil,
-		})
-		assert.NoError(t, err)
-
 		mintRequest := &types.MintRequest{
 			Owner:         "bob",
 			AssetData:     "bob's asset",
 			AssetMetadata: "bob's asset meta",
 		}
-		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
+		mintResponse, err := manager.PrepareMint(deployResponseMy.TypeId, mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
@@ -315,6 +315,52 @@ func TestTokensManager_MintToken(t *testing.T) {
 		require.Equal(t, mintRequest.Owner, tokenRecord.Owner)
 		require.Equal(t, mintRequest.AssetData, tokenRecord.AssetData)
 		require.Equal(t, mintRequest.AssetMetadata, tokenRecord.AssetMetadata)
+		require.Equal(t, "", tokenRecord.Link)
+		h, err := ComputeMD5Hash([]byte(tokenRecord.AssetData))
+		require.NoError(t, err)
+		require.Equal(t, base64.RawURLEncoding.EncodeToString(h), tokenRecord.AssetDataId)
+	})
+
+	t.Run("success: with link", func(t *testing.T) {
+		mintRequest := &types.MintRequest{
+			Owner:         "bob",
+			AssetData:     "bob's asset with link",
+			AssetMetadata: "bob's asset meta",
+			Link:          "xxx.yyy",
+		}
+		mintResponse, err := manager.PrepareMint(deployResponseMy.TypeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       mintResponse.TokenId,
+			TxEnvelope:    mintResponse.TxEnvelope,
+			TxPayloadHash: mintResponse.TxPayloadHash,
+			Signer:        "bob",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.NoError(t, err)
+		require.NotNil(t, submitResponse)
+		require.Equal(t, submitRequest.TokenId, submitResponse.TokenId)
+
+		// Get this token
+		tokenRecord, err := manager.GetToken(mintResponse.TokenId)
+		require.NoError(t, err)
+		require.Equal(t, mintRequest.Owner, tokenRecord.Owner)
+		require.Equal(t, mintRequest.AssetData, tokenRecord.AssetData)
+		require.Equal(t, mintRequest.AssetMetadata, tokenRecord.AssetMetadata)
+		require.Equal(t, mintRequest.Link, tokenRecord.Link)
 		h, err := ComputeMD5Hash([]byte(tokenRecord.AssetData))
 		require.NoError(t, err)
 		require.Equal(t, base64.RawURLEncoding.EncodeToString(h), tokenRecord.AssetDataId)
@@ -646,7 +692,7 @@ func TestTokensManager_TransferToken(t *testing.T) {
 	})
 }
 
-func TestTokensManager_GetTokensByOwner(t *testing.T) {
+func TestTokensManager_GetTokensByOwnerLink(t *testing.T) {
 	env := newTestEnv(t)
 
 	manager, err := NewManager(env.conf, env.lg)
@@ -687,6 +733,7 @@ func TestTokensManager_GetTokensByOwner(t *testing.T) {
 			Owner:         "bob",
 			AssetData:     fmt.Sprintf("bob's asset %d", i),
 			AssetMetadata: "bob's asset metadata",
+			Link:          fmt.Sprintf("link-%d", i%2),
 		}
 		mintResponse, err := manager.PrepareMint(deployResponse.TypeId, mintRequest)
 		require.NoError(t, err)
@@ -719,6 +766,7 @@ func TestTokensManager_GetTokensByOwner(t *testing.T) {
 			Owner:         "charlie",
 			AssetData:     fmt.Sprintf("charlie's asset %d", i),
 			AssetMetadata: "charlie's asset metadata",
+			Link:          "link-0",
 		}
 		mintResponse, err := manager.PrepareMint(deployResponse.TypeId, mintRequest)
 		require.NoError(t, err)
@@ -746,16 +794,39 @@ func TestTokensManager_GetTokensByOwner(t *testing.T) {
 		tokenIDs = append(tokenIDs, submitResponse.TokenId)
 	}
 
-	t.Run("success", func(t *testing.T) {
-		records, err := manager.GetTokensByOwner(deployResponse.TypeId, "bob")
+	t.Run("success: by owner", func(t *testing.T) {
+		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "bob", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 5)
 
-		records, err = manager.GetTokensByOwner(deployResponse.TypeId, "charlie")
+		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
+	})
+
+	t.Run("success: by link", func(t *testing.T) {
+		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "link-0")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 8)
+
+		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "link-1")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 3)
+	})
+
+	t.Run("success: by link & owner", func(t *testing.T) {
+		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "link-0")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 6)
+
+		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "link-1")
+		require.NoError(t, err)
+		require.Len(t, records, 0)
 	})
 
 	t.Run("success: manager restart", func(t *testing.T) {
@@ -765,12 +836,12 @@ func TestTokensManager_GetTokensByOwner(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, manager)
 
-		records, err := manager.GetTokensByOwner(deployResponse.TypeId, "bob")
+		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "bob", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 5)
 
-		records, err = manager.GetTokensByOwner(deployResponse.TypeId, "charlie")
+		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
