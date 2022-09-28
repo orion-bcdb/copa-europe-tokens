@@ -51,6 +51,7 @@ type Operations interface {
 
 	PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error)
 	PrepareTransfer(tokenId string, transferRequest *types.TransferRequest) (*types.TransferResponse, error)
+	PrepareUpdate(tokenId string, updateRequest *types.UpdateRequest) (*types.UpdateResponse, error)
 	SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error)
 	GetToken(tokenId string) (*types.TokenRecord, error)
 	GetTokensByOwnerLink(tokenTypeId string, owner string, link string) ([]*types.TokenRecord, error)

@@ -386,6 +386,16 @@ func TestTokensServer(t *testing.T) {
 		require.Equal(t, tokenId, resp.TokenId)
 	}
 
+	// Update the tokens metadata
+	for _, tokenId := range []string{submitResponse4.TokenId, submitResponse5.TokenId} {
+		request := &types.UpdateRequest{
+			Owner:    "bob",
+			AssetMetadata: "Expire: 01/01/2026",
+		}
+		resp := updateToken(t, httpClient, baseURL, tokenId, request, signerBob)
+		require.Equal(t, tokenId, resp.TokenId)
+	}
+
 	// Get the tokens
 	for _, tokenId := range []string{submitResponse1.TokenId, submitResponse2.TokenId, submitResponse3.TokenId} {
 		u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsSubTree + tokenId})
@@ -408,6 +418,7 @@ func TestTokensServer(t *testing.T) {
 		err = json.NewDecoder(resp.Body).Decode(tokenRecord)
 		require.NoError(t, err)
 		require.Equal(t, "bob", tokenRecord.Owner)
+		require.Equal(t, "Expire: 01/01/2026", tokenRecord.AssetMetadata)
 	}
 
 	// Get tokens by owner
@@ -972,6 +983,52 @@ func transferToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, toke
 		TxEnvelope:    transferResponse.TxEnvelope,
 		TxPayloadHash: transferResponse.TxPayloadHash,
 		Signer:        transferResponse.Owner,
+		Signature:     base64.StdEncoding.EncodeToString(sig),
+	}
+	requestBytes, err = json.Marshal(submitRequest)
+	require.NoError(t, err)
+	reader = bytes.NewReader(requestBytes)
+	require.NotNil(t, reader)
+	resp, err = httpClient.Post(u.String(), "application/json", reader)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	submitResponse := &types.SubmitResponse{}
+	err = json.NewDecoder(resp.Body).Decode(submitResponse)
+	require.NoError(t, err)
+	return submitResponse
+}
+
+
+func updateToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, tokenId string, updateRequest *types.UpdateRequest, signer crypto.Signer) *types.SubmitResponse {
+	// 1. Transfer prepare
+	u := baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsPrepareUpdate + tokenId})
+	requestBytes, err := json.Marshal(updateRequest)
+	require.NoError(t, err)
+	reader := bytes.NewReader(requestBytes)
+	require.NotNil(t, reader)
+	resp, err := httpClient.Post(u.String(), "application/json", reader)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	updateResponse := &types.UpdateResponse{}
+	err = json.NewDecoder(resp.Body).Decode(updateResponse)
+	require.NoError(t, err)
+
+	// 2. Sign by owner
+	txEnvBytes, err := base64.StdEncoding.DecodeString(updateResponse.TxEnvelope)
+	require.NoError(t, err)
+	txEnv := &oriontypes.DataTxEnvelope{}
+	err = proto.Unmarshal(txEnvBytes, txEnv)
+	require.NoError(t, err)
+	sig := testutils.SignatureFromTx(t, signer, txEnv.Payload)
+	require.NotNil(t, sig)
+
+	// 3. Submit
+	u = baseURL.ResolveReference(&url.URL{Path: constants.TokensAssetsSubmit})
+	submitRequest := &types.SubmitRequest{
+		TokenId:       updateResponse.TokenId,
+		TxEnvelope:    updateResponse.TxEnvelope,
+		TxPayloadHash: updateResponse.TxPayloadHash,
+		Signer:        updateResponse.Owner,
 		Signature:     base64.StdEncoding.EncodeToString(sig),
 	}
 	requestBytes, err = json.Marshal(submitRequest)

@@ -277,6 +277,20 @@ type Operations struct {
 		result1 *types.TransferResponse
 		result2 error
 	}
+	PrepareUpdateStub        func(string, *types.UpdateRequest) (*types.UpdateResponse, error)
+	prepareUpdateMutex       sync.RWMutex
+	prepareUpdateArgsForCall []struct {
+		arg1 string
+		arg2 *types.UpdateRequest
+	}
+	prepareUpdateReturns struct {
+		result1 *types.UpdateResponse
+		result2 error
+	}
+	prepareUpdateReturnsOnCall map[int]struct {
+		result1 *types.UpdateResponse
+		result2 error
+	}
 	RemoveUserStub        func(string) error
 	removeUserMutex       sync.RWMutex
 	removeUserArgsForCall []struct {
@@ -1569,6 +1583,70 @@ func (fake *Operations) PrepareTransferReturnsOnCall(i int, result1 *types.Trans
 	}{result1, result2}
 }
 
+func (fake *Operations) PrepareUpdate(arg1 string, arg2 *types.UpdateRequest) (*types.UpdateResponse, error) {
+	fake.prepareUpdateMutex.Lock()
+	ret, specificReturn := fake.prepareUpdateReturnsOnCall[len(fake.prepareUpdateArgsForCall)]
+	fake.prepareUpdateArgsForCall = append(fake.prepareUpdateArgsForCall, struct {
+		arg1 string
+		arg2 *types.UpdateRequest
+	}{arg1, arg2})
+	fake.recordInvocation("PrepareUpdate", []interface{}{arg1, arg2})
+	fake.prepareUpdateMutex.Unlock()
+	if fake.PrepareUpdateStub != nil {
+		return fake.PrepareUpdateStub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	fakeReturns := fake.prepareUpdateReturns
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) PrepareUpdateCallCount() int {
+	fake.prepareUpdateMutex.RLock()
+	defer fake.prepareUpdateMutex.RUnlock()
+	return len(fake.prepareUpdateArgsForCall)
+}
+
+func (fake *Operations) PrepareUpdateCalls(stub func(string, *types.UpdateRequest) (*types.UpdateResponse, error)) {
+	fake.prepareUpdateMutex.Lock()
+	defer fake.prepareUpdateMutex.Unlock()
+	fake.PrepareUpdateStub = stub
+}
+
+func (fake *Operations) PrepareUpdateArgsForCall(i int) (string, *types.UpdateRequest) {
+	fake.prepareUpdateMutex.RLock()
+	defer fake.prepareUpdateMutex.RUnlock()
+	argsForCall := fake.prepareUpdateArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *Operations) PrepareUpdateReturns(result1 *types.UpdateResponse, result2 error) {
+	fake.prepareUpdateMutex.Lock()
+	defer fake.prepareUpdateMutex.Unlock()
+	fake.PrepareUpdateStub = nil
+	fake.prepareUpdateReturns = struct {
+		result1 *types.UpdateResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) PrepareUpdateReturnsOnCall(i int, result1 *types.UpdateResponse, result2 error) {
+	fake.prepareUpdateMutex.Lock()
+	defer fake.prepareUpdateMutex.Unlock()
+	fake.PrepareUpdateStub = nil
+	if fake.prepareUpdateReturnsOnCall == nil {
+		fake.prepareUpdateReturnsOnCall = make(map[int]struct {
+			result1 *types.UpdateResponse
+			result2 error
+		})
+	}
+	fake.prepareUpdateReturnsOnCall[i] = struct {
+		result1 *types.UpdateResponse
+		result2 error
+	}{result1, result2}
+}
+
 func (fake *Operations) RemoveUser(arg1 string) error {
 	fake.removeUserMutex.Lock()
 	ret, specificReturn := fake.removeUserReturnsOnCall[len(fake.removeUserArgsForCall)]
@@ -1795,6 +1873,8 @@ func (fake *Operations) Invocations() map[string][][]interface{} {
 	defer fake.prepareRegisterMutex.RUnlock()
 	fake.prepareTransferMutex.RLock()
 	defer fake.prepareTransferMutex.RUnlock()
+	fake.prepareUpdateMutex.RLock()
+	defer fake.prepareUpdateMutex.RUnlock()
 	fake.removeUserMutex.RLock()
 	defer fake.removeUserMutex.RUnlock()
 	fake.submitTxMutex.RLock()
