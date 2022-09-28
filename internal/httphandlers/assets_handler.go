@@ -39,6 +39,8 @@ func NewAssetsHandler(manager tokens.Operations, lg *logger.SugarLogger) *assets
 	handler.router.HandleFunc(constants.TokensAssetsQuery, handler.queryAsset).Methods(http.MethodGet)
 	handler.router.HandleFunc(constants.TokensAssetsPrepareMintMatch, handler.prepareMint).Methods(http.MethodPost)
 	handler.router.HandleFunc(constants.TokensAssetsPrepareTransferMatch, handler.prepareTransfer).Methods(http.MethodPost)
+	handler.router.HandleFunc(constants.TokensAssetsPrepareUpdateMatch, handler.prepareUpdate).Methods(http.MethodPost)
+
 	handler.router.HandleFunc(constants.TokensAssetsSubmit, handler.submit).Methods(http.MethodPost)
 
 	return handler
@@ -156,6 +158,39 @@ func (d *assetsHandler) prepareTransfer(response http.ResponseWriter, request *h
 	}
 
 	SendHTTPResponse(response, http.StatusOK, mintResponse, d.lg)
+}
+
+func (d *assetsHandler) prepareUpdate(response http.ResponseWriter, request *http.Request) {
+	params := mux.Vars(request)
+	tokenId := params["tokenId"]
+
+	updateRequest := &types.UpdateRequest{}
+
+	dec := json.NewDecoder(request.Body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(updateRequest); err != nil {
+		SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		return
+	}
+
+	updateResponse, err := d.manager.PrepareUpdate(tokenId, updateRequest)
+	if err != nil {
+		switch err.(type) {
+		case *tokens.ErrPermission:
+			SendHTTPResponse(response, http.StatusForbidden, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		case *tokens.ErrInvalid:
+			SendHTTPResponse(response, http.StatusBadRequest, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		case *tokens.ErrNotFound:
+			SendHTTPResponse(response, http.StatusNotFound, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		default:
+			SendHTTPResponse(response, http.StatusInternalServerError, &types.HttpResponseErr{ErrMsg: err.Error()}, d.lg)
+		}
+
+		return
+	}
+
+	SendHTTPResponse(response, http.StatusOK, updateResponse, d.lg)
 }
 
 func (d *assetsHandler) submit(response http.ResponseWriter, request *http.Request) {

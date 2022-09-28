@@ -21,6 +21,8 @@ const (
 	TokensAssetsPrepareMintMatch     = "/tokens/assets/prepare-mint/{typeId}"
 	TokensAssetsPrepareTransfer      = "/tokens/assets/prepare-transfer/"
 	TokensAssetsPrepareTransferMatch = "/tokens/assets/prepare-transfer/{tokenId}"
+	TokensAssetsPrepareUpdate        = "/tokens/assets/prepare-update/"
+	TokensAssetsPrepareUpdateMatch   = "/tokens/assets/prepare-update/{tokenId}"
 	TokensAssetsSubmit               = "/tokens/assets/submit"
 	TokensAssetsQuery                = "/tokens/assets/{tokenId}"
 
