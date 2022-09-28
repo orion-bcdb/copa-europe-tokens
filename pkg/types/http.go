@@ -78,6 +78,19 @@ type TransferResponse struct {
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }
 
+type UpdateRequest struct {
+	Owner         string `json:"owner"`
+	AssetMetadata string `json:"assetMetadata"`
+}
+
+type UpdateResponse struct {
+	TokenId       string `json:"tokenId"`
+	Owner         string `json:"owner"`
+	AssetMetadata string `json:"assetMetadata"`
+	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
+}
+
 type SubmitRequest struct {
 	TokenId       string `json:"tokenId"`
 	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes

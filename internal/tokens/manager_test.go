@@ -692,6 +692,178 @@ func TestTokensManager_TransferToken(t *testing.T) {
 	})
 }
 
+func TestTokensManager_UpdateToken(t *testing.T) {
+	env := newTestEnv(t)
+
+	manager, err := NewManager(env.conf, env.lg)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	stat, err := manager.GetStatus()
+	require.NoError(t, err)
+	require.Contains(t, stat, "connected:")
+
+	deployRequest := &types.DeployRequest{
+		Name:        "my-NFT",
+		Description: "my NFT for testing",
+	}
+
+	deployResponse, err := manager.DeployTokenType(deployRequest)
+	assert.NoError(t, err)
+
+	certBob, signerBob := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "bob")
+	err = manager.AddUser(&types.UserRecord{
+		Identity:    "bob",
+		Certificate: base64.StdEncoding.EncodeToString(certBob.Raw),
+		Privilege:   nil,
+	})
+	assert.NoError(t, err)
+
+	certCharlie, signerCharlie := testutils.LoadTestCrypto(t, env.cluster.GetUserCertDir(), "charlie")
+	err = manager.AddUser(&types.UserRecord{
+		Identity:    "charlie",
+		Certificate: base64.StdEncoding.EncodeToString(certCharlie.Raw),
+		Privilege:   nil,
+	})
+	assert.NoError(t, err)
+
+	var tokenIDs []string
+	for i := 1; i <= 5; i++ {
+		mintRequest := &types.MintRequest{
+			Owner:         "bob",
+			AssetData:     fmt.Sprintf("bob's asset %d", i),
+			AssetMetadata: "bob's asset metadata",
+		}
+		mintResponse, err := manager.PrepareMint(deployResponse.TypeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(mintResponse.TxEnvelope)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       mintResponse.TokenId,
+			TxEnvelope:    mintResponse.TxEnvelope,
+			TxPayloadHash: mintResponse.TxPayloadHash,
+			Signer:        "bob",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.NoError(t, err)
+		tokenIDs = append(tokenIDs, submitResponse.TokenId)
+	}
+
+	t.Run("success: bob updates metadata", func(t *testing.T) {
+		updateRequest := &types.UpdateRequest{
+			Owner:         "bob",
+			AssetMetadata: "A new version of the metadata",
+		}
+		updateResponse, err := manager.PrepareUpdate(tokenIDs[0], updateRequest)
+		require.NoError(t, err)
+		require.NotNil(t, updateResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(updateResponse.TxEnvelope)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerBob, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       updateResponse.TokenId,
+			TxEnvelope:    updateResponse.TxEnvelope,
+			TxPayloadHash: updateResponse.TxPayloadHash,
+			Signer:        "bob",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.NoError(t, err)
+		require.NotNil(t, submitResponse)
+
+		// Get this token
+		tokenRecord, err := manager.GetToken(tokenIDs[0])
+		require.NoError(t, err)
+		require.Equal(t, updateRequest.AssetMetadata, tokenRecord.AssetMetadata)
+	})
+
+	t.Run("error: token type does not exists", func(t *testing.T) {
+		updateRequest := &types.UpdateRequest{
+			Owner:         "bob",
+			AssetMetadata: "A new version of the metadata",
+		}
+
+		updateResponse, err := manager.PrepareUpdate("aaaaabbbbbcccccdddddee.uuuuuvvvvvwwwwwxxxxxzz", updateRequest)
+		require.EqualError(t, err, "token type not found: aaaaabbbbbcccccdddddee")
+		require.IsType(t, &ErrNotFound{}, err)
+		require.Nil(t, updateResponse)
+	})
+
+	t.Run("error: token does not exists", func(t *testing.T) {
+		updateRequest := &types.UpdateRequest{
+			Owner:         "bob",
+			AssetMetadata: "A new version of the metadata",
+		}
+		updateResponse, err := manager.PrepareUpdate(deployResponse.TypeId+".uuuuuvvvvvwwwwwxxxxxzz", updateRequest)
+		require.EqualError(t, err, "token not found: "+deployResponse.TypeId+".uuuuuvvvvvwwwwwxxxxxzz")
+		require.IsType(t, &ErrNotFound{}, err)
+		require.Nil(t, updateResponse)
+	})
+
+	t.Run("error: requester not the owner", func(t *testing.T) {
+		updateRequest := &types.UpdateRequest{
+			Owner:         "charlie",
+			AssetMetadata: "A new version of the metadata",
+		}
+		updateResponse, err := manager.PrepareUpdate(tokenIDs[1], updateRequest)
+		require.EqualError(t, err, "not owner: charlie")
+		require.IsType(t, &ErrPermission{}, err)
+		require.Nil(t, updateResponse)
+	})
+
+	t.Run("error: wrong signature", func(t *testing.T) {
+		updateRequest := &types.UpdateRequest{
+			Owner:         "bob",
+			AssetMetadata: "A new version of the metadata",
+		}
+		updateResponse, err := manager.PrepareUpdate(tokenIDs[1], updateRequest)
+		require.NoError(t, err)
+		require.NotNil(t, updateResponse)
+
+		txEnvBytes, err := base64.StdEncoding.DecodeString(updateResponse.TxEnvelope)
+		require.NoError(t, err)
+		txEnv := &oriontypes.DataTxEnvelope{}
+		err = proto.Unmarshal(txEnvBytes, txEnv)
+		require.NoError(t, err)
+
+		sig := testutils.SignatureFromTx(t, signerCharlie, txEnv.Payload)
+		require.NotNil(t, sig)
+
+		submitRequest := &types.SubmitRequest{
+			TokenId:       updateResponse.TokenId,
+			TxEnvelope:    updateResponse.TxEnvelope,
+			TxPayloadHash: updateResponse.TxPayloadHash,
+			Signer:        "bob",
+			Signature:     base64.StdEncoding.EncodeToString(sig),
+		}
+
+		submitResponse, err := manager.SubmitTx(submitRequest)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not valid, flag: INVALID_NO_PERMISSION, reason: not all required users in [alice,bob] have signed the transaction to write/delete key")
+		require.IsType(t, &ErrPermission{}, err)
+		require.Nil(t, submitResponse)
+	})
+}
+
 func TestTokensManager_GetTokensByOwnerLink(t *testing.T) {
 	env := newTestEnv(t)
 

@@ -577,6 +577,90 @@ func (m *Manager) PrepareTransfer(tokenId string, transferRequest *types.Transfe
 	return transferResponse, nil
 }
 
+func (m *Manager) PrepareUpdate(tokenId string, updateRequest *types.UpdateRequest) (*types.UpdateResponse, error) {
+	m.lg.Debugf("Received update request: %+v, for tokenId: %s", updateRequest, tokenId)
+
+	tokenTypeId, assetId, err := parseTokenId(tokenId)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO enforce class
+
+	dataTx, err := m.custodianSession.DataTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create DataTx")
+	}
+	defer dataTx.Abort()
+
+	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
+	if _, ok := m.tokenTypesDBs[tokenDBName]; !ok {
+		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
+	}
+
+	val, meta, err := dataTx.Get(tokenDBName, assetId)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to Get %s", tokenDBName)
+	}
+	if val == nil {
+		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token not found: %s", tokenId)}
+	}
+
+	record := &types.TokenRecord{}
+	err = json.Unmarshal(val, record)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to json.Unmarshal %v", val)
+	}
+
+	if updateRequest.Owner != record.Owner {
+		return nil, &ErrPermission{ErrMsg: fmt.Sprintf("not owner: %s", updateRequest.Owner)}
+	}
+
+	m.lg.Debugf("Token: %+v; meta: %+v", record, meta, )
+	m.lg.Debugf("Token: %+v; updating asset metadata from: [%s] to: [%s]", record, record.AssetMetadata, updateRequest.AssetMetadata)
+
+	record.AssetMetadata = updateRequest.AssetMetadata
+
+	recordBytes, err := json.Marshal(record)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to json.Marshal %v", record)
+	}
+
+	err = dataTx.Put(tokenDBName, assetId, recordBytes, meta.AccessControl)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to Put")
+	}
+
+	txEnv, err := dataTx.SignConstructedTxEnvelopeAndCloseTx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to construct Tx envelope")
+	}
+
+	txEnvBytes, err := proto.Marshal(txEnv)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
+	}
+
+	payloadBytes, err := marshal.DefaultMarshaler().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
+	}
+	payloadHash, err := ComputeSHA256Hash(payloadBytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to compute hash of DataTx bytes")
+	}
+
+	updateResponse := &types.UpdateResponse{
+		TokenId:       tokenId,
+		Owner:         updateRequest.Owner,
+		AssetMetadata: updateRequest.AssetMetadata,
+		TxEnvelope:    base64.StdEncoding.EncodeToString(txEnvBytes),
+		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
+	}
+
+	return updateResponse, nil
+}
+
 func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error) {
 	tokenTypeId, assetId, err := parseTokenId(submitRequest.TokenId)
 	if err != nil {
@@ -687,7 +771,6 @@ func (m *Manager) GetTokensByOwnerLink(tokenTypeId string, owner string, link st
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create JSONQuery")
 	}
-
 
 	var query string
 	if owner != "" && link == "" {
