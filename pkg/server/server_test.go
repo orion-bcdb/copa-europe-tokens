@@ -340,6 +340,7 @@ func TestTokensServer(t *testing.T) {
 		AssetData:     "Lease: No. 1: " + submitResponse1.TokenId,
 		AssetMetadata: "Expire: 28/12/2023",
 		Link:          submitResponse1.TokenId,
+		Reference:     submitResponse2.TokenId,
 	}
 	submitResponse4 := mintToken(t, httpClient, baseURL, deployResp2.TypeId, mintRequest4, hashSignerCharlie)
 	t.Logf("Minted: tokenId: %s, txId: %s", submitResponse4.TokenId, submitResponse4.TxId)
@@ -349,6 +350,7 @@ func TestTokensServer(t *testing.T) {
 		AssetData:     "Lease: No. 2: " + submitResponse2.TokenId,
 		AssetMetadata: "Expire: 28/12/2024",
 		Link:          submitResponse1.TokenId,
+		Reference:     submitResponse2.TokenId,
 	}
 	submitResponse5 := mintToken(t, httpClient, baseURL, deployResp2.TypeId, mintRequest5, hashSignerCharlie)
 	t.Logf("Minted: tokenId: %s, txId: %s", submitResponse5.TokenId, submitResponse5.TxId)
@@ -389,7 +391,7 @@ func TestTokensServer(t *testing.T) {
 	// Update the tokens metadata
 	for _, tokenId := range []string{submitResponse4.TokenId, submitResponse5.TokenId} {
 		request := &types.UpdateRequest{
-			Owner:    "bob",
+			Owner:         "bob",
 			AssetMetadata: "Expire: 01/01/2026",
 		}
 		resp := updateToken(t, httpClient, baseURL, tokenId, request, signerBob)
@@ -455,6 +457,23 @@ func TestTokensServer(t *testing.T) {
 		require.Equal(t, submitResponse1.TokenId, tr.Link)
 	}
 
+	// Get tokens by ref
+	u = baseURL.ResolveReference(&url.URL{
+		Path:     constants.TokensAssetsEndpoint,
+		RawQuery: "type=" + deployResp2.TypeId + "&reference=" + submitResponse2.TokenId,
+	})
+	resp, err = httpClient.Get(u.String())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	tokenRecords = []*types.TokenRecord{}
+	err = json.NewDecoder(resp.Body).Decode(&tokenRecords)
+	require.NoError(t, err)
+	require.Len(t, tokenRecords, 2)
+	for _, tr := range tokenRecords {
+		require.Equal(t, "bob", tr.Owner)
+		require.Equal(t, submitResponse2.TokenId, tr.Reference)
+	}
+
 	// Get tokens by link & owner
 	u = baseURL.ResolveReference(&url.URL{
 		Path:     constants.TokensAssetsEndpoint,
@@ -518,6 +537,7 @@ func TestTokensServer(t *testing.T) {
 				annotRequest := &types.AnnotationRegisterRequest{
 					Owner:              "charlie",
 					Link:               submitResponse1.TokenId,
+					Reference:          submitResponse2.TokenId,
 					AnnotationData:     fmt.Sprintf("Charlie: Operation %d on %s", i, submitResponse1.TokenId),
 					AnnotationMetadata: "xxx",
 				}
@@ -529,6 +549,7 @@ func TestTokensServer(t *testing.T) {
 				annotRequest = &types.AnnotationRegisterRequest{
 					Owner:              "charlie",
 					Link:               submitResponse2.TokenId,
+					Reference:          submitResponse1.TokenId,
 					AnnotationData:     fmt.Sprintf("Charlie: Operation %d on %s", i, submitResponse2.TokenId),
 					AnnotationMetadata: "yyy",
 				}
@@ -542,6 +563,7 @@ func TestTokensServer(t *testing.T) {
 				annotRequest := &types.AnnotationRegisterRequest{
 					Owner:              "bob",
 					Link:               submitResponse1.TokenId,
+					Reference:          submitResponse2.TokenId,
 					AnnotationData:     fmt.Sprintf("Bob: Operation %d on %s", i, submitResponse1.TokenId),
 					AnnotationMetadata: "zzz",
 				}
@@ -582,10 +604,55 @@ func TestTokensServer(t *testing.T) {
 			require.Len(t, annotationRecords, 10)
 		})
 
+		t.Run("query by ref 1", func(t *testing.T) {
+			u = baseURL.ResolveReference(&url.URL{
+				Path:     constants.TokensAnnotationsEndpoint,
+				RawQuery: "type=" + deployResp3.TypeId + "&" + "reference=" + submitResponse2.TokenId,
+			})
+			t.Logf("GET: %s", u.String())
+			resp, err := httpClient.Get(u.String())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			annotationRecords := []*types.AnnotationRecord{}
+			err = json.NewDecoder(resp.Body).Decode(&annotationRecords)
+			require.NoError(t, err)
+			require.Len(t, annotationRecords, 17)
+		})
+
+		t.Run("query by ref 2", func(t *testing.T) {
+			u = baseURL.ResolveReference(&url.URL{
+				Path:     constants.TokensAnnotationsEndpoint,
+				RawQuery: "type=" + deployResp3.TypeId + "&" + "reference=" + submitResponse1.TokenId,
+			})
+			t.Logf("GET: %s", u.String())
+			resp, err := httpClient.Get(u.String())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			annotationRecords := []*types.AnnotationRecord{}
+			err = json.NewDecoder(resp.Body).Decode(&annotationRecords)
+			require.NoError(t, err)
+			require.Len(t, annotationRecords, 10)
+		})
+
 		t.Run("query by link: empty", func(t *testing.T) {
 			u = baseURL.ResolveReference(&url.URL{
 				Path:     constants.TokensAnnotationsEndpoint,
 				RawQuery: "type=" + deployResp3.TypeId + "&" + "link=xxx.yyy",
+			})
+			t.Logf("GET: %s", u.String())
+			resp, err := httpClient.Get(u.String())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			annotationRecords := []*types.AnnotationRecord{}
+			err = json.NewDecoder(resp.Body).Decode(&annotationRecords)
+			require.NoError(t, err)
+			require.Len(t, annotationRecords, 0)
+		})
+
+		t.Run("query by ref: empty", func(t *testing.T) {
+			u = baseURL.ResolveReference(&url.URL{
+				Path:     constants.TokensAnnotationsEndpoint,
+				RawQuery: "type=" + deployResp3.TypeId + "&" + "reference=xxx.yyy",
 			})
 			t.Logf("GET: %s", u.String())
 			resp, err := httpClient.Get(u.String())
@@ -616,6 +683,21 @@ func TestTokensServer(t *testing.T) {
 			u = baseURL.ResolveReference(&url.URL{
 				Path:     constants.TokensAnnotationsEndpoint,
 				RawQuery: "type=" + deployResp3.TypeId + "&" + "link=" + submitResponse1.TokenId + "&owner=charlie",
+			})
+			t.Logf("GET: %s", u.String())
+			resp, err := httpClient.Get(u.String())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			annotationRecords := []*types.AnnotationRecord{}
+			err = json.NewDecoder(resp.Body).Decode(&annotationRecords)
+			require.NoError(t, err)
+			require.Len(t, annotationRecords, 10)
+		})
+
+		t.Run("query by ref & owner", func(t *testing.T) {
+			u = baseURL.ResolveReference(&url.URL{
+				Path:     constants.TokensAnnotationsEndpoint,
+				RawQuery: "type=" + deployResp3.TypeId + "&" + "reference=" + submitResponse2.TokenId + "&owner=charlie",
 			})
 			t.Logf("GET: %s", u.String())
 			resp, err := httpClient.Get(u.String())
@@ -997,7 +1079,6 @@ func transferToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, toke
 	require.NoError(t, err)
 	return submitResponse
 }
-
 
 func updateToken(t *testing.T, httpClient *http.Client, baseURL *url.URL, tokenId string, updateRequest *types.UpdateRequest, signer crypto.Signer) *types.SubmitResponse {
 	// 1. Transfer prepare

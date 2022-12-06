@@ -6,13 +6,14 @@ package httphandlers
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/copa-europe-tokens/internal/tokens"
-	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/pkg/errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+
+	"github.com/copa-europe-tokens/internal/tokens"
+	"github.com/copa-europe-tokens/pkg/types"
+	"github.com/pkg/errors"
 
 	"github.com/copa-europe-tokens/internal/tokens/mocks"
 	"github.com/copa-europe-tokens/pkg/constants"
@@ -117,9 +118,14 @@ func TestAnnotationHandler_Get(t *testing.T) {
 
 func TestAnnotationHandler_GetTokensBy(t *testing.T) {
 	for _, query := range []string{
+		"type=abcbdef",
 		"type=abcbdef&owner=bob",
 		"type=abcbdef&owner=bob&link=xyz.abc",
+		"type=abcbdef&owner=bob&reference=xyz.abc",
+		"type=abcbdef&owner=bob&link=xyz.abc&reference=xyz.abc",
 		"type=abcbdef&link=xyz.abc",
+		"type=abcbdef&reference=xyz.abc",
+		"type=abcbdef&link=xyz.abc&reference=xyz.abc",
 	} {
 		t.Run("success: "+query, func(t *testing.T) {
 			mockManager := &mocks.Operations{}
@@ -183,10 +189,10 @@ func TestAnnotationHandler_GetTokensBy(t *testing.T) {
 	t.Run("error: missing parameter", func(t *testing.T) {
 		mockManager := &mocks.Operations{}
 
-		h := NewAssetsHandler(mockManager, testLogger(t, "debug"))
+		h := NewAnnotationsHandler(mockManager, testLogger(t, "debug"))
 		require.NotNil(t, h)
 
-		for _, query := range []string{"type=abcbdef", "owner=abcbdef", ""} {
+		for _, query := range []string{"owner=abcbdef", "link=xxx.yyy", "reference=xxx.yyy", ""} {
 
 			rr := httptest.NewRecorder()
 			require.NotNil(t, rr)

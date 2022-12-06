@@ -101,7 +101,7 @@ func (ctx *TokenTxContext) GetToken() (*types.TokenRecord, error) {
 	return record, nil
 }
 
-func (ctx *TokenTxContext) mint(owner, meta, link string) (*types.TokenRecord, error) {
+func (ctx *TokenTxContext) mint(owner, meta, link, reference string) (*types.TokenRecord, error) {
 	err := ctx.validateUserId(owner)
 	if err != nil {
 		return nil, err
@@ -122,6 +122,7 @@ func (ctx *TokenTxContext) mint(owner, meta, link string) (*types.TokenRecord, e
 		AssetData:     ctx.assetData,
 		AssetMetadata: meta,
 		Link:          link,
+		Reference:     reference,
 	}
 	if err = ctx.PutMarshal(ctx.assetId, record, owner, true); err != nil {
 		return nil, errors.Wrap(err, "failed to Put")

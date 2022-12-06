@@ -54,6 +54,7 @@ type DeployResponse struct {
 type MintRequest struct {
 	Owner         string `json:"owner"`
 	Link          string `json:"link"`
+	Reference     string `json:"reference"`
 	AssetData     string `json:"assetData"`
 	AssetMetadata string `json:"assetMetadata"`
 }
@@ -109,6 +110,7 @@ type TokenRecord struct {
 	AssetDataId   string `json:"assetDataId"`
 	Owner         string `json:"owner"`
 	Link          string `json:"link"`
+	Reference     string `json:"reference"`
 	AssetData     string `json:"assetData"`
 	AssetMetadata string `json:"assetMetadata"`
 }
@@ -130,6 +132,7 @@ type UserRecord struct {
 type AnnotationRegisterRequest struct {
 	Owner              string `json:"owner"`
 	Link               string `json:"link"`
+	Reference          string `json:"reference"`
 	AnnotationData     string `json:"annotationData"`
 	AnnotationMetadata string `json:"annotationMetadata"`
 }
@@ -138,6 +141,7 @@ type AnnotationRegisterResponse struct {
 	AnnotationId  string `json:"annotationId"`
 	Owner         string `json:"owner"`
 	Link          string `json:"link"`
+	Reference     string `json:"reference"`
 	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
 	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }
@@ -146,6 +150,7 @@ type AnnotationRecord struct {
 	AnnotationDataId   string `json:"annotationDataId"`
 	Owner              string `json:"owner"`
 	Link               string `json:"link"`
+	Reference          string `json:"reference"`
 	AnnotationData     string `json:"annotationData"`
 	AnnotationMetadata string `json:"annotationMetadata"`
 }

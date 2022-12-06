@@ -908,6 +908,7 @@ func TestTokensManager_GetTokensByOwnerLink(t *testing.T) {
 			AssetData:     fmt.Sprintf("bob's asset %d", i),
 			AssetMetadata: "bob's asset metadata",
 			Link:          fmt.Sprintf("link-%d", i%2),
+			Reference:     fmt.Sprintf("ref-%d", i%2),
 		}
 		mintResponse, err := manager.PrepareMint(deployResponse.TypeId, mintRequest)
 		require.NoError(t, err)
@@ -941,6 +942,7 @@ func TestTokensManager_GetTokensByOwnerLink(t *testing.T) {
 			AssetData:     fmt.Sprintf("charlie's asset %d", i),
 			AssetMetadata: "charlie's asset metadata",
 			Link:          "link-0",
+			Reference:     "ref-0",
 		}
 		mintResponse, err := manager.PrepareMint(deployResponse.TypeId, mintRequest)
 		require.NoError(t, err)
@@ -969,36 +971,59 @@ func TestTokensManager_GetTokensByOwnerLink(t *testing.T) {
 	}
 
 	t.Run("success: by owner", func(t *testing.T) {
-		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "bob", "")
+		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "bob", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 5)
 
-		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "")
+		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
 	})
 
 	t.Run("success: by link", func(t *testing.T) {
-		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "link-0")
+		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "link-0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 8)
 
-		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "link-1")
+		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "link-1", "")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 3)
+	})
+
+	t.Run("success: by ref", func(t *testing.T) {
+		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "", "ref-0")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 8)
+
+		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "", "ref-1")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 3)
 	})
 
 	t.Run("success: by link & owner", func(t *testing.T) {
-		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "link-0")
+		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "link-0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
 
-		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "link-1")
+		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "link-1", "")
+		require.NoError(t, err)
+		require.Len(t, records, 0)
+	})
+
+	t.Run("success: by ref & owner", func(t *testing.T) {
+		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "", "ref-0")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 6)
+
+		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "", "ref-1")
 		require.NoError(t, err)
 		require.Len(t, records, 0)
 	})
@@ -1010,12 +1035,12 @@ func TestTokensManager_GetTokensByOwnerLink(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, manager)
 
-		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "bob", "")
+		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "bob", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 5)
 
-		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "")
+		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
@@ -1255,6 +1280,7 @@ func TestTokensManager_GetAnnotationsBy(t *testing.T) {
 		regRequest := &types.AnnotationRegisterRequest{
 			Owner:              "bob",
 			Link:               fmt.Sprintf("xyz.abc%d", i%2),
+			Reference:          fmt.Sprintf("ref-%d", i%2),
 			AnnotationData:     fmt.Sprintf("bob's annot %d", i),
 			AnnotationMetadata: "bob's metadata",
 		}
@@ -1288,6 +1314,7 @@ func TestTokensManager_GetAnnotationsBy(t *testing.T) {
 		regRequest := &types.AnnotationRegisterRequest{
 			Owner:              "charlie",
 			Link:               fmt.Sprintf("xyz.abc%d", i%2),
+			Reference:          fmt.Sprintf("ref-%d", i%2),
 			AnnotationData:     fmt.Sprintf("charlies's annot %d", i),
 			AnnotationMetadata: "charlie's metadata",
 		}
@@ -1318,37 +1345,52 @@ func TestTokensManager_GetAnnotationsBy(t *testing.T) {
 	}
 
 	t.Run("success", func(t *testing.T) {
-		records, err := manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "")
+		records, err := manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "")
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 8)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "", "xyz.abc0")
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "", "xyz.abc0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 7)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "")
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "", "", "ref-0")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 7)
+
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 8)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "xyz.abc0")
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "xyz.abc0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 3)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "xyz.abc1")
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "", "ref-0")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 3)
+
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "xyz.abc1", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 4)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "", "")
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "", "ref-1")
+		require.NoError(t, err)
+		require.NotNil(t, records)
+		require.Len(t, records, 4)
+
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "", "", "")
 		require.NoError(t, err)
 		require.Len(t, records, 0)
 	})
@@ -1360,12 +1402,12 @@ func TestTokensManager_GetAnnotationsBy(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, manager)
 
-		records, err := manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "xyz.abc0")
+		records, err := manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "xyz.abc0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 3)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "xyz.abc0")
+		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "xyz.abc0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 4)
@@ -1378,7 +1420,7 @@ func TestTokensManager_GetAnnotationsBy(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, manager)
 
-		records, err := manager.GetAnnotationsByOwnerLink("xxx", "charlie", "xyz.abc0")
+		records, err := manager.GetAnnotationsByOwnerLink("xxx", "charlie", "xyz.abc0", "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "does not exist")
 		require.Nil(t, records)

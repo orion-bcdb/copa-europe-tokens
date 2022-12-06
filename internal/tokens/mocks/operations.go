@@ -142,12 +142,13 @@ type Operations struct {
 		result1 *types.AnnotationRecord
 		result2 error
 	}
-	GetAnnotationsByOwnerLinkStub        func(string, string, string) ([]*types.AnnotationRecord, error)
+	GetAnnotationsByOwnerLinkStub        func(string, string, string, string) ([]*types.AnnotationRecord, error)
 	getAnnotationsByOwnerLinkMutex       sync.RWMutex
 	getAnnotationsByOwnerLinkArgsForCall []struct {
 		arg1 string
 		arg2 string
 		arg3 string
+		arg4 string
 	}
 	getAnnotationsByOwnerLinkReturns struct {
 		result1 []*types.AnnotationRecord
@@ -207,12 +208,13 @@ type Operations struct {
 		result1 []*types.TokenDescription
 		result2 error
 	}
-	GetTokensByOwnerLinkStub        func(string, string, string) ([]*types.TokenRecord, error)
+	GetTokensByOwnerLinkStub        func(string, string, string, string) ([]*types.TokenRecord, error)
 	getTokensByOwnerLinkMutex       sync.RWMutex
 	getTokensByOwnerLinkArgsForCall []struct {
 		arg1 string
 		arg2 string
 		arg3 string
+		arg4 string
 	}
 	getTokensByOwnerLinkReturns struct {
 		result1 []*types.TokenRecord
@@ -972,20 +974,21 @@ func (fake *Operations) GetAnnotationReturnsOnCall(i int, result1 *types.Annotat
 	}{result1, result2}
 }
 
-func (fake *Operations) GetAnnotationsByOwnerLink(arg1 string, arg2 string, arg3 string) ([]*types.AnnotationRecord, error) {
+func (fake *Operations) GetAnnotationsByOwnerLink(arg1 string, arg2 string, arg3 string, arg4 string) ([]*types.AnnotationRecord, error) {
 	fake.getAnnotationsByOwnerLinkMutex.Lock()
 	ret, specificReturn := fake.getAnnotationsByOwnerLinkReturnsOnCall[len(fake.getAnnotationsByOwnerLinkArgsForCall)]
 	fake.getAnnotationsByOwnerLinkArgsForCall = append(fake.getAnnotationsByOwnerLinkArgsForCall, struct {
 		arg1 string
 		arg2 string
 		arg3 string
-	}{arg1, arg2, arg3})
+		arg4 string
+	}{arg1, arg2, arg3, arg4})
 	stub := fake.GetAnnotationsByOwnerLinkStub
 	fakeReturns := fake.getAnnotationsByOwnerLinkReturns
-	fake.recordInvocation("GetAnnotationsByOwnerLink", []interface{}{arg1, arg2, arg3})
+	fake.recordInvocation("GetAnnotationsByOwnerLink", []interface{}{arg1, arg2, arg3, arg4})
 	fake.getAnnotationsByOwnerLinkMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3)
+		return stub(arg1, arg2, arg3, arg4)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
@@ -999,17 +1002,17 @@ func (fake *Operations) GetAnnotationsByOwnerLinkCallCount() int {
 	return len(fake.getAnnotationsByOwnerLinkArgsForCall)
 }
 
-func (fake *Operations) GetAnnotationsByOwnerLinkCalls(stub func(string, string, string) ([]*types.AnnotationRecord, error)) {
+func (fake *Operations) GetAnnotationsByOwnerLinkCalls(stub func(string, string, string, string) ([]*types.AnnotationRecord, error)) {
 	fake.getAnnotationsByOwnerLinkMutex.Lock()
 	defer fake.getAnnotationsByOwnerLinkMutex.Unlock()
 	fake.GetAnnotationsByOwnerLinkStub = stub
 }
 
-func (fake *Operations) GetAnnotationsByOwnerLinkArgsForCall(i int) (string, string, string) {
+func (fake *Operations) GetAnnotationsByOwnerLinkArgsForCall(i int) (string, string, string, string) {
 	fake.getAnnotationsByOwnerLinkMutex.RLock()
 	defer fake.getAnnotationsByOwnerLinkMutex.RUnlock()
 	argsForCall := fake.getAnnotationsByOwnerLinkArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
 }
 
 func (fake *Operations) GetAnnotationsByOwnerLinkReturns(result1 []*types.AnnotationRecord, result2 error) {
@@ -1278,20 +1281,21 @@ func (fake *Operations) GetTokenTypesReturnsOnCall(i int, result1 []*types.Token
 	}{result1, result2}
 }
 
-func (fake *Operations) GetTokensByOwnerLink(arg1 string, arg2 string, arg3 string) ([]*types.TokenRecord, error) {
+func (fake *Operations) GetTokensByOwnerLink(arg1 string, arg2 string, arg3 string, arg4 string) ([]*types.TokenRecord, error) {
 	fake.getTokensByOwnerLinkMutex.Lock()
 	ret, specificReturn := fake.getTokensByOwnerLinkReturnsOnCall[len(fake.getTokensByOwnerLinkArgsForCall)]
 	fake.getTokensByOwnerLinkArgsForCall = append(fake.getTokensByOwnerLinkArgsForCall, struct {
 		arg1 string
 		arg2 string
 		arg3 string
-	}{arg1, arg2, arg3})
+		arg4 string
+	}{arg1, arg2, arg3, arg4})
 	stub := fake.GetTokensByOwnerLinkStub
 	fakeReturns := fake.getTokensByOwnerLinkReturns
-	fake.recordInvocation("GetTokensByOwnerLink", []interface{}{arg1, arg2, arg3})
+	fake.recordInvocation("GetTokensByOwnerLink", []interface{}{arg1, arg2, arg3, arg4})
 	fake.getTokensByOwnerLinkMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3)
+		return stub(arg1, arg2, arg3, arg4)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
@@ -1305,17 +1309,17 @@ func (fake *Operations) GetTokensByOwnerLinkCallCount() int {
 	return len(fake.getTokensByOwnerLinkArgsForCall)
 }
 
-func (fake *Operations) GetTokensByOwnerLinkCalls(stub func(string, string, string) ([]*types.TokenRecord, error)) {
+func (fake *Operations) GetTokensByOwnerLinkCalls(stub func(string, string, string, string) ([]*types.TokenRecord, error)) {
 	fake.getTokensByOwnerLinkMutex.Lock()
 	defer fake.getTokensByOwnerLinkMutex.Unlock()
 	fake.GetTokensByOwnerLinkStub = stub
 }
 
-func (fake *Operations) GetTokensByOwnerLinkArgsForCall(i int) (string, string, string) {
+func (fake *Operations) GetTokensByOwnerLinkArgsForCall(i int) (string, string, string, string) {
 	fake.getTokensByOwnerLinkMutex.RLock()
 	defer fake.getTokensByOwnerLinkMutex.RUnlock()
 	argsForCall := fake.getTokensByOwnerLinkArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
 }
 
 func (fake *Operations) GetTokensByOwnerLinkReturns(result1 []*types.TokenRecord, result2 error) {

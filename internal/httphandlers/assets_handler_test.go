@@ -115,11 +115,14 @@ func TestAssetsHandler_Get(t *testing.T) {
 
 func TestAssetsHandler_GetTokensByOwnerLink(t *testing.T) {
 	for _, query := range []string{
+		"type=abcbdef",
 		"type=abcbdef&owner=bob",
-		"type=abAB01_-&owner=the~dude",
-		"owner=bob&type=abcbdef",
-		"type=abcbdef&owner=bob&link=xxx.yyy",
-		"type=abcbdef&link=xxx.yyy",
+		"type=abcbdef&owner=bob&link=xyz.abc",
+		"type=abcbdef&owner=bob&reference=xyz.abc",
+		"type=abcbdef&owner=bob&link=xyz.abc&reference=xyz.abc",
+		"type=abcbdef&link=xyz.abc",
+		"type=abcbdef&reference=xyz.abc",
+		"type=abcbdef&link=xyz.abc&reference=xyz.abc",
 	} {
 		t.Run("success: "+query, func(t *testing.T) {
 			mockManager := &mocks.Operations{}
@@ -186,7 +189,7 @@ func TestAssetsHandler_GetTokensByOwnerLink(t *testing.T) {
 		h := NewAssetsHandler(mockManager, testLogger(t, "debug"))
 		require.NotNil(t, h)
 
-		for _, query := range []string{"type=abcbdef", "owner=abcbdef", "link=xxx.yyy"} {
+		for _, query := range []string{"owner=abcbdef", "link=xxx.yyy", "reference=xxx.yyy", ""} {
 
 			rr := httptest.NewRecorder()
 			require.NotNil(t, rr)
@@ -514,7 +517,7 @@ func TestAssetsHandler_Transfer(t *testing.T) {
 
 func TestAssetsHandler_Update(t *testing.T) {
 	request := &types.UpdateRequest{
-		Owner:    "bob",
+		Owner:         "bob",
 		AssetMetadata: "new metadata",
 	}
 
