@@ -17,7 +17,6 @@ import (
 	"github.com/copa-europe-tokens/pkg/config"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/google/uuid"
 	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
 	sdkconfig "github.com/hyperledger-labs/orion-sdk-go/pkg/config"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
@@ -54,13 +53,13 @@ type Operations interface {
 	PrepareUpdate(tokenId string, updateRequest *types.UpdateRequest) (*types.UpdateResponse, error)
 	SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error)
 	GetToken(tokenId string) (*types.TokenRecord, error)
-	GetTokensByOwnerLink(tokenTypeId string, owner string, link string) ([]*types.TokenRecord, error)
+	GetTokensByOwnerLink(tokenTypeId, owner, link string) ([]*types.TokenRecord, error)
 
 	// Annotations API
 
 	PrepareRegister(tokenTypeId string, registerRequest *types.AnnotationRegisterRequest) (*types.AnnotationRegisterResponse, error)
 	GetAnnotation(tokenId string) (*types.AnnotationRecord, error)
-	GetAnnotationsByOwnerLink(tokenTypeId string, owner, link string) ([]*types.AnnotationRecord, error)
+	GetAnnotationsByOwnerLink(tokenTypeId, owner, link string) ([]*types.AnnotationRecord, error)
 
 	// User API
 
@@ -305,24 +304,15 @@ func (m *Manager) createTokenDBTable(tokenDBName string, indices ...string) erro
 // ====================================================
 
 func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.DeployResponse, error) {
+	var indices []string
 	switch deployRequest.Class {
 	case "": //backward compatibility
 		deployRequest.Class = constants.TokenClass_NFT
-	case constants.TokenClass_NFT:
-	case constants.TokenClass_FUNGIBLE:
-	case constants.TokenClass_ANNOTATIONS:
-	default:
-		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("unsupported token class: %s", deployRequest.Class)}
-	}
-
-	var indices []string
-	switch deployRequest.Class {
-	case constants.TokenClass_NFT:
-		indices = []string{"owner", "link"}
+		fallthrough
+	case constants.TokenClass_NFT, constants.TokenClass_ANNOTATIONS:
+		indices = []string{"owner", "link", "reference"}
 	case constants.TokenClass_FUNGIBLE:
 		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("Class is not supported via this API call: %s", deployRequest.Class)}
-	case constants.TokenClass_ANNOTATIONS:
-		indices = []string{"owner", "link"}
 	default:
 		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("unsupported token class: %s", deployRequest.Class)}
 	}
@@ -348,7 +338,7 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 
 func (m *Manager) GetTokenType(tokenTypeId string) (*types.TokenDescription, error) {
 	if err := validateMD5Base64ID(tokenTypeId, "token type"); err != nil {
-		return nil, err
+		return nil, convertErrorType(err)
 	}
 
 	dataTx, err := m.custodianSession.DataTx()
@@ -380,102 +370,35 @@ func (m *Manager) GetTokenType(tokenTypeId string) (*types.TokenDescription, err
 }
 
 func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest) (*types.MintResponse, error) {
-	if err := validateMD5Base64ID(tokenTypeId, "token type"); err != nil {
-		return nil, err
-	}
-
 	// TODO enforce class
 
-	if mintRequest.Owner == "" {
-		return nil, &ErrInvalid{ErrMsg: "missing owner"}
-	}
-	if mintRequest.Owner == m.config.Users.Custodian.UserID {
-		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("owner cannot be the custodian: %s", m.config.Users.Custodian.UserID)}
-	}
-	if mintRequest.Owner == m.config.Users.Admin.UserID {
-		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("owner cannot be the admin: %s", m.config.Users.Admin.UserID)}
-	}
-	if mintRequest.AssetData == "" {
-		return nil, &ErrInvalid{ErrMsg: "missing asset data"}
-	}
-
-	assetDataId, err := NameToID(mintRequest.AssetData)
+	ctx, err := newTxContext(m).tokenType(tokenTypeId)
 	if err != nil {
 		return nil, err
 	}
+	defer ctx.Abort()
 
-	dataTx, err := m.custodianSession.DataTx()
+	tokenCtx, err := ctx.asset(mintRequest.AssetData)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create DataTx")
+		return nil, err
 	}
-
-	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
-	val, meta, err := dataTx.Get(tokenDBName, assetDataId)
+	record, err := tokenCtx.mint(mintRequest.Owner, mintRequest.AssetMetadata, mintRequest.Link)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to Get %s", tokenDBName)
-	}
-	if val != nil {
-		m.lg.Debugf("token already exists: DB: %s, assetId: %s, record: %s, meta: %+v", tokenDBName, assetDataId, string(val), meta)
-		return nil, &ErrExist{ErrMsg: "token already exists"}
+		return nil, convertErrorType(err)
 	}
 
-	record := &types.TokenRecord{
-		AssetDataId:   assetDataId,
-		Owner:         mintRequest.Owner,
-		AssetData:     mintRequest.AssetData,
-		AssetMetadata: mintRequest.AssetMetadata,
-		Link:          mintRequest.Link,
-	}
-
-	val, err = json.Marshal(record)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to json.Marshal record")
-	}
-
-	err = dataTx.Put(tokenDBName, assetDataId, val,
-		&oriontypes.AccessControl{
-			ReadWriteUsers: map[string]bool{
-				m.config.Users.Custodian.UserID: true,
-				mintRequest.Owner:               true,
-			},
-			SignPolicyForWrite: oriontypes.AccessControl_ALL,
-		},
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to Put")
-	}
-
-	dataTx.AddMustSignUser(mintRequest.Owner)
-
-	txEnv, err := dataTx.SignConstructedTxEnvelopeAndCloseTx()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to construct Tx envelope")
-	}
-
-	txEnvBytes, err := proto.Marshal(txEnv)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
-	}
-
-	payloadBytes, err := marshal.DefaultMarshaler().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
-	}
-	payloadHash, err := ComputeSHA256Hash(payloadBytes)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to compute hash of DataTx bytes")
+	if err := ctx.Prepare(); err != nil {
+		return nil, convertErrorType(err)
 	}
 
 	m.lg.Debugf("Received mint request for token: %+v", record)
 
-	mintResponse := &types.MintResponse{
-		TokenId:       tokenTypeId + TokenDBSeparator + assetDataId,
+	return &types.MintResponse{
+		TokenId:       tokenCtx.tokenId,
 		Owner:         mintRequest.Owner,
-		TxEnvelope:    base64.StdEncoding.EncodeToString(txEnvBytes),
-		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
-	}
-
-	return mintResponse, nil
+		TxEnvelope:    tokenCtx.GetTxEnvelope(),
+		TxPayloadHash: tokenCtx.GetTxPayloadHash(),
+	}, nil
 }
 
 func (m *Manager) PrepareTransfer(tokenId string, transferRequest *types.TransferRequest) (*types.TransferResponse, error) {
@@ -483,7 +406,7 @@ func (m *Manager) PrepareTransfer(tokenId string, transferRequest *types.Transfe
 
 	tokenTypeId, assetId, err := parseTokenId(tokenId)
 	if err != nil {
-		return nil, err
+		return nil, convertErrorType(err)
 	}
 
 	// TODO enforce class
@@ -583,7 +506,7 @@ func (m *Manager) PrepareUpdate(tokenId string, updateRequest *types.UpdateReque
 
 	tokenTypeId, assetId, err := parseTokenId(tokenId)
 	if err != nil {
-		return nil, err
+		return nil, convertErrorType(err)
 	}
 
 	// TODO enforce class
@@ -617,7 +540,7 @@ func (m *Manager) PrepareUpdate(tokenId string, updateRequest *types.UpdateReque
 		return nil, &ErrPermission{ErrMsg: fmt.Sprintf("not owner: %s", updateRequest.Owner)}
 	}
 
-	m.lg.Debugf("Token: %+v; meta: %+v", record, meta, )
+	m.lg.Debugf("Token: %+v; meta: %+v", record, meta)
 	m.lg.Debugf("Token: %+v; updating asset metadata from: [%s] to: [%s]", record, record.AssetMetadata, updateRequest.AssetMetadata)
 
 	record.AssetMetadata = updateRequest.AssetMetadata
@@ -665,7 +588,7 @@ func (m *Manager) PrepareUpdate(tokenId string, updateRequest *types.UpdateReque
 func (m *Manager) SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error) {
 	tokenTypeId, assetId, err := parseTokenId(submitRequest.TokenId)
 	if err != nil {
-		return nil, err
+		return nil, convertErrorType(err)
 	}
 
 	m.lg.Infof("Custodian [%s] preparing to submit the Tx to the database,  tokenTypeId: %s, assetId: %s, signer: %s",
@@ -727,7 +650,7 @@ func (m *Manager) submitTx(ctx *SubmitContext) error {
 func (m *Manager) GetToken(tokenId string) (*types.TokenRecord, error) {
 	tokenTypeId, assetId, err := parseTokenId(tokenId)
 	if err != nil {
-		return nil, err
+		return nil, convertErrorType(err)
 	}
 
 	//TODO enforce class
@@ -762,41 +685,27 @@ func (m *Manager) GetToken(tokenId string) (*types.TokenRecord, error) {
 	return record, nil
 }
 
-func (m *Manager) GetTokensByOwnerLink(tokenTypeId string, owner string, link string) ([]*types.TokenRecord, error) {
-	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
-	if _, ok := m.tokenTypesDBs[tokenDBName]; !ok {
-		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
-	}
-
-	jq, err := m.custodianSession.Query()
+func (m *Manager) GetTokensByOwnerLink(tokenTypeId string, owner, link string) ([]*types.TokenRecord, error) {
+	ctx, err := newTxContext(m).tokenType(tokenTypeId)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create JSONQuery")
+		return nil, convertErrorType(err)
 	}
+	defer ctx.Abort()
 
-	var query string
-	if owner != "" && link == "" {
-		query = fmt.Sprintf(`{"selector": {"owner": {"$eq": "%s"}}}`, owner)
-	} else if owner == "" && link != "" {
-		query = fmt.Sprintf(`{"selector": {"link": {"$eq": "%s"}}}`, link)
-	} else {
-		query = fmt.Sprintf(`{"selector": {"$and": {"owner": {"$eq": "%s"}, "link": {"$eq": "%s"}}}}`, owner, link)
-	}
-
-	results, err := jq.ExecuteJSONQuery(tokenDBName, query)
+	results, err := ctx.Query(map[string]string{
+		"owner": owner,
+		"link":  link,
+	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to execute JSONQuery")
+		return nil, convertErrorType(err)
 	}
 
-	var records []*types.TokenRecord
-	for _, res := range results {
-		record := &types.TokenRecord{}
-		err = json.Unmarshal(res.GetValue(), record)
-		if err != nil {
+	records := make([]*types.TokenRecord, len(results))
+	for i, res := range results {
+		if err = json.Unmarshal(res.GetValue(), &records[i]); err != nil {
 			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
 		}
-		records = append(records, record)
 	}
-
 	return records, nil
 }
 
@@ -836,7 +745,7 @@ func (m *Manager) GetTokenTypes() ([]*types.TokenDescription, error) {
 
 func (m *Manager) PrepareRegister(tokenTypeId string, registerRequest *types.AnnotationRegisterRequest) (*types.AnnotationRegisterResponse, error) {
 	if err := validateMD5Base64ID(tokenTypeId, "token type"); err != nil {
-		return nil, err
+		return nil, convertErrorType(err)
 	}
 
 	// TODO enforce class
@@ -938,7 +847,7 @@ func (m *Manager) PrepareRegister(tokenTypeId string, registerRequest *types.Ann
 func (m *Manager) GetAnnotation(tokenId string) (*types.AnnotationRecord, error) {
 	tokenTypeId, assetId, err := parseTokenId(tokenId)
 	if err != nil {
-		return nil, err
+		return nil, convertErrorType(err)
 	}
 
 	dataTx, err := m.custodianSession.DataTx()
@@ -974,43 +883,28 @@ func (m *Manager) GetAnnotation(tokenId string) (*types.AnnotationRecord, error)
 	return record, nil
 }
 
-func (m *Manager) GetAnnotationsByOwnerLink(tokenTypeId string, owner, link string) ([]*types.AnnotationRecord, error) {
-	tokenDBName := TokenTypeDBNamePrefix + tokenTypeId
-	if _, ok := m.tokenTypesDBs[tokenDBName]; !ok {
-		return nil, &ErrNotFound{ErrMsg: fmt.Sprintf("token type not found: %s", tokenTypeId)}
-	}
-
-	//TODO enforce class
-
-	jq, err := m.custodianSession.Query()
+func (m *Manager) GetAnnotationsByOwnerLink(tokenTypeId, owner, link string) ([]*types.AnnotationRecord, error) {
+	// TODO enforce class
+	ctx, err := newTxContext(m).tokenType(tokenTypeId)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create JSONQuery")
+		return nil, convertErrorType(err)
 	}
+	defer ctx.Abort()
 
-	var query string
-	if owner != "" && link == "" {
-		query = fmt.Sprintf(`{"selector": {"owner": {"$eq": "%s"}}}`, owner)
-	} else if owner == "" && link != "" {
-		query = fmt.Sprintf(`{"selector": {"link": {"$eq": "%s"}}}`, link)
-	} else {
-		query = fmt.Sprintf(`{"selector": {"$and": {"owner": {"$eq": "%s"}, "link": {"$eq": "%s"}}}}`, owner, link)
-	}
-
-	results, err := jq.ExecuteJSONQuery(tokenDBName, query)
+	results, err := ctx.Query(map[string]string{
+		"owner": owner,
+		"link":  link,
+	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to execute JSONQuery")
+		return nil, convertErrorType(err)
 	}
 
-	var records []*types.AnnotationRecord
-	for _, res := range results {
-		record := &types.AnnotationRecord{}
-		err = json.Unmarshal(res.GetValue(), record)
-		if err != nil {
+	records := make([]*types.AnnotationRecord, len(results))
+	for i, res := range results {
+		if err = json.Unmarshal(res.GetValue(), &records[i]); err != nil {
 			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
 		}
-		records = append(records, record)
 	}
-
 	return records, nil
 }
 
@@ -1352,7 +1246,7 @@ func (m *Manager) FungibleDeploy(request *types.FungibleDeployRequest) (*types.F
 }
 
 func (m *Manager) FungibleDescribe(typeId string) (*types.FungibleDescribeResponse, error) {
-	ctx, err := newFungibleTxContext(m, typeId)
+	ctx, err := newTxContext(m).fungible(typeId)
 	if err != nil {
 		return nil, err
 	}
@@ -1388,7 +1282,7 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 		return nil, common.NewErrInvalid("Supply must be a positive integer (supply > 0).")
 	}
 
-	ctx, err := newFungibleTxContext(m, typeId)
+	ctx, err := newTxContext(m).fungible(typeId)
 	if err != nil {
 		return nil, err
 	}
@@ -1413,24 +1307,13 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 
 	return &types.FungibleMintResponse{
 		TypeId:        typeId,
-		TxEnvelope:    ctx.TxEnvelope,
-		TxPayloadHash: ctx.TxPayloadHash,
+		TxEnvelope:    ctx.GetTxEnvelope(),
+		TxPayloadHash: ctx.GetTxPayloadHash(),
 	}, nil
 }
 
 func (m *Manager) FungiblePrepareTransfer(typeId string, request *types.FungibleTransferRequest) (*types.FungibleTransferResponse, error) {
-	// No need to validate the existing owner. We will fail later if the owner's account does not exist.
-	// If the new owner doesn't exist, then we will fail during the submit phase.
-	err := m.validateUserId(request.NewOwner)
-	if err != nil {
-		return nil, err
-	}
-
-	if request.NewOwner == request.Owner {
-		return nil, common.NewErrInvalid("The recipient of the transfer transaction must be different then the current owner")
-	}
-
-	ctx, err := newFungibleTxContext(m, typeId)
+	ctx, err := newTxContext(m).fungible(typeId)
 	if err != nil {
 		return nil, err
 	}
@@ -1441,42 +1324,8 @@ func (m *Manager) FungiblePrepareTransfer(typeId string, request *types.Fungible
 		request.Account = mainAccount
 	}
 
-	// TODO: use the actual orion TX ID
-	txUUID, err := uuid.NewRandom()
+	newRecord, err := ctx.transfer(request.Owner, request.Account, request.NewOwner, request.Quantity, request.Comment)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to generate tx ID")
-	}
-	newRecord := &types.FungibleAccountRecord{
-		Account: txUUID.String(),
-		Owner:   request.NewOwner,
-		Balance: request.Quantity,
-		Comment: request.Comment,
-	}
-
-	// Verify that the new generated account does not exist
-	val, err := ctx.getAccountRecordRaw(newRecord.Owner, newRecord.Account)
-	if err != nil {
-		return nil, err
-	}
-	if val != nil {
-		return nil, common.NewErrInternal("Transaction ID collision. Please retry.")
-	}
-
-	fromRecord, err := ctx.getAccountRecord(request.Owner, request.Account)
-	if err != nil {
-		return nil, err
-	}
-
-	if request.Quantity > fromRecord.Balance {
-		return nil, common.NewErrInvalid("Insufficient funds in account %v of %v. Requested %v, Balance: %v", fromRecord.Account, fromRecord.Owner, request.Quantity, fromRecord.Balance)
-	}
-
-	fromRecord.Balance -= request.Quantity
-
-	if err = ctx.putAccountRecord(fromRecord); err != nil {
-		return nil, err
-	}
-	if err = ctx.putAccountRecord(newRecord); err != nil {
 		return nil, err
 	}
 	if err = ctx.Prepare(); err != nil {
@@ -1489,13 +1338,13 @@ func (m *Manager) FungiblePrepareTransfer(typeId string, request *types.Fungible
 		Account:       request.Account,
 		NewOwner:      newRecord.Owner,
 		NewAccount:    newRecord.Account,
-		TxEnvelope:    ctx.TxEnvelope,
-		TxPayloadHash: ctx.TxPayloadHash,
+		TxEnvelope:    ctx.GetTxEnvelope(),
+		TxPayloadHash: ctx.GetTxPayloadHash(),
 	}, nil
 }
 
 func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.FungibleConsolidateRequest) (*types.FungibleConsolidateResponse, error) {
-	ctx, err := newFungibleTxContext(m, typeId)
+	ctx, err := newTxContext(m).fungible(typeId)
 	if err != nil {
 		return nil, err
 	}
@@ -1536,13 +1385,13 @@ func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.Fungi
 		}
 	}
 
-	rawMainRecord, err := ctx.getAccountRecordRaw(request.Owner, mainAccount)
+	rawMainRecord, existed, err := ctx.getAccountRecordRaw(request.Owner, mainAccount)
 	if err != nil {
 		return nil, err
 	}
 
 	var mainRecord *types.FungibleAccountRecord
-	if rawMainRecord == nil {
+	if !existed {
 		mainRecord = &types.FungibleAccountRecord{
 			Account: mainAccount,
 			Owner:   request.Owner,
@@ -1580,8 +1429,8 @@ func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.Fungi
 	return &types.FungibleConsolidateResponse{
 		TypeId:        typeId,
 		Owner:         request.Owner,
-		TxEnvelope:    ctx.TxEnvelope,
-		TxPayloadHash: ctx.TxPayloadHash,
+		TxEnvelope:    ctx.GetTxEnvelope(),
+		TxPayloadHash: ctx.GetTxPayloadHash(),
 	}, nil
 }
 
@@ -1594,7 +1443,7 @@ func (m *Manager) FungibleSubmitTx(submitRequest *types.FungibleSubmitRequest) (
 }
 
 func (m *Manager) FungibleAccounts(typeId string, owner string, account string) ([]types.FungibleAccountRecord, error) {
-	ctx, err := newFungibleTxContext(m, typeId)
+	ctx, err := newTxContext(m).fungible(typeId)
 	if err != nil {
 		return nil, err
 	}
