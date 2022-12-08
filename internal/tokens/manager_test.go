@@ -1050,6 +1050,7 @@ func TestTokensManager_GetTokensByOwnerLink(t *testing.T) {
 		_, err = manager.GetTokensByFilter(deployResponse.TypeId, "", "", "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "query must contain at least one qualifier")
+		require.IsType(t, &ErrInvalid{}, err)
 	})
 
 }
@@ -1430,6 +1431,7 @@ func TestTokensManager_GetAnnotationsBy(t *testing.T) {
 		records, err = manager.GetAnnotationsByFilter(deployResponse.TypeId, "", "", "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "query must contain at least one qualifier")
+		require.IsType(t, &ErrInvalid{}, err)
 	})
 }
 

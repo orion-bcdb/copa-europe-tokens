@@ -263,7 +263,7 @@ func (ctx *DbTxContext) Query(fields map[string]string) ([]*oriontypes.KVWithMet
 	}
 
 	if len(queryMap) == 0 {
-		return nil, common.NewErrInternal("query must contain at least one qualifier")
+		return nil, common.NewErrInvalid("query must contain at least one qualifier")
 	}
 
 	selector, err := json.Marshal(queryMap)
