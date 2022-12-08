@@ -142,18 +142,19 @@ type Operations struct {
 		result1 *types.AnnotationRecord
 		result2 error
 	}
-	GetAnnotationsByOwnerLinkStub        func(string, string, string) ([]*types.AnnotationRecord, error)
-	getAnnotationsByOwnerLinkMutex       sync.RWMutex
-	getAnnotationsByOwnerLinkArgsForCall []struct {
+	GetAnnotationsByFilterStub        func(string, string, string, string) ([]*types.AnnotationRecord, error)
+	getAnnotationsByFilterMutex       sync.RWMutex
+	getAnnotationsByFilterArgsForCall []struct {
 		arg1 string
 		arg2 string
 		arg3 string
+		arg4 string
 	}
-	getAnnotationsByOwnerLinkReturns struct {
+	getAnnotationsByFilterReturns struct {
 		result1 []*types.AnnotationRecord
 		result2 error
 	}
-	getAnnotationsByOwnerLinkReturnsOnCall map[int]struct {
+	getAnnotationsByFilterReturnsOnCall map[int]struct {
 		result1 []*types.AnnotationRecord
 		result2 error
 	}
@@ -207,18 +208,19 @@ type Operations struct {
 		result1 []*types.TokenDescription
 		result2 error
 	}
-	GetTokensByOwnerLinkStub        func(string, string, string) ([]*types.TokenRecord, error)
-	getTokensByOwnerLinkMutex       sync.RWMutex
-	getTokensByOwnerLinkArgsForCall []struct {
+	GetTokensByFilterStub        func(string, string, string, string) ([]*types.TokenRecord, error)
+	getTokensByFilterMutex       sync.RWMutex
+	getTokensByFilterArgsForCall []struct {
 		arg1 string
 		arg2 string
 		arg3 string
+		arg4 string
 	}
-	getTokensByOwnerLinkReturns struct {
+	getTokensByFilterReturns struct {
 		result1 []*types.TokenRecord
 		result2 error
 	}
-	getTokensByOwnerLinkReturnsOnCall map[int]struct {
+	getTokensByFilterReturnsOnCall map[int]struct {
 		result1 []*types.TokenRecord
 		result2 error
 	}
@@ -972,20 +974,21 @@ func (fake *Operations) GetAnnotationReturnsOnCall(i int, result1 *types.Annotat
 	}{result1, result2}
 }
 
-func (fake *Operations) GetAnnotationsByOwnerLink(arg1 string, arg2 string, arg3 string) ([]*types.AnnotationRecord, error) {
-	fake.getAnnotationsByOwnerLinkMutex.Lock()
-	ret, specificReturn := fake.getAnnotationsByOwnerLinkReturnsOnCall[len(fake.getAnnotationsByOwnerLinkArgsForCall)]
-	fake.getAnnotationsByOwnerLinkArgsForCall = append(fake.getAnnotationsByOwnerLinkArgsForCall, struct {
+func (fake *Operations) GetAnnotationsByFilter(arg1 string, arg2 string, arg3 string, arg4 string) ([]*types.AnnotationRecord, error) {
+	fake.getAnnotationsByFilterMutex.Lock()
+	ret, specificReturn := fake.getAnnotationsByFilterReturnsOnCall[len(fake.getAnnotationsByFilterArgsForCall)]
+	fake.getAnnotationsByFilterArgsForCall = append(fake.getAnnotationsByFilterArgsForCall, struct {
 		arg1 string
 		arg2 string
 		arg3 string
-	}{arg1, arg2, arg3})
-	stub := fake.GetAnnotationsByOwnerLinkStub
-	fakeReturns := fake.getAnnotationsByOwnerLinkReturns
-	fake.recordInvocation("GetAnnotationsByOwnerLink", []interface{}{arg1, arg2, arg3})
-	fake.getAnnotationsByOwnerLinkMutex.Unlock()
+		arg4 string
+	}{arg1, arg2, arg3, arg4})
+	stub := fake.GetAnnotationsByFilterStub
+	fakeReturns := fake.getAnnotationsByFilterReturns
+	fake.recordInvocation("GetAnnotationsByFilter", []interface{}{arg1, arg2, arg3, arg4})
+	fake.getAnnotationsByFilterMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3)
+		return stub(arg1, arg2, arg3, arg4)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
@@ -993,46 +996,46 @@ func (fake *Operations) GetAnnotationsByOwnerLink(arg1 string, arg2 string, arg3
 	return fakeReturns.result1, fakeReturns.result2
 }
 
-func (fake *Operations) GetAnnotationsByOwnerLinkCallCount() int {
-	fake.getAnnotationsByOwnerLinkMutex.RLock()
-	defer fake.getAnnotationsByOwnerLinkMutex.RUnlock()
-	return len(fake.getAnnotationsByOwnerLinkArgsForCall)
+func (fake *Operations) GetAnnotationsByFilterCallCount() int {
+	fake.getAnnotationsByFilterMutex.RLock()
+	defer fake.getAnnotationsByFilterMutex.RUnlock()
+	return len(fake.getAnnotationsByFilterArgsForCall)
 }
 
-func (fake *Operations) GetAnnotationsByOwnerLinkCalls(stub func(string, string, string) ([]*types.AnnotationRecord, error)) {
-	fake.getAnnotationsByOwnerLinkMutex.Lock()
-	defer fake.getAnnotationsByOwnerLinkMutex.Unlock()
-	fake.GetAnnotationsByOwnerLinkStub = stub
+func (fake *Operations) GetAnnotationsByFilterCalls(stub func(string, string, string, string) ([]*types.AnnotationRecord, error)) {
+	fake.getAnnotationsByFilterMutex.Lock()
+	defer fake.getAnnotationsByFilterMutex.Unlock()
+	fake.GetAnnotationsByFilterStub = stub
 }
 
-func (fake *Operations) GetAnnotationsByOwnerLinkArgsForCall(i int) (string, string, string) {
-	fake.getAnnotationsByOwnerLinkMutex.RLock()
-	defer fake.getAnnotationsByOwnerLinkMutex.RUnlock()
-	argsForCall := fake.getAnnotationsByOwnerLinkArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+func (fake *Operations) GetAnnotationsByFilterArgsForCall(i int) (string, string, string, string) {
+	fake.getAnnotationsByFilterMutex.RLock()
+	defer fake.getAnnotationsByFilterMutex.RUnlock()
+	argsForCall := fake.getAnnotationsByFilterArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
 }
 
-func (fake *Operations) GetAnnotationsByOwnerLinkReturns(result1 []*types.AnnotationRecord, result2 error) {
-	fake.getAnnotationsByOwnerLinkMutex.Lock()
-	defer fake.getAnnotationsByOwnerLinkMutex.Unlock()
-	fake.GetAnnotationsByOwnerLinkStub = nil
-	fake.getAnnotationsByOwnerLinkReturns = struct {
+func (fake *Operations) GetAnnotationsByFilterReturns(result1 []*types.AnnotationRecord, result2 error) {
+	fake.getAnnotationsByFilterMutex.Lock()
+	defer fake.getAnnotationsByFilterMutex.Unlock()
+	fake.GetAnnotationsByFilterStub = nil
+	fake.getAnnotationsByFilterReturns = struct {
 		result1 []*types.AnnotationRecord
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *Operations) GetAnnotationsByOwnerLinkReturnsOnCall(i int, result1 []*types.AnnotationRecord, result2 error) {
-	fake.getAnnotationsByOwnerLinkMutex.Lock()
-	defer fake.getAnnotationsByOwnerLinkMutex.Unlock()
-	fake.GetAnnotationsByOwnerLinkStub = nil
-	if fake.getAnnotationsByOwnerLinkReturnsOnCall == nil {
-		fake.getAnnotationsByOwnerLinkReturnsOnCall = make(map[int]struct {
+func (fake *Operations) GetAnnotationsByFilterReturnsOnCall(i int, result1 []*types.AnnotationRecord, result2 error) {
+	fake.getAnnotationsByFilterMutex.Lock()
+	defer fake.getAnnotationsByFilterMutex.Unlock()
+	fake.GetAnnotationsByFilterStub = nil
+	if fake.getAnnotationsByFilterReturnsOnCall == nil {
+		fake.getAnnotationsByFilterReturnsOnCall = make(map[int]struct {
 			result1 []*types.AnnotationRecord
 			result2 error
 		})
 	}
-	fake.getAnnotationsByOwnerLinkReturnsOnCall[i] = struct {
+	fake.getAnnotationsByFilterReturnsOnCall[i] = struct {
 		result1 []*types.AnnotationRecord
 		result2 error
 	}{result1, result2}
@@ -1278,20 +1281,21 @@ func (fake *Operations) GetTokenTypesReturnsOnCall(i int, result1 []*types.Token
 	}{result1, result2}
 }
 
-func (fake *Operations) GetTokensByOwnerLink(arg1 string, arg2 string, arg3 string) ([]*types.TokenRecord, error) {
-	fake.getTokensByOwnerLinkMutex.Lock()
-	ret, specificReturn := fake.getTokensByOwnerLinkReturnsOnCall[len(fake.getTokensByOwnerLinkArgsForCall)]
-	fake.getTokensByOwnerLinkArgsForCall = append(fake.getTokensByOwnerLinkArgsForCall, struct {
+func (fake *Operations) GetTokensByFilter(arg1 string, arg2 string, arg3 string, arg4 string) ([]*types.TokenRecord, error) {
+	fake.getTokensByFilterMutex.Lock()
+	ret, specificReturn := fake.getTokensByFilterReturnsOnCall[len(fake.getTokensByFilterArgsForCall)]
+	fake.getTokensByFilterArgsForCall = append(fake.getTokensByFilterArgsForCall, struct {
 		arg1 string
 		arg2 string
 		arg3 string
-	}{arg1, arg2, arg3})
-	stub := fake.GetTokensByOwnerLinkStub
-	fakeReturns := fake.getTokensByOwnerLinkReturns
-	fake.recordInvocation("GetTokensByOwnerLink", []interface{}{arg1, arg2, arg3})
-	fake.getTokensByOwnerLinkMutex.Unlock()
+		arg4 string
+	}{arg1, arg2, arg3, arg4})
+	stub := fake.GetTokensByFilterStub
+	fakeReturns := fake.getTokensByFilterReturns
+	fake.recordInvocation("GetTokensByFilter", []interface{}{arg1, arg2, arg3, arg4})
+	fake.getTokensByFilterMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3)
+		return stub(arg1, arg2, arg3, arg4)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
@@ -1299,46 +1303,46 @@ func (fake *Operations) GetTokensByOwnerLink(arg1 string, arg2 string, arg3 stri
 	return fakeReturns.result1, fakeReturns.result2
 }
 
-func (fake *Operations) GetTokensByOwnerLinkCallCount() int {
-	fake.getTokensByOwnerLinkMutex.RLock()
-	defer fake.getTokensByOwnerLinkMutex.RUnlock()
-	return len(fake.getTokensByOwnerLinkArgsForCall)
+func (fake *Operations) GetTokensByFilterCallCount() int {
+	fake.getTokensByFilterMutex.RLock()
+	defer fake.getTokensByFilterMutex.RUnlock()
+	return len(fake.getTokensByFilterArgsForCall)
 }
 
-func (fake *Operations) GetTokensByOwnerLinkCalls(stub func(string, string, string) ([]*types.TokenRecord, error)) {
-	fake.getTokensByOwnerLinkMutex.Lock()
-	defer fake.getTokensByOwnerLinkMutex.Unlock()
-	fake.GetTokensByOwnerLinkStub = stub
+func (fake *Operations) GetTokensByFilterCalls(stub func(string, string, string, string) ([]*types.TokenRecord, error)) {
+	fake.getTokensByFilterMutex.Lock()
+	defer fake.getTokensByFilterMutex.Unlock()
+	fake.GetTokensByFilterStub = stub
 }
 
-func (fake *Operations) GetTokensByOwnerLinkArgsForCall(i int) (string, string, string) {
-	fake.getTokensByOwnerLinkMutex.RLock()
-	defer fake.getTokensByOwnerLinkMutex.RUnlock()
-	argsForCall := fake.getTokensByOwnerLinkArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+func (fake *Operations) GetTokensByFilterArgsForCall(i int) (string, string, string, string) {
+	fake.getTokensByFilterMutex.RLock()
+	defer fake.getTokensByFilterMutex.RUnlock()
+	argsForCall := fake.getTokensByFilterArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
 }
 
-func (fake *Operations) GetTokensByOwnerLinkReturns(result1 []*types.TokenRecord, result2 error) {
-	fake.getTokensByOwnerLinkMutex.Lock()
-	defer fake.getTokensByOwnerLinkMutex.Unlock()
-	fake.GetTokensByOwnerLinkStub = nil
-	fake.getTokensByOwnerLinkReturns = struct {
+func (fake *Operations) GetTokensByFilterReturns(result1 []*types.TokenRecord, result2 error) {
+	fake.getTokensByFilterMutex.Lock()
+	defer fake.getTokensByFilterMutex.Unlock()
+	fake.GetTokensByFilterStub = nil
+	fake.getTokensByFilterReturns = struct {
 		result1 []*types.TokenRecord
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *Operations) GetTokensByOwnerLinkReturnsOnCall(i int, result1 []*types.TokenRecord, result2 error) {
-	fake.getTokensByOwnerLinkMutex.Lock()
-	defer fake.getTokensByOwnerLinkMutex.Unlock()
-	fake.GetTokensByOwnerLinkStub = nil
-	if fake.getTokensByOwnerLinkReturnsOnCall == nil {
-		fake.getTokensByOwnerLinkReturnsOnCall = make(map[int]struct {
+func (fake *Operations) GetTokensByFilterReturnsOnCall(i int, result1 []*types.TokenRecord, result2 error) {
+	fake.getTokensByFilterMutex.Lock()
+	defer fake.getTokensByFilterMutex.Unlock()
+	fake.GetTokensByFilterStub = nil
+	if fake.getTokensByFilterReturnsOnCall == nil {
+		fake.getTokensByFilterReturnsOnCall = make(map[int]struct {
 			result1 []*types.TokenRecord
 			result2 error
 		})
 	}
-	fake.getTokensByOwnerLinkReturnsOnCall[i] = struct {
+	fake.getTokensByFilterReturnsOnCall[i] = struct {
 		result1 []*types.TokenRecord
 		result2 error
 	}{result1, result2}
@@ -1877,8 +1881,8 @@ func (fake *Operations) Invocations() map[string][][]interface{} {
 	defer fake.fungibleSubmitTxMutex.RUnlock()
 	fake.getAnnotationMutex.RLock()
 	defer fake.getAnnotationMutex.RUnlock()
-	fake.getAnnotationsByOwnerLinkMutex.RLock()
-	defer fake.getAnnotationsByOwnerLinkMutex.RUnlock()
+	fake.getAnnotationsByFilterMutex.RLock()
+	defer fake.getAnnotationsByFilterMutex.RUnlock()
 	fake.getStatusMutex.RLock()
 	defer fake.getStatusMutex.RUnlock()
 	fake.getTokenMutex.RLock()
@@ -1887,8 +1891,8 @@ func (fake *Operations) Invocations() map[string][][]interface{} {
 	defer fake.getTokenTypeMutex.RUnlock()
 	fake.getTokenTypesMutex.RLock()
 	defer fake.getTokenTypesMutex.RUnlock()
-	fake.getTokensByOwnerLinkMutex.RLock()
-	defer fake.getTokensByOwnerLinkMutex.RUnlock()
+	fake.getTokensByFilterMutex.RLock()
+	defer fake.getTokensByFilterMutex.RUnlock()
 	fake.getUserMutex.RLock()
 	defer fake.getUserMutex.RUnlock()
 	fake.prepareMintMutex.RLock()

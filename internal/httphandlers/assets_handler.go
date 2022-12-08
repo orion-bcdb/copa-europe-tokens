@@ -20,20 +20,18 @@ type assetsHandler struct {
 	lg      *logger.SugarLogger
 }
 
-func NewAssetsHandler(manager tokens.Operations, lg *logger.SugarLogger) *assetsHandler {
+func NewAssetsHandler(manager tokens.Operations, lg *logger.SugarLogger) http.Handler {
 	handler := &assetsHandler{
 		router:  mux.NewRouter(),
 		manager: manager,
 		lg:      lg,
 	}
 
-	// GET /tokens/assets?typeId="token-type-id"&owner="user-id"&link="token-id"
-	qAll := []string{"type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}", "link", "{linkId:.+}"}
-	handler.router.HandleFunc(constants.TokensAssetsEndpoint, handler.queryAssetByOwnerLink).Methods(http.MethodGet).Queries(qAll...)
-	qOwner := []string{"type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}"}
-	handler.router.HandleFunc(constants.TokensAssetsEndpoint, handler.queryAssetByOwnerLink).Methods(http.MethodGet).Queries(qOwner...)
-	qLink := []string{"type", `{typeId:[A-Za-z0-9_\-]+}`, "link", "{linkId:.+}"}
-	handler.router.HandleFunc(constants.TokensAssetsEndpoint, handler.queryAssetByOwnerLink).Methods(http.MethodGet).Queries(qLink...)
+	// GET  /tokens/assets?typeId="token-type-id"&owner="user-id"&link="token-id"&reference="ref-id"
+	// Declared query fields are REQUIRED, the rest are implicit
+	handler.router.HandleFunc(constants.TokensAssetsEndpoint, handler.queryAssetByOwnerLink).Methods(
+		http.MethodGet,
+	).Queries("type", `{typeId:[A-Za-z0-9_\-]+}`)
 
 	// GET /tokens/assets/[token-id]
 	handler.router.HandleFunc(constants.TokensAssetsQuery, handler.queryAsset).Methods(http.MethodGet)
@@ -72,12 +70,15 @@ func (d *assetsHandler) queryAsset(response http.ResponseWriter, request *http.R
 }
 
 func (d *assetsHandler) queryAssetByOwnerLink(response http.ResponseWriter, request *http.Request) {
-	params := mux.Vars(request)
-	typeId := params["typeId"]
-	ownerId := params["ownerId"]
-	linkId := params["linkId"]
+	typeId := mux.Vars(request)["typeId"]
 
-	tokenRecords, err := d.manager.GetTokensByOwnerLink(typeId, ownerId, linkId)
+	// Get optional query parameters
+	query := request.URL.Query()
+	ownerId := query.Get("owner")
+	linkId := query.Get("link")
+	refId := query.Get("reference")
+
+	tokenRecords, err := d.manager.GetTokensByFilter(typeId, ownerId, linkId, refId)
 	if err != nil {
 		switch err.(type) {
 		case *tokens.ErrInvalid:

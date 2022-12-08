@@ -20,20 +20,18 @@ type eventsHandler struct {
 	lg      *logger.SugarLogger
 }
 
-func NewAnnotationsHandler(manager tokens.Operations, lg *logger.SugarLogger) *eventsHandler {
+func NewAnnotationsHandler(manager tokens.Operations, lg *logger.SugarLogger) http.Handler {
 	handler := &eventsHandler{
 		router:  mux.NewRouter(),
 		manager: manager,
 		lg:      lg,
 	}
 
-	// GET /tokens/annotations?typeId="token-type-id"&owner="user-id"&link="token-id"
-	qAll := []string{"type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}", "link", "{linkId:.+}"}
-	handler.router.HandleFunc(constants.TokensAnnotationsEndpoint, handler.listAnnotations).Methods(http.MethodGet).Queries(qAll...)
-	qOwner := []string{"type", `{typeId:[A-Za-z0-9_\-]+}`, "owner", "{ownerId:.+}"}
-	handler.router.HandleFunc(constants.TokensAnnotationsEndpoint, handler.listAnnotations).Methods(http.MethodGet).Queries(qOwner...)
-	qLink := []string{"type", `{typeId:[A-Za-z0-9_\-]+}`, "link", "{linkId:.+}"}
-	handler.router.HandleFunc(constants.TokensAnnotationsEndpoint, handler.listAnnotations).Methods(http.MethodGet).Queries(qLink...)
+	// GET /tokens/annotations?typeId="token-type-id"&owner="user-id"&link="token-id"&reference="ref-id"
+	// Declared query fields are REQUIRED, the rest are implicit
+	handler.router.HandleFunc(constants.TokensAnnotationsEndpoint, handler.listAnnotations).Methods(
+		http.MethodGet,
+	).Queries("type", `{typeId:[A-Za-z0-9_\-]+}`)
 
 	// GET /tokens/annotations/[annotation-id]
 	handler.router.HandleFunc(constants.TokensAnnotationsQuery, handler.queryAnnotation).Methods(http.MethodGet)
@@ -73,12 +71,15 @@ func (d *eventsHandler) queryAnnotation(response http.ResponseWriter, request *h
 }
 
 func (d *eventsHandler) listAnnotations(response http.ResponseWriter, request *http.Request) {
-	params := mux.Vars(request)
-	typeId := params["typeId"]
-	ownerId := params["ownerId"]
-	linkId := params["linkId"]
+	typeId := mux.Vars(request)["typeId"]
 
-	tokenRecords, err := d.manager.GetAnnotationsByOwnerLink(typeId, ownerId, linkId)
+	// Get optional query parameters
+	query := request.URL.Query()
+	ownerId := query.Get("owner")
+	linkId := query.Get("link")
+	refId := query.Get("reference")
+
+	tokenRecords, err := d.manager.GetAnnotationsByFilter(typeId, ownerId, linkId, refId)
 
 	if err != nil {
 		switch err.(type) {

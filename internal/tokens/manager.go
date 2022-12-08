@@ -53,13 +53,13 @@ type Operations interface {
 	PrepareUpdate(tokenId string, updateRequest *types.UpdateRequest) (*types.UpdateResponse, error)
 	SubmitTx(submitRequest *types.SubmitRequest) (*types.SubmitResponse, error)
 	GetToken(tokenId string) (*types.TokenRecord, error)
-	GetTokensByOwnerLink(tokenTypeId, owner, link string) ([]*types.TokenRecord, error)
+	GetTokensByFilter(tokenTypeId, owner, link, reference string) ([]*types.TokenRecord, error)
 
 	// Annotations API
 
 	PrepareRegister(tokenTypeId string, registerRequest *types.AnnotationRegisterRequest) (*types.AnnotationRegisterResponse, error)
 	GetAnnotation(tokenId string) (*types.AnnotationRecord, error)
-	GetAnnotationsByOwnerLink(tokenTypeId, owner, link string) ([]*types.AnnotationRecord, error)
+	GetAnnotationsByFilter(tokenTypeId, owner, link, reference string) ([]*types.AnnotationRecord, error)
 
 	// User API
 
@@ -382,7 +382,7 @@ func (m *Manager) PrepareMint(tokenTypeId string, mintRequest *types.MintRequest
 	if err != nil {
 		return nil, err
 	}
-	record, err := tokenCtx.mint(mintRequest.Owner, mintRequest.AssetMetadata, mintRequest.Link)
+	record, err := tokenCtx.mint(mintRequest.Owner, mintRequest.AssetMetadata, mintRequest.Link, mintRequest.Reference)
 	if err != nil {
 		return nil, convertErrorType(err)
 	}
@@ -685,7 +685,7 @@ func (m *Manager) GetToken(tokenId string) (*types.TokenRecord, error) {
 	return record, nil
 }
 
-func (m *Manager) GetTokensByOwnerLink(tokenTypeId string, owner, link string) ([]*types.TokenRecord, error) {
+func (m *Manager) GetTokensByFilter(tokenTypeId string, owner, link, reference string) ([]*types.TokenRecord, error) {
 	ctx, err := newTxContext(m).tokenType(tokenTypeId)
 	if err != nil {
 		return nil, convertErrorType(err)
@@ -693,8 +693,9 @@ func (m *Manager) GetTokensByOwnerLink(tokenTypeId string, owner, link string) (
 	defer ctx.Abort()
 
 	results, err := ctx.Query(map[string]string{
-		"owner": owner,
-		"link":  link,
+		"owner":     owner,
+		"link":      link,
+		"reference": reference,
 	})
 	if err != nil {
 		return nil, convertErrorType(err)
@@ -789,6 +790,7 @@ func (m *Manager) PrepareRegister(tokenTypeId string, registerRequest *types.Ann
 		AnnotationDataId:   annotDataId,
 		Owner:              registerRequest.Owner,
 		Link:               registerRequest.Link,
+		Reference:          registerRequest.Reference,
 		AnnotationData:     registerRequest.AnnotationData,
 		AnnotationMetadata: registerRequest.AnnotationMetadata,
 	}
@@ -837,6 +839,7 @@ func (m *Manager) PrepareRegister(tokenTypeId string, registerRequest *types.Ann
 		AnnotationId:  tokenTypeId + TokenDBSeparator + annotDataId,
 		Owner:         registerRequest.Owner,
 		Link:          registerRequest.Link,
+		Reference:     registerRequest.Reference,
 		TxEnvelope:    base64.StdEncoding.EncodeToString(txEnvBytes),
 		TxPayloadHash: base64.StdEncoding.EncodeToString(payloadHash),
 	}
@@ -883,7 +886,7 @@ func (m *Manager) GetAnnotation(tokenId string) (*types.AnnotationRecord, error)
 	return record, nil
 }
 
-func (m *Manager) GetAnnotationsByOwnerLink(tokenTypeId, owner, link string) ([]*types.AnnotationRecord, error) {
+func (m *Manager) GetAnnotationsByFilter(tokenTypeId, owner, link, reference string) ([]*types.AnnotationRecord, error) {
 	// TODO enforce class
 	ctx, err := newTxContext(m).tokenType(tokenTypeId)
 	if err != nil {
@@ -892,8 +895,9 @@ func (m *Manager) GetAnnotationsByOwnerLink(tokenTypeId, owner, link string) ([]
 	defer ctx.Abort()
 
 	results, err := ctx.Query(map[string]string{
-		"owner": owner,
-		"link":  link,
+		"owner":     owner,
+		"link":      link,
+		"reference": reference,
 	})
 	if err != nil {
 		return nil, convertErrorType(err)
