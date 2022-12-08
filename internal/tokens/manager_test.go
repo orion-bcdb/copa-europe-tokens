@@ -971,59 +971,59 @@ func TestTokensManager_GetTokensByOwnerLink(t *testing.T) {
 	}
 
 	t.Run("success: by owner", func(t *testing.T) {
-		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "bob", "", "")
+		records, err := manager.GetTokensByFilter(deployResponse.TypeId, "bob", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 5)
 
-		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "", "")
+		records, err = manager.GetTokensByFilter(deployResponse.TypeId, "charlie", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
 	})
 
 	t.Run("success: by link", func(t *testing.T) {
-		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "link-0", "")
+		records, err := manager.GetTokensByFilter(deployResponse.TypeId, "", "link-0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 8)
 
-		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "link-1", "")
+		records, err = manager.GetTokensByFilter(deployResponse.TypeId, "", "link-1", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 3)
 	})
 
 	t.Run("success: by ref", func(t *testing.T) {
-		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "", "ref-0")
+		records, err := manager.GetTokensByFilter(deployResponse.TypeId, "", "", "ref-0")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 8)
 
-		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "", "", "ref-1")
+		records, err = manager.GetTokensByFilter(deployResponse.TypeId, "", "", "ref-1")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 3)
 	})
 
 	t.Run("success: by link & owner", func(t *testing.T) {
-		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "link-0", "")
+		records, err := manager.GetTokensByFilter(deployResponse.TypeId, "charlie", "link-0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
 
-		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "link-1", "")
+		records, err = manager.GetTokensByFilter(deployResponse.TypeId, "charlie", "link-1", "")
 		require.NoError(t, err)
 		require.Len(t, records, 0)
 	})
 
 	t.Run("success: by ref & owner", func(t *testing.T) {
-		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "", "ref-0")
+		records, err := manager.GetTokensByFilter(deployResponse.TypeId, "charlie", "", "ref-0")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
 
-		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "", "ref-1")
+		records, err = manager.GetTokensByFilter(deployResponse.TypeId, "charlie", "", "ref-1")
 		require.NoError(t, err)
 		require.Len(t, records, 0)
 	})
@@ -1035,15 +1035,21 @@ func TestTokensManager_GetTokensByOwnerLink(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, manager)
 
-		records, err := manager.GetTokensByOwnerLink(deployResponse.TypeId, "bob", "", "")
+		records, err := manager.GetTokensByFilter(deployResponse.TypeId, "bob", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 5)
 
-		records, err = manager.GetTokensByOwnerLink(deployResponse.TypeId, "charlie", "", "")
+		records, err = manager.GetTokensByFilter(deployResponse.TypeId, "charlie", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		_, err = manager.GetTokensByFilter(deployResponse.TypeId, "", "", "")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "query must contain at least one qualifier")
 	})
 
 }
@@ -1345,54 +1351,50 @@ func TestTokensManager_GetAnnotationsBy(t *testing.T) {
 	}
 
 	t.Run("success", func(t *testing.T) {
-		records, err := manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "", "")
+		records, err := manager.GetAnnotationsByFilter(deployResponse.TypeId, "bob", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 6)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "", "")
+		records, err = manager.GetAnnotationsByFilter(deployResponse.TypeId, "charlie", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 8)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "", "xyz.abc0", "")
+		records, err = manager.GetAnnotationsByFilter(deployResponse.TypeId, "", "xyz.abc0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 7)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "", "", "ref-0")
+		records, err = manager.GetAnnotationsByFilter(deployResponse.TypeId, "", "", "ref-0")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 7)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "", "")
+		records, err = manager.GetAnnotationsByFilter(deployResponse.TypeId, "charlie", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 8)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "xyz.abc0", "")
+		records, err = manager.GetAnnotationsByFilter(deployResponse.TypeId, "bob", "xyz.abc0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 3)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "", "ref-0")
+		records, err = manager.GetAnnotationsByFilter(deployResponse.TypeId, "bob", "", "ref-0")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 3)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "xyz.abc1", "")
+		records, err = manager.GetAnnotationsByFilter(deployResponse.TypeId, "charlie", "xyz.abc1", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 4)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "", "ref-1")
+		records, err = manager.GetAnnotationsByFilter(deployResponse.TypeId, "charlie", "", "ref-1")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 4)
-
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "", "", "")
-		require.NoError(t, err)
-		require.Len(t, records, 0)
 	})
 
 	t.Run("success: manager restart", func(t *testing.T) {
@@ -1402,12 +1404,12 @@ func TestTokensManager_GetAnnotationsBy(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, manager)
 
-		records, err := manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "bob", "xyz.abc0", "")
+		records, err := manager.GetAnnotationsByFilter(deployResponse.TypeId, "bob", "xyz.abc0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 3)
 
-		records, err = manager.GetAnnotationsByOwnerLink(deployResponse.TypeId, "charlie", "xyz.abc0", "")
+		records, err = manager.GetAnnotationsByFilter(deployResponse.TypeId, "charlie", "xyz.abc0", "")
 		require.NoError(t, err)
 		require.NotNil(t, records)
 		require.Len(t, records, 4)
@@ -1420,10 +1422,14 @@ func TestTokensManager_GetAnnotationsBy(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, manager)
 
-		records, err := manager.GetAnnotationsByOwnerLink("xxx", "charlie", "xyz.abc0", "")
+		records, err := manager.GetAnnotationsByFilter("xxx", "charlie", "xyz.abc0", "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "does not exist")
 		require.Nil(t, records)
+
+		records, err = manager.GetAnnotationsByFilter(deployResponse.TypeId, "", "", "")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "query must contain at least one qualifier")
 	})
 }
 

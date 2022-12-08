@@ -78,7 +78,7 @@ func (d *assetsHandler) queryAssetByOwnerLink(response http.ResponseWriter, requ
 	linkId := query.Get("link")
 	refId := query.Get("reference")
 
-	tokenRecords, err := d.manager.GetTokensByOwnerLink(typeId, ownerId, linkId, refId)
+	tokenRecords, err := d.manager.GetTokensByFilter(typeId, ownerId, linkId, refId)
 	if err != nil {
 		switch err.(type) {
 		case *tokens.ErrInvalid:

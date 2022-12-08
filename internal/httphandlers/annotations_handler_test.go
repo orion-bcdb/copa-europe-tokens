@@ -121,15 +121,15 @@ func TestAnnotationHandler_GetTokensBy(t *testing.T) {
 		"type=abcbdef",
 		"type=abcbdef&owner=bob",
 		"type=abcbdef&owner=bob&link=xyz.abc",
-		"type=abcbdef&owner=bob&reference=xyz.abc",
-		"type=abcbdef&owner=bob&link=xyz.abc&reference=xyz.abc",
+		"type=abcbdef&owner=bob&reference=ref.link",
+		"type=abcbdef&owner=bob&link=xyz.abc&reference=ref.link",
 		"type=abcbdef&link=xyz.abc",
-		"type=abcbdef&reference=xyz.abc",
-		"type=abcbdef&link=xyz.abc&reference=xyz.abc",
+		"type=abcbdef&reference=ref.link",
+		"type=abcbdef&link=xyz.abc&reference=ref.link",
 	} {
 		t.Run("success: "+query, func(t *testing.T) {
 			mockManager := &mocks.Operations{}
-			mockManager.GetAnnotationsByOwnerLinkReturns([]*types.AnnotationRecord{
+			mockManager.GetAnnotationsByFilterReturns([]*types.AnnotationRecord{
 				{
 					AnnotationDataId:   "xXyYzZ",
 					Owner:              "bob",
@@ -192,7 +192,7 @@ func TestAnnotationHandler_GetTokensBy(t *testing.T) {
 		h := NewAnnotationsHandler(mockManager, testLogger(t, "debug"))
 		require.NotNil(t, h)
 
-		for _, query := range []string{"owner=abcbdef", "link=xxx.yyy", "reference=xxx.yyy", ""} {
+		for _, query := range []string{"owner=abcbdef", "link=xxx.yyy", "reference=ref.link", ""} {
 
 			rr := httptest.NewRecorder()
 			require.NotNil(t, rr)
@@ -222,7 +222,7 @@ func TestAnnotationHandler_GetTokensBy(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetAnnotationsByOwnerLinkReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.GetAnnotationsByFilterReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -232,7 +232,7 @@ func TestAnnotationHandler_GetTokensBy(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetAnnotationsByOwnerLinkReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.GetAnnotationsByFilterReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -242,7 +242,7 @@ func TestAnnotationHandler_GetTokensBy(t *testing.T) {
 			name: "error: internal",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetAnnotationsByOwnerLinkReturns(nil, errors.New("oops internal"))
+				mockManager.GetAnnotationsByFilterReturns(nil, errors.New("oops internal"))
 				return mockManager
 			},
 			expectedStatus: http.StatusInternalServerError,

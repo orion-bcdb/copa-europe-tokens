@@ -262,6 +262,10 @@ func (ctx *DbTxContext) Query(fields map[string]string) ([]*oriontypes.KVWithMet
 		}
 	}
 
+	if len(queryMap) == 0 {
+		return nil, common.NewErrInternal("query must contain at least one qualifier")
+	}
+
 	selector, err := json.Marshal(queryMap)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal JSONQuery selector")

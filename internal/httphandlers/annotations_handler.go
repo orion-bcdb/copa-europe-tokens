@@ -79,7 +79,7 @@ func (d *eventsHandler) listAnnotations(response http.ResponseWriter, request *h
 	linkId := query.Get("link")
 	refId := query.Get("reference")
 
-	tokenRecords, err := d.manager.GetAnnotationsByOwnerLink(typeId, ownerId, linkId, refId)
+	tokenRecords, err := d.manager.GetAnnotationsByFilter(typeId, ownerId, linkId, refId)
 
 	if err != nil {
 		switch err.(type) {

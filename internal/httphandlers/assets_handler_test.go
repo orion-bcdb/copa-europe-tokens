@@ -118,15 +118,15 @@ func TestAssetsHandler_GetTokensByOwnerLink(t *testing.T) {
 		"type=abcbdef",
 		"type=abcbdef&owner=bob",
 		"type=abcbdef&owner=bob&link=xyz.abc",
-		"type=abcbdef&owner=bob&reference=xyz.abc",
-		"type=abcbdef&owner=bob&link=xyz.abc&reference=xyz.abc",
+		"type=abcbdef&owner=bob&reference=ref.link",
+		"type=abcbdef&owner=bob&link=xyz.abc&reference=ref.link",
 		"type=abcbdef&link=xyz.abc",
-		"type=abcbdef&reference=xyz.abc",
-		"type=abcbdef&link=xyz.abc&reference=xyz.abc",
+		"type=abcbdef&reference=ref.link",
+		"type=abcbdef&link=xyz.abc&reference=ref.link",
 	} {
 		t.Run("success: "+query, func(t *testing.T) {
 			mockManager := &mocks.Operations{}
-			mockManager.GetTokensByOwnerLinkReturns([]*types.TokenRecord{
+			mockManager.GetTokensByFilterReturns([]*types.TokenRecord{
 				{
 					AssetDataId:   "xXyYzZ",
 					Owner:         "bob",
@@ -189,7 +189,7 @@ func TestAssetsHandler_GetTokensByOwnerLink(t *testing.T) {
 		h := NewAssetsHandler(mockManager, testLogger(t, "debug"))
 		require.NotNil(t, h)
 
-		for _, query := range []string{"owner=abcbdef", "link=xxx.yyy", "reference=xxx.yyy", ""} {
+		for _, query := range []string{"owner=abcbdef", "link=xxx.yyy", "reference=ref.link", ""} {
 
 			rr := httptest.NewRecorder()
 			require.NotNil(t, rr)
@@ -219,7 +219,7 @@ func TestAssetsHandler_GetTokensByOwnerLink(t *testing.T) {
 			name: "error: invalid",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokensByOwnerLinkReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
+				mockManager.GetTokensByFilterReturns(nil, &tokens.ErrInvalid{ErrMsg: "oops invalid"})
 				return mockManager
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -229,7 +229,7 @@ func TestAssetsHandler_GetTokensByOwnerLink(t *testing.T) {
 			name: "error: not found",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokensByOwnerLinkReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
+				mockManager.GetTokensByFilterReturns(nil, &tokens.ErrNotFound{ErrMsg: "oops not found"})
 				return mockManager
 			},
 			expectedStatus: http.StatusNotFound,
@@ -239,7 +239,7 @@ func TestAssetsHandler_GetTokensByOwnerLink(t *testing.T) {
 			name: "error: internal",
 			mockFactory: func() *mocks.Operations {
 				mockManager := &mocks.Operations{}
-				mockManager.GetTokensByOwnerLinkReturns(nil, errors.New("oops internal"))
+				mockManager.GetTokensByFilterReturns(nil, errors.New("oops internal"))
 				return mockManager
 			},
 			expectedStatus: http.StatusInternalServerError,
