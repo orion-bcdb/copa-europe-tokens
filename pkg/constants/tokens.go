@@ -4,7 +4,8 @@
 package constants
 
 const (
-	TokenClass_NFT         = "NFT"
-	TokenClass_FUNGIBLE    = "FUNGIBLE"
-	TokenClass_ANNOTATIONS = "ANNOTATIONS"
+	TokenClass_NFT          = "NFT"
+	TokenClass_FUNGIBLE     = "FUNGIBLE"
+	TokenClass_ANNOTATIONS  = "ANNOTATIONS"
+	TokenClass_RIGHTS_OFFER = "RIGHTS_OFFER"
 )

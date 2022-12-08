@@ -304,6 +304,89 @@ type Operations struct {
 	removeUserReturnsOnCall map[int]struct {
 		result1 error
 	}
+	RightsOfferBuyStub        func(string, *types.RightsOfferBuyRequest) (*types.RightsOfferBuyResponse, error)
+	rightsOfferBuyMutex       sync.RWMutex
+	rightsOfferBuyArgsForCall []struct {
+		arg1 string
+		arg2 *types.RightsOfferBuyRequest
+	}
+	rightsOfferBuyReturns struct {
+		result1 *types.RightsOfferBuyResponse
+		result2 error
+	}
+	rightsOfferBuyReturnsOnCall map[int]struct {
+		result1 *types.RightsOfferBuyResponse
+		result2 error
+	}
+	RightsOfferGetStub        func(string) (*types.RightsOfferRecord, error)
+	rightsOfferGetMutex       sync.RWMutex
+	rightsOfferGetArgsForCall []struct {
+		arg1 string
+	}
+	rightsOfferGetReturns struct {
+		result1 *types.RightsOfferRecord
+		result2 error
+	}
+	rightsOfferGetReturnsOnCall map[int]struct {
+		result1 *types.RightsOfferRecord
+		result2 error
+	}
+	RightsOfferMintStub        func(string, *types.RightsOfferMintRequest) (*types.RightsOfferMintResponse, error)
+	rightsOfferMintMutex       sync.RWMutex
+	rightsOfferMintArgsForCall []struct {
+		arg1 string
+		arg2 *types.RightsOfferMintRequest
+	}
+	rightsOfferMintReturns struct {
+		result1 *types.RightsOfferMintResponse
+		result2 error
+	}
+	rightsOfferMintReturnsOnCall map[int]struct {
+		result1 *types.RightsOfferMintResponse
+		result2 error
+	}
+	RightsOfferQueryStub        func(string, string, string) ([]types.RightsOfferRecord, error)
+	rightsOfferQueryMutex       sync.RWMutex
+	rightsOfferQueryArgsForCall []struct {
+		arg1 string
+		arg2 string
+		arg3 string
+	}
+	rightsOfferQueryReturns struct {
+		result1 []types.RightsOfferRecord
+		result2 error
+	}
+	rightsOfferQueryReturnsOnCall map[int]struct {
+		result1 []types.RightsOfferRecord
+		result2 error
+	}
+	RightsOfferSubmitTxStub        func(*types.RightsOfferSubmitRequest) (*types.RightsOfferSubmitResponse, error)
+	rightsOfferSubmitTxMutex       sync.RWMutex
+	rightsOfferSubmitTxArgsForCall []struct {
+		arg1 *types.RightsOfferSubmitRequest
+	}
+	rightsOfferSubmitTxReturns struct {
+		result1 *types.RightsOfferSubmitResponse
+		result2 error
+	}
+	rightsOfferSubmitTxReturnsOnCall map[int]struct {
+		result1 *types.RightsOfferSubmitResponse
+		result2 error
+	}
+	RightsOfferUpdateStub        func(string, *types.RightsOfferUpdateRequest) (*types.RightsOfferUpdateResponse, error)
+	rightsOfferUpdateMutex       sync.RWMutex
+	rightsOfferUpdateArgsForCall []struct {
+		arg1 string
+		arg2 *types.RightsOfferUpdateRequest
+	}
+	rightsOfferUpdateReturns struct {
+		result1 *types.RightsOfferUpdateResponse
+		result2 error
+	}
+	rightsOfferUpdateReturnsOnCall map[int]struct {
+		result1 *types.RightsOfferUpdateResponse
+		result2 error
+	}
 	SubmitTxStub        func(*types.SubmitRequest) (*types.SubmitResponse, error)
 	submitTxMutex       sync.RWMutex
 	submitTxArgsForCall []struct {
@@ -1733,6 +1816,395 @@ func (fake *Operations) RemoveUserReturnsOnCall(i int, result1 error) {
 	}{result1}
 }
 
+func (fake *Operations) RightsOfferBuy(arg1 string, arg2 *types.RightsOfferBuyRequest) (*types.RightsOfferBuyResponse, error) {
+	fake.rightsOfferBuyMutex.Lock()
+	ret, specificReturn := fake.rightsOfferBuyReturnsOnCall[len(fake.rightsOfferBuyArgsForCall)]
+	fake.rightsOfferBuyArgsForCall = append(fake.rightsOfferBuyArgsForCall, struct {
+		arg1 string
+		arg2 *types.RightsOfferBuyRequest
+	}{arg1, arg2})
+	stub := fake.RightsOfferBuyStub
+	fakeReturns := fake.rightsOfferBuyReturns
+	fake.recordInvocation("RightsOfferBuy", []interface{}{arg1, arg2})
+	fake.rightsOfferBuyMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) RightsOfferBuyCallCount() int {
+	fake.rightsOfferBuyMutex.RLock()
+	defer fake.rightsOfferBuyMutex.RUnlock()
+	return len(fake.rightsOfferBuyArgsForCall)
+}
+
+func (fake *Operations) RightsOfferBuyCalls(stub func(string, *types.RightsOfferBuyRequest) (*types.RightsOfferBuyResponse, error)) {
+	fake.rightsOfferBuyMutex.Lock()
+	defer fake.rightsOfferBuyMutex.Unlock()
+	fake.RightsOfferBuyStub = stub
+}
+
+func (fake *Operations) RightsOfferBuyArgsForCall(i int) (string, *types.RightsOfferBuyRequest) {
+	fake.rightsOfferBuyMutex.RLock()
+	defer fake.rightsOfferBuyMutex.RUnlock()
+	argsForCall := fake.rightsOfferBuyArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *Operations) RightsOfferBuyReturns(result1 *types.RightsOfferBuyResponse, result2 error) {
+	fake.rightsOfferBuyMutex.Lock()
+	defer fake.rightsOfferBuyMutex.Unlock()
+	fake.RightsOfferBuyStub = nil
+	fake.rightsOfferBuyReturns = struct {
+		result1 *types.RightsOfferBuyResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) RightsOfferBuyReturnsOnCall(i int, result1 *types.RightsOfferBuyResponse, result2 error) {
+	fake.rightsOfferBuyMutex.Lock()
+	defer fake.rightsOfferBuyMutex.Unlock()
+	fake.RightsOfferBuyStub = nil
+	if fake.rightsOfferBuyReturnsOnCall == nil {
+		fake.rightsOfferBuyReturnsOnCall = make(map[int]struct {
+			result1 *types.RightsOfferBuyResponse
+			result2 error
+		})
+	}
+	fake.rightsOfferBuyReturnsOnCall[i] = struct {
+		result1 *types.RightsOfferBuyResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) RightsOfferGet(arg1 string) (*types.RightsOfferRecord, error) {
+	fake.rightsOfferGetMutex.Lock()
+	ret, specificReturn := fake.rightsOfferGetReturnsOnCall[len(fake.rightsOfferGetArgsForCall)]
+	fake.rightsOfferGetArgsForCall = append(fake.rightsOfferGetArgsForCall, struct {
+		arg1 string
+	}{arg1})
+	stub := fake.RightsOfferGetStub
+	fakeReturns := fake.rightsOfferGetReturns
+	fake.recordInvocation("RightsOfferGet", []interface{}{arg1})
+	fake.rightsOfferGetMutex.Unlock()
+	if stub != nil {
+		return stub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) RightsOfferGetCallCount() int {
+	fake.rightsOfferGetMutex.RLock()
+	defer fake.rightsOfferGetMutex.RUnlock()
+	return len(fake.rightsOfferGetArgsForCall)
+}
+
+func (fake *Operations) RightsOfferGetCalls(stub func(string) (*types.RightsOfferRecord, error)) {
+	fake.rightsOfferGetMutex.Lock()
+	defer fake.rightsOfferGetMutex.Unlock()
+	fake.RightsOfferGetStub = stub
+}
+
+func (fake *Operations) RightsOfferGetArgsForCall(i int) string {
+	fake.rightsOfferGetMutex.RLock()
+	defer fake.rightsOfferGetMutex.RUnlock()
+	argsForCall := fake.rightsOfferGetArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *Operations) RightsOfferGetReturns(result1 *types.RightsOfferRecord, result2 error) {
+	fake.rightsOfferGetMutex.Lock()
+	defer fake.rightsOfferGetMutex.Unlock()
+	fake.RightsOfferGetStub = nil
+	fake.rightsOfferGetReturns = struct {
+		result1 *types.RightsOfferRecord
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) RightsOfferGetReturnsOnCall(i int, result1 *types.RightsOfferRecord, result2 error) {
+	fake.rightsOfferGetMutex.Lock()
+	defer fake.rightsOfferGetMutex.Unlock()
+	fake.RightsOfferGetStub = nil
+	if fake.rightsOfferGetReturnsOnCall == nil {
+		fake.rightsOfferGetReturnsOnCall = make(map[int]struct {
+			result1 *types.RightsOfferRecord
+			result2 error
+		})
+	}
+	fake.rightsOfferGetReturnsOnCall[i] = struct {
+		result1 *types.RightsOfferRecord
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) RightsOfferMint(arg1 string, arg2 *types.RightsOfferMintRequest) (*types.RightsOfferMintResponse, error) {
+	fake.rightsOfferMintMutex.Lock()
+	ret, specificReturn := fake.rightsOfferMintReturnsOnCall[len(fake.rightsOfferMintArgsForCall)]
+	fake.rightsOfferMintArgsForCall = append(fake.rightsOfferMintArgsForCall, struct {
+		arg1 string
+		arg2 *types.RightsOfferMintRequest
+	}{arg1, arg2})
+	stub := fake.RightsOfferMintStub
+	fakeReturns := fake.rightsOfferMintReturns
+	fake.recordInvocation("RightsOfferMint", []interface{}{arg1, arg2})
+	fake.rightsOfferMintMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) RightsOfferMintCallCount() int {
+	fake.rightsOfferMintMutex.RLock()
+	defer fake.rightsOfferMintMutex.RUnlock()
+	return len(fake.rightsOfferMintArgsForCall)
+}
+
+func (fake *Operations) RightsOfferMintCalls(stub func(string, *types.RightsOfferMintRequest) (*types.RightsOfferMintResponse, error)) {
+	fake.rightsOfferMintMutex.Lock()
+	defer fake.rightsOfferMintMutex.Unlock()
+	fake.RightsOfferMintStub = stub
+}
+
+func (fake *Operations) RightsOfferMintArgsForCall(i int) (string, *types.RightsOfferMintRequest) {
+	fake.rightsOfferMintMutex.RLock()
+	defer fake.rightsOfferMintMutex.RUnlock()
+	argsForCall := fake.rightsOfferMintArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *Operations) RightsOfferMintReturns(result1 *types.RightsOfferMintResponse, result2 error) {
+	fake.rightsOfferMintMutex.Lock()
+	defer fake.rightsOfferMintMutex.Unlock()
+	fake.RightsOfferMintStub = nil
+	fake.rightsOfferMintReturns = struct {
+		result1 *types.RightsOfferMintResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) RightsOfferMintReturnsOnCall(i int, result1 *types.RightsOfferMintResponse, result2 error) {
+	fake.rightsOfferMintMutex.Lock()
+	defer fake.rightsOfferMintMutex.Unlock()
+	fake.RightsOfferMintStub = nil
+	if fake.rightsOfferMintReturnsOnCall == nil {
+		fake.rightsOfferMintReturnsOnCall = make(map[int]struct {
+			result1 *types.RightsOfferMintResponse
+			result2 error
+		})
+	}
+	fake.rightsOfferMintReturnsOnCall[i] = struct {
+		result1 *types.RightsOfferMintResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) RightsOfferQuery(arg1 string, arg2 string, arg3 string) ([]types.RightsOfferRecord, error) {
+	fake.rightsOfferQueryMutex.Lock()
+	ret, specificReturn := fake.rightsOfferQueryReturnsOnCall[len(fake.rightsOfferQueryArgsForCall)]
+	fake.rightsOfferQueryArgsForCall = append(fake.rightsOfferQueryArgsForCall, struct {
+		arg1 string
+		arg2 string
+		arg3 string
+	}{arg1, arg2, arg3})
+	stub := fake.RightsOfferQueryStub
+	fakeReturns := fake.rightsOfferQueryReturns
+	fake.recordInvocation("RightsOfferQuery", []interface{}{arg1, arg2, arg3})
+	fake.rightsOfferQueryMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2, arg3)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) RightsOfferQueryCallCount() int {
+	fake.rightsOfferQueryMutex.RLock()
+	defer fake.rightsOfferQueryMutex.RUnlock()
+	return len(fake.rightsOfferQueryArgsForCall)
+}
+
+func (fake *Operations) RightsOfferQueryCalls(stub func(string, string, string) ([]types.RightsOfferRecord, error)) {
+	fake.rightsOfferQueryMutex.Lock()
+	defer fake.rightsOfferQueryMutex.Unlock()
+	fake.RightsOfferQueryStub = stub
+}
+
+func (fake *Operations) RightsOfferQueryArgsForCall(i int) (string, string, string) {
+	fake.rightsOfferQueryMutex.RLock()
+	defer fake.rightsOfferQueryMutex.RUnlock()
+	argsForCall := fake.rightsOfferQueryArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+}
+
+func (fake *Operations) RightsOfferQueryReturns(result1 []types.RightsOfferRecord, result2 error) {
+	fake.rightsOfferQueryMutex.Lock()
+	defer fake.rightsOfferQueryMutex.Unlock()
+	fake.RightsOfferQueryStub = nil
+	fake.rightsOfferQueryReturns = struct {
+		result1 []types.RightsOfferRecord
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) RightsOfferQueryReturnsOnCall(i int, result1 []types.RightsOfferRecord, result2 error) {
+	fake.rightsOfferQueryMutex.Lock()
+	defer fake.rightsOfferQueryMutex.Unlock()
+	fake.RightsOfferQueryStub = nil
+	if fake.rightsOfferQueryReturnsOnCall == nil {
+		fake.rightsOfferQueryReturnsOnCall = make(map[int]struct {
+			result1 []types.RightsOfferRecord
+			result2 error
+		})
+	}
+	fake.rightsOfferQueryReturnsOnCall[i] = struct {
+		result1 []types.RightsOfferRecord
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) RightsOfferSubmitTx(arg1 *types.RightsOfferSubmitRequest) (*types.RightsOfferSubmitResponse, error) {
+	fake.rightsOfferSubmitTxMutex.Lock()
+	ret, specificReturn := fake.rightsOfferSubmitTxReturnsOnCall[len(fake.rightsOfferSubmitTxArgsForCall)]
+	fake.rightsOfferSubmitTxArgsForCall = append(fake.rightsOfferSubmitTxArgsForCall, struct {
+		arg1 *types.RightsOfferSubmitRequest
+	}{arg1})
+	stub := fake.RightsOfferSubmitTxStub
+	fakeReturns := fake.rightsOfferSubmitTxReturns
+	fake.recordInvocation("RightsOfferSubmitTx", []interface{}{arg1})
+	fake.rightsOfferSubmitTxMutex.Unlock()
+	if stub != nil {
+		return stub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) RightsOfferSubmitTxCallCount() int {
+	fake.rightsOfferSubmitTxMutex.RLock()
+	defer fake.rightsOfferSubmitTxMutex.RUnlock()
+	return len(fake.rightsOfferSubmitTxArgsForCall)
+}
+
+func (fake *Operations) RightsOfferSubmitTxCalls(stub func(*types.RightsOfferSubmitRequest) (*types.RightsOfferSubmitResponse, error)) {
+	fake.rightsOfferSubmitTxMutex.Lock()
+	defer fake.rightsOfferSubmitTxMutex.Unlock()
+	fake.RightsOfferSubmitTxStub = stub
+}
+
+func (fake *Operations) RightsOfferSubmitTxArgsForCall(i int) *types.RightsOfferSubmitRequest {
+	fake.rightsOfferSubmitTxMutex.RLock()
+	defer fake.rightsOfferSubmitTxMutex.RUnlock()
+	argsForCall := fake.rightsOfferSubmitTxArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *Operations) RightsOfferSubmitTxReturns(result1 *types.RightsOfferSubmitResponse, result2 error) {
+	fake.rightsOfferSubmitTxMutex.Lock()
+	defer fake.rightsOfferSubmitTxMutex.Unlock()
+	fake.RightsOfferSubmitTxStub = nil
+	fake.rightsOfferSubmitTxReturns = struct {
+		result1 *types.RightsOfferSubmitResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) RightsOfferSubmitTxReturnsOnCall(i int, result1 *types.RightsOfferSubmitResponse, result2 error) {
+	fake.rightsOfferSubmitTxMutex.Lock()
+	defer fake.rightsOfferSubmitTxMutex.Unlock()
+	fake.RightsOfferSubmitTxStub = nil
+	if fake.rightsOfferSubmitTxReturnsOnCall == nil {
+		fake.rightsOfferSubmitTxReturnsOnCall = make(map[int]struct {
+			result1 *types.RightsOfferSubmitResponse
+			result2 error
+		})
+	}
+	fake.rightsOfferSubmitTxReturnsOnCall[i] = struct {
+		result1 *types.RightsOfferSubmitResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) RightsOfferUpdate(arg1 string, arg2 *types.RightsOfferUpdateRequest) (*types.RightsOfferUpdateResponse, error) {
+	fake.rightsOfferUpdateMutex.Lock()
+	ret, specificReturn := fake.rightsOfferUpdateReturnsOnCall[len(fake.rightsOfferUpdateArgsForCall)]
+	fake.rightsOfferUpdateArgsForCall = append(fake.rightsOfferUpdateArgsForCall, struct {
+		arg1 string
+		arg2 *types.RightsOfferUpdateRequest
+	}{arg1, arg2})
+	stub := fake.RightsOfferUpdateStub
+	fakeReturns := fake.rightsOfferUpdateReturns
+	fake.recordInvocation("RightsOfferUpdate", []interface{}{arg1, arg2})
+	fake.rightsOfferUpdateMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) RightsOfferUpdateCallCount() int {
+	fake.rightsOfferUpdateMutex.RLock()
+	defer fake.rightsOfferUpdateMutex.RUnlock()
+	return len(fake.rightsOfferUpdateArgsForCall)
+}
+
+func (fake *Operations) RightsOfferUpdateCalls(stub func(string, *types.RightsOfferUpdateRequest) (*types.RightsOfferUpdateResponse, error)) {
+	fake.rightsOfferUpdateMutex.Lock()
+	defer fake.rightsOfferUpdateMutex.Unlock()
+	fake.RightsOfferUpdateStub = stub
+}
+
+func (fake *Operations) RightsOfferUpdateArgsForCall(i int) (string, *types.RightsOfferUpdateRequest) {
+	fake.rightsOfferUpdateMutex.RLock()
+	defer fake.rightsOfferUpdateMutex.RUnlock()
+	argsForCall := fake.rightsOfferUpdateArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *Operations) RightsOfferUpdateReturns(result1 *types.RightsOfferUpdateResponse, result2 error) {
+	fake.rightsOfferUpdateMutex.Lock()
+	defer fake.rightsOfferUpdateMutex.Unlock()
+	fake.RightsOfferUpdateStub = nil
+	fake.rightsOfferUpdateReturns = struct {
+		result1 *types.RightsOfferUpdateResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) RightsOfferUpdateReturnsOnCall(i int, result1 *types.RightsOfferUpdateResponse, result2 error) {
+	fake.rightsOfferUpdateMutex.Lock()
+	defer fake.rightsOfferUpdateMutex.Unlock()
+	fake.RightsOfferUpdateStub = nil
+	if fake.rightsOfferUpdateReturnsOnCall == nil {
+		fake.rightsOfferUpdateReturnsOnCall = make(map[int]struct {
+			result1 *types.RightsOfferUpdateResponse
+			result2 error
+		})
+	}
+	fake.rightsOfferUpdateReturnsOnCall[i] = struct {
+		result1 *types.RightsOfferUpdateResponse
+		result2 error
+	}{result1, result2}
+}
+
 func (fake *Operations) SubmitTx(arg1 *types.SubmitRequest) (*types.SubmitResponse, error) {
 	fake.submitTxMutex.Lock()
 	ret, specificReturn := fake.submitTxReturnsOnCall[len(fake.submitTxArgsForCall)]
@@ -1905,6 +2377,18 @@ func (fake *Operations) Invocations() map[string][][]interface{} {
 	defer fake.prepareUpdateMutex.RUnlock()
 	fake.removeUserMutex.RLock()
 	defer fake.removeUserMutex.RUnlock()
+	fake.rightsOfferBuyMutex.RLock()
+	defer fake.rightsOfferBuyMutex.RUnlock()
+	fake.rightsOfferGetMutex.RLock()
+	defer fake.rightsOfferGetMutex.RUnlock()
+	fake.rightsOfferMintMutex.RLock()
+	defer fake.rightsOfferMintMutex.RUnlock()
+	fake.rightsOfferQueryMutex.RLock()
+	defer fake.rightsOfferQueryMutex.RUnlock()
+	fake.rightsOfferSubmitTxMutex.RLock()
+	defer fake.rightsOfferSubmitTxMutex.RUnlock()
+	fake.rightsOfferUpdateMutex.RLock()
+	defer fake.rightsOfferUpdateMutex.RUnlock()
 	fake.submitTxMutex.RLock()
 	defer fake.submitTxMutex.RUnlock()
 	fake.updateUserMutex.RLock()

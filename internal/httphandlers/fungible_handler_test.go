@@ -13,9 +13,11 @@ import (
 	"testing"
 
 	"github.com/copa-europe-tokens/internal/common"
+	"github.com/copa-europe-tokens/internal/tokens"
 	"github.com/copa-europe-tokens/internal/tokens/mocks"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
+	"github.com/hyperledger-labs/orion-server/pkg/logger"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
@@ -55,8 +57,10 @@ func requireResponse(t *testing.T, expectedStatus int, expectedResponse interfac
 	require.Equal(t, expectedResponse, responseBody, "Response: %+v", responseBody)
 }
 
+type NewHandlerFunc func(manager tokens.Operations, lg *logger.SugarLogger) http.Handler
+
 func requestHandlerTest(
-	t *testing.T, mockManager *mocks.Operations,
+	t *testing.T, mockManager *mocks.Operations, newHandlerFunc NewHandlerFunc,
 	request interface{},
 	reqUrl string,
 	method string,
@@ -64,7 +68,7 @@ func requestHandlerTest(
 	expectedResponse interface{},
 	actualResponseBody interface{},
 ) {
-	h := NewFungibleHandler(mockManager, testLogger(t, "debug"))
+	h := newHandlerFunc(mockManager, testLogger(t, "debug"))
 	require.NotNil(t, h)
 
 	requestBytes, err := json.Marshal(request)
@@ -101,7 +105,7 @@ var STATUS = map[string]int{
 }
 
 func requestHandlerErrorsTest(
-	t *testing.T, setMockErrorFunc func(*mocks.Operations, error),
+	t *testing.T, newHandlerFunc NewHandlerFunc, setMockErrorFunc func(*mocks.Operations, error),
 	request interface{},
 	reqUrl string,
 	method string,
@@ -117,7 +121,7 @@ func requestHandlerErrorsTest(
 			setMockErrorFunc(&mockManager, expectedErr)
 
 			requestHandlerTest(t,
-				&mockManager, &request, reqUrl, method,
+				&mockManager, newHandlerFunc, &request, reqUrl, method,
 				expectedStatus, &expectedResponse, &types.HttpResponseErr{},
 			)
 		})
@@ -147,7 +151,7 @@ func TestHandler_FungibleDeploy(t *testing.T) {
 		mockManager.FungibleDeployReturns(&expectedResponse, nil)
 
 		requestHandlerTest(t,
-			&mockManager, &request, reqUrl, method,
+			&mockManager, NewFungibleHandler, &request, reqUrl, method,
 			http.StatusCreated, &expectedResponse, &types.FungibleDeployResponse{},
 		)
 
@@ -155,7 +159,7 @@ func TestHandler_FungibleDeploy(t *testing.T) {
 		require.Equal(t, &request, calledRequest, "reqUrl: %v", reqUrl)
 	})
 
-	requestHandlerErrorsTest(t, func(mockManager *mocks.Operations, err error) {
+	requestHandlerErrorsTest(t, NewFungibleHandler, func(mockManager *mocks.Operations, err error) {
 		mockManager.FungibleDeployReturns(nil, err)
 	}, request, reqUrl, method, "exist", "invalid", "other")
 }
@@ -173,7 +177,7 @@ func TestHandler_FungibleSubmit(t *testing.T) {
 		mockManager.FungibleSubmitTxReturns(&expectedResponse, nil)
 
 		requestHandlerTest(t,
-			&mockManager, &request, reqUrl, method,
+			&mockManager, NewFungibleHandler, &request, reqUrl, method,
 			http.StatusOK, &expectedResponse, &types.FungibleSubmitResponse{},
 		)
 
@@ -181,7 +185,7 @@ func TestHandler_FungibleSubmit(t *testing.T) {
 		require.Equal(t, &request, calledRequest, "reqUrl: %v", reqUrl)
 	})
 
-	requestHandlerErrorsTest(t, func(mockManager *mocks.Operations, err error) {
+	requestHandlerErrorsTest(t, NewFungibleHandler, func(mockManager *mocks.Operations, err error) {
 		mockManager.FungibleSubmitTxReturns(nil, err)
 	}, request, reqUrl, method, "permission", "invalid", "other")
 }
@@ -206,7 +210,7 @@ func TestHandler_FungibleDescribe(t *testing.T) {
 		mockManager.FungibleDescribeReturns(&expectedResponse, nil)
 
 		requestHandlerTest(t,
-			&mockManager, &request, reqUrl, method,
+			&mockManager, NewFungibleHandler, &request, reqUrl, method,
 			http.StatusOK, &expectedResponse, &types.FungibleDescribeResponse{},
 		)
 
@@ -214,7 +218,7 @@ func TestHandler_FungibleDescribe(t *testing.T) {
 		require.Equal(t, typeId, calledTypeId, "reqUrl: %v", reqUrl)
 	})
 
-	requestHandlerErrorsTest(t, func(mockManager *mocks.Operations, err error) {
+	requestHandlerErrorsTest(t, NewFungibleHandler, func(mockManager *mocks.Operations, err error) {
 		mockManager.FungibleDescribeReturns(nil, err)
 	}, request, reqUrl, method, "not-found", "invalid", "other")
 }
@@ -234,7 +238,7 @@ func TestHandler_FungibleMint(t *testing.T) {
 		mockManager.FungiblePrepareMintReturns(&expectedResponse, nil)
 
 		requestHandlerTest(t,
-			&mockManager, &request, reqUrl, method,
+			&mockManager, NewFungibleHandler, &request, reqUrl, method,
 			http.StatusOK, &expectedResponse, &types.FungibleMintResponse{},
 		)
 
@@ -243,7 +247,7 @@ func TestHandler_FungibleMint(t *testing.T) {
 		require.Equal(t, &request, calledRequest, "reqUrl: %v", reqUrl)
 	})
 
-	requestHandlerErrorsTest(t, func(mockManager *mocks.Operations, err error) {
+	requestHandlerErrorsTest(t, NewFungibleHandler, func(mockManager *mocks.Operations, err error) {
 		mockManager.FungiblePrepareMintReturns(nil, err)
 	}, request, reqUrl, method, "not-found", "permission", "invalid", "other")
 }
@@ -270,7 +274,7 @@ func TestHandler_FungibleTransfer(t *testing.T) {
 		mockManager.FungiblePrepareTransferReturns(&expectedResponse, nil)
 
 		requestHandlerTest(t,
-			&mockManager, &request, reqUrl, method,
+			&mockManager, NewFungibleHandler, &request, reqUrl, method,
 			http.StatusOK, &expectedResponse, &types.FungibleTransferResponse{},
 		)
 
@@ -279,7 +283,7 @@ func TestHandler_FungibleTransfer(t *testing.T) {
 		require.Equal(t, &request, calledRequest, "reqUrl: %v", reqUrl)
 	})
 
-	requestHandlerErrorsTest(t, func(mockManager *mocks.Operations, err error) {
+	requestHandlerErrorsTest(t, NewFungibleHandler, func(mockManager *mocks.Operations, err error) {
 		mockManager.FungiblePrepareTransferReturns(nil, err)
 	}, request, reqUrl, method, "not-found", "permission", "invalid", "other")
 }
@@ -303,7 +307,7 @@ func TestHandler_FungibleConsolidate(t *testing.T) {
 		mockManager.FungiblePrepareConsolidateReturns(&expectedResponse, nil)
 
 		requestHandlerTest(t,
-			&mockManager, &request, reqUrl, method,
+			&mockManager, NewFungibleHandler, &request, reqUrl, method,
 			http.StatusOK, &expectedResponse, &types.FungibleConsolidateResponse{},
 		)
 
@@ -312,7 +316,7 @@ func TestHandler_FungibleConsolidate(t *testing.T) {
 		require.Equal(t, &request, calledRequest, "reqUrl: %v", reqUrl)
 	})
 
-	requestHandlerErrorsTest(t, func(mockManager *mocks.Operations, err error) {
+	requestHandlerErrorsTest(t, NewFungibleHandler, func(mockManager *mocks.Operations, err error) {
 		mockManager.FungiblePrepareConsolidateReturns(nil, err)
 	}, request, reqUrl, method, "not-found", "permission", "invalid", "other")
 }
@@ -346,7 +350,7 @@ func TestHandler_FungibleAccounts(t *testing.T) {
 
 			reqUrl := buildTestUrlWithQuery(path, query)
 			requestHandlerTest(t,
-				&mockManager, nil, reqUrl, method,
+				&mockManager, NewFungibleHandler, nil, reqUrl, method,
 				http.StatusOK, &expectedResponse, &[]types.FungibleAccountRecord{},
 			)
 
@@ -357,7 +361,7 @@ func TestHandler_FungibleAccounts(t *testing.T) {
 		})
 	}
 
-	requestHandlerErrorsTest(t, func(mockManager *mocks.Operations, err error) {
+	requestHandlerErrorsTest(t, NewFungibleHandler, func(mockManager *mocks.Operations, err error) {
 		mockManager.FungibleAccountsReturns(nil, err)
 	}, nil, buildTestUrl(path), method, "not-found", "invalid", "other")
 }
