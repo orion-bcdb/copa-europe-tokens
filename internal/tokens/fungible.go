@@ -10,6 +10,7 @@ import (
 	"github.com/copa-europe-tokens/internal/common"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 )
 
@@ -32,15 +33,7 @@ type ReserveAccountRecord struct {
 }
 
 type FungibleTxContext struct {
-	TokenTxContext
-}
-
-func newFungibleTxContext(m *Manager, typeId string) (*FungibleTxContext, error) {
-	genericCtx, err := newTokenTxContext(m, typeId)
-	if err != nil {
-		return nil, err
-	}
-	return &FungibleTxContext{*genericCtx}, nil
+	TokenTypeTxContext
 }
 
 func getAccountKey(owner string, account string) string {
@@ -63,7 +56,7 @@ func (ctx *FungibleTxContext) getReserveOwner() (string, error) {
 	return owner, nil
 }
 
-func (ctx *FungibleTxContext) getAccountRecordRaw(owner string, account string) ([]byte, error) {
+func (ctx *FungibleTxContext) getAccountRecordRaw(owner string, account string) ([]byte, bool, error) {
 	return ctx.Get(getAccountKey(owner, account))
 }
 
@@ -76,16 +69,16 @@ func unmarshalAccountRecord(rawRecord []byte) (*types.FungibleAccountRecord, err
 }
 
 func (ctx *FungibleTxContext) getAccountRecord(owner string, account string) (*types.FungibleAccountRecord, error) {
-	val, err := ctx.getAccountRecordRaw(owner, account)
+	record := &types.FungibleAccountRecord{}
+	existed, err := ctx.GetMarshal(getAccountKey(owner, account), record)
 	if err != nil {
 		return nil, err
 	}
-	if val == nil {
-		ctx.lg.Debugf("Account does not exists: DB: %s, user %s, account: %s", ctx.tokenDBName, owner, account)
+	if !existed {
+		ctx.lg.Debugf("Account does not exists: DB: %s, user %s, account: %s", ctx.dbName, owner, account)
 		return nil, common.NewErrNotFound("Account does not exists [%v:%v]", owner, account)
 	}
-
-	return unmarshalAccountRecord(val)
+	return record, nil
 }
 
 func (ctx *FungibleTxContext) putAccountRecord(record *types.FungibleAccountRecord) error {
@@ -129,11 +122,11 @@ func encodeReserveAccountComment(comment *ReserveAccountComment) (string, error)
 }
 
 func (ctx *FungibleTxContext) getReserveAccount() (*ReserveAccountRecord, error) {
-	rawRecord, err := ctx.getAccountRecordRaw(reserveAccountUser, mainAccount)
+	rawRecord, existed, err := ctx.getAccountRecordRaw(reserveAccountUser, mainAccount)
 	if err != nil {
 		return nil, err
 	}
-	if rawRecord == nil {
+	if !existed {
 		return &ReserveAccountRecord{Balance: 0, Supply: 0}, nil
 	}
 
@@ -166,48 +159,12 @@ func (ctx *FungibleTxContext) putReserveAccount(reserve *ReserveAccountRecord) e
 }
 
 func (ctx *FungibleTxContext) queryAccounts(owner string, account string) ([]types.FungibleAccountRecord, error) {
-	var query string
-	if owner != "" && account != "" {
-		query = fmt.Sprintf(`
-		{
-			"selector":
-			{
-				"$and": {
-					"owner": {"$eq": "%s"},
-					"account": {"$eq": "%s"}
-				}
-			}
-		}`, owner, account)
-	} else if owner != "" {
-		query = fmt.Sprintf(`
-		{
-			"selector": {
-				"owner": {"$eq": "%s"}
-			}
-		}`, owner)
-	} else if account != "" {
-		query = fmt.Sprintf(`
-		{
-			"selector": {
-				"account": {"$eq": "%s"}
-			}
-		}`, account)
-	} else {
-		query = `
-		{
-			"selector": {
-				"owner": {"$lte": "~"}
-			}
-		}`
-	}
-
-	jq, err := ctx.custodianSession.Query()
+	queryResults, err := ctx.Query(map[string]string{
+		"owner":   owner,
+		"account": account,
+	})
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to create JSONQuery")
-	}
-	queryResults, err := jq.ExecuteJSONQuery(ctx.tokenDBName, query)
-	if err != nil {
-		return nil, wrapOrionError(err, "Failed to execute JSONQuery for token type [%s]", ctx.typeId)
+		return nil, err
 	}
 
 	records := make([]types.FungibleAccountRecord, len(queryResults))
@@ -217,4 +174,65 @@ func (ctx *FungibleTxContext) queryAccounts(owner string, account string) ([]typ
 		}
 	}
 	return records, nil
+}
+
+func (ctx *FungibleTxContext) transfer(
+	fromUser, fromAccount, toUser string, quantity uint64, comment string,
+) (*types.FungibleAccountRecord, error) {
+	// No need to validate the existing owner. We will fail later if the owner's account does not exist.
+	// If the new owner doesn't exist, then we will fail during the submit phase.
+	err := ctx.validateUserId(toUser)
+	if err != nil {
+		return nil, err
+	}
+
+	if toUser == fromUser {
+		return nil, common.NewErrInvalid("The recipient of the transfer transaction must be different then the current owner")
+	}
+
+	// If account isn't specified, the main account is used
+	if fromAccount == "" {
+		fromAccount = mainAccount
+	}
+
+	// TODO: use the actual orion TX ID
+	txUUID, err := uuid.NewRandom()
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to generate tx ID")
+	}
+	newRecord := &types.FungibleAccountRecord{
+		Account: txUUID.String(),
+		Owner:   toUser,
+		Balance: quantity,
+		Comment: comment,
+	}
+
+	// Verify that the new generated account does not exist
+	_, existed, err := ctx.getAccountRecordRaw(newRecord.Owner, newRecord.Account)
+	if err != nil {
+		return nil, err
+	}
+	if existed {
+		return nil, common.NewErrInternal("Transaction ID collision. Please retry.")
+	}
+
+	fromRecord, err := ctx.getAccountRecord(fromUser, fromAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	if quantity > fromRecord.Balance {
+		return nil, common.NewErrInvalid("Insufficient funds in account %v of %v. Requested %v, Balance: %v", fromRecord.Account, fromRecord.Owner, quantity, fromRecord.Balance)
+	}
+
+	fromRecord.Balance -= quantity
+
+	if err = ctx.putAccountRecord(fromRecord); err != nil {
+		return nil, err
+	}
+	if err = ctx.putAccountRecord(newRecord); err != nil {
+		return nil, err
+	}
+
+	return newRecord, nil
 }

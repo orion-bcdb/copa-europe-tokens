@@ -6,6 +6,8 @@ package common
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/pkg/errors"
 )
 
 type TokenHttpErr struct {
@@ -46,4 +48,8 @@ func NewErrPermission(format string, a ...interface{}) *TokenHttpErr {
 
 func NewErrInternal(format string, a ...interface{}) *TokenHttpErr {
 	return NewTokenHttpErr(http.StatusInternalServerError, format, a...)
+}
+
+func WrapErrInternal(err error, format string, a ...interface{}) *TokenHttpErr {
+	return NewTokenHttpErr(http.StatusInternalServerError, errors.Wrapf(err, format, a...).Error())
 }

@@ -377,7 +377,8 @@ func TestTokensManager_MintToken(t *testing.T) {
 			AssetMetadata: "my asset meta",
 		}
 		mintResponse, err := manager.PrepareMint(getResponse.TypeId, mintRequest)
-		require.EqualError(t, err, "owner cannot be the custodian: alice")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "Invalid user ID")
 		require.IsType(t, &ErrInvalid{}, err)
 		require.Nil(t, mintResponse)
 
@@ -387,7 +388,8 @@ func TestTokensManager_MintToken(t *testing.T) {
 			AssetMetadata: "my asset meta",
 		}
 		mintResponse, err = manager.PrepareMint(getResponse.TypeId, mintRequest)
-		require.EqualError(t, err, "owner cannot be the admin: admin")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "Invalid user ID")
 		require.IsType(t, &ErrInvalid{}, err)
 		require.Nil(t, mintResponse)
 	})
@@ -1377,7 +1379,8 @@ func TestTokensManager_GetAnnotationsBy(t *testing.T) {
 		require.NotNil(t, manager)
 
 		records, err := manager.GetAnnotationsByOwnerLink("xxx", "charlie", "xyz.abc0")
-		require.EqualError(t, err, "token type not found: xxx")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "does not exist")
 		require.Nil(t, records)
 	})
 }
