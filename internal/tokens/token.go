@@ -85,9 +85,25 @@ func (ctx *TokenTypeTxContext) asset(assetData string) (*TokenTxContext, error) 
 	}, nil
 }
 
+func (ctx *TokenTxContext) GetAsset() ([]byte, bool, error) {
+	return ctx.Get(ctx.assetId)
+}
+
+func (ctx *TokenTxContext) GetAssetMarshal(record interface{}) (bool, error) {
+	return ctx.GetMarshal(ctx.assetId, record)
+}
+
+func (ctx *TokenTxContext) PutAsset(val []byte, owner string, mustSign bool) error {
+	return ctx.Put(ctx.assetId, val, owner, mustSign)
+}
+
+func (ctx *TokenTxContext) PutAssetMarshal(val interface{}, owner string, mustSign bool) error {
+	return ctx.PutMarshal(ctx.assetId, val, owner, mustSign)
+}
+
 func (ctx *TokenTxContext) GetToken() (*types.TokenRecord, error) {
 	record := &types.TokenRecord{}
-	existed, err := ctx.GetMarshal(ctx.assetId, record)
+	existed, err := ctx.GetAssetMarshal(record)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +123,7 @@ func (ctx *TokenTxContext) mint(owner, meta, link, reference string) (*types.Tok
 		return nil, err
 	}
 
-	val, existed, err := ctx.Get(ctx.assetId)
+	val, existed, err := ctx.GetAsset()
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +140,7 @@ func (ctx *TokenTxContext) mint(owner, meta, link, reference string) (*types.Tok
 		Link:          link,
 		Reference:     reference,
 	}
-	if err = ctx.PutMarshal(ctx.assetId, record, owner, true); err != nil {
+	if err = ctx.PutAssetMarshal(record, owner, true); err != nil {
 		return nil, errors.Wrap(err, "failed to Put")
 	}
 	return record, nil

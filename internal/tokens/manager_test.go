@@ -6,6 +6,7 @@ package tokens
 import (
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -1668,7 +1669,7 @@ func assertTokenHttpErrMessage(t *testing.T, expectedStatus int, expectedMessage
 	return assert.Regexp(t, regexp.MustCompile(fmt.Sprintf("(?i)%s", expectedMessage)), actualErr)
 }
 
-type fungibleTestEnv struct {
+type extendedTestEnv struct {
 	testEnv
 	manager     *Manager
 	users       []string
@@ -1677,8 +1678,8 @@ type fungibleTestEnv struct {
 	signers     map[string]crypto.Signer
 }
 
-func newFungibleTestEnv(t *testing.T) *fungibleTestEnv {
-	e := &fungibleTestEnv{
+func newExtendedTestEnv(t *testing.T) *extendedTestEnv {
+	e := &extendedTestEnv{
 		testEnv:     *newTestEnv(t),
 		userRecords: map[string]*types.UserRecord{},
 		certs:       map[string]*x509.Certificate{},
@@ -1709,7 +1710,7 @@ func newFungibleTestEnv(t *testing.T) *fungibleTestEnv {
 	return e
 }
 
-func (e *fungibleTestEnv) addUser(t *testing.T, user string) {
+func (e *extendedTestEnv) addUser(t *testing.T, user string) {
 	cert, signer := testutils.LoadTestCrypto(t, e.cluster.GetUserCertDir(), user)
 	record := &types.UserRecord{
 		Identity:    user,
@@ -1724,38 +1725,72 @@ func (e *fungibleTestEnv) addUser(t *testing.T, user string) {
 	e.users = append(e.users, user)
 }
 
-func (e *fungibleTestEnv) updateUsers(t *testing.T) {
+func (e *extendedTestEnv) updateUsers(t *testing.T) {
 	for _, record := range e.userRecords {
 		err := e.manager.UpdateUser(record)
 		require.NoError(t, err)
 	}
 }
 
-func (e *fungibleTestEnv) fungibleSignAndSubmit(t *testing.T, user string, response SignatureRequester) (*types.FungibleSubmitResponse, error) {
+func (e *extendedTestEnv) sign(t *testing.T, user string, response SignatureRequester) *SubmitContext {
 	submitCtx, err := SignTransactionResponse(e.signers[user], response)
-	require.NoError(t, err)
-	return e.manager.FungibleSubmitTx(submitCtx.ToFungibleRequest())
+	require.NoError(t, err, "failed to sign response for user %s", user)
+	return submitCtx
 }
 
-func (e *fungibleTestEnv) requireSignAndSubmit(t *testing.T, user string, response SignatureRequester) *types.FungibleSubmitResponse {
+func (e *extendedTestEnv) badSign(user string, response SignatureRequester) *SubmitContext {
+	submitCtx := response.PrepareSubmit()
+	submitCtx.Signer = user
+	submitCtx.Signature = base64.StdEncoding.EncodeToString([]byte("bogus-sig"))
+	return submitCtx
+}
+
+func (e *extendedTestEnv) nftSignAndSubmit(t *testing.T, user string, response SignatureRequester) (*types.SubmitResponse, error) {
+	return e.manager.SubmitTx(e.sign(t, user, response).ToNFTRequest())
+}
+
+func (e *extendedTestEnv) nftRequireSignAndSubmit(t *testing.T, user string, response SignatureRequester) *types.SubmitResponse {
+	submitResponse, err := e.nftSignAndSubmit(t, user, response)
+	require.NoError(t, err, "failed to submit")
+	require.NotNil(t, submitResponse, "no submit response")
+	return submitResponse
+}
+
+func (e *extendedTestEnv) fungibleSignAndSubmit(t *testing.T, user string, response SignatureRequester) (*types.FungibleSubmitResponse, error) {
+	return e.manager.FungibleSubmitTx(e.sign(t, user, response).ToFungibleRequest())
+}
+
+func (e *extendedTestEnv) fungibleRequireSignAndSubmit(t *testing.T, user string, response SignatureRequester) *types.FungibleSubmitResponse {
 	submitResponse, err := e.fungibleSignAndSubmit(t, user, response)
 	require.NoError(t, err)
 	require.NotNil(t, submitResponse)
 	return submitResponse
 }
 
-func (e *fungibleTestEnv) wrongSignAndSubmit(user string, response SignatureRequester) (*types.FungibleSubmitResponse, error) {
-	submitRequest := response.PrepareSubmit()
-	submitRequest.Signer = user
-	submitRequest.Signature = base64.StdEncoding.EncodeToString([]byte("bogus-sig"))
-	return e.manager.FungibleSubmitTx(submitRequest.ToFungibleRequest())
+func (e *extendedTestEnv) fungibleWrongSignAndSubmit(user string, response SignatureRequester) (*types.FungibleSubmitResponse, error) {
+	return e.manager.FungibleSubmitTx(e.badSign(user, response).ToFungibleRequest())
+}
+
+func (e *extendedTestEnv) offerSignAndSubmit(t *testing.T, user string, response SignatureRequester) (*types.RightsOfferSubmitResponse, error) {
+	return e.manager.RightsOfferSubmitTx(e.sign(t, user, response).ToRightsRequest())
+}
+
+func (e *extendedTestEnv) offerRequireSignAndSubmit(t *testing.T, user string, response SignatureRequester) *types.RightsOfferSubmitResponse {
+	submitResponse, err := e.offerSignAndSubmit(t, user, response)
+	require.NoError(t, err)
+	require.NotNil(t, submitResponse)
+	return submitResponse
+}
+
+func (e *extendedTestEnv) offerWrongSignAndSubmit(user string, response SignatureRequester) (*types.RightsOfferSubmitResponse, error) {
+	return e.manager.RightsOfferSubmitTx(e.badSign(user, response).ToRightsRequest())
 }
 
 // ============================================================
 // Fungible
 // ============================================================
 
-func getDeployRequest(owner string, index int) *types.FungibleDeployRequest {
+func getFungibleDeployRequest(owner string, index int) *types.FungibleDeployRequest {
 	return &types.FungibleDeployRequest{
 		Name:         fmt.Sprintf("%v's Fungible #%v", owner, index),
 		Description:  fmt.Sprintf("%v's  Test Fungible #%v", owner, index),
@@ -1763,10 +1798,10 @@ func getDeployRequest(owner string, index int) *types.FungibleDeployRequest {
 	}
 }
 
-func getDeployRequests(owner string, num int) []*types.FungibleDeployRequest {
+func getFungibleDeployRequests(owner string, num int) []*types.FungibleDeployRequest {
 	var requests []*types.FungibleDeployRequest
 	for i := 0; i < num; i++ {
-		requests = append(requests, getDeployRequest(owner, i))
+		requests = append(requests, getFungibleDeployRequest(owner, i))
 	}
 	return requests
 }
@@ -1785,13 +1820,13 @@ func assertRecordEqual(t *testing.T, expected types.FungibleAccountRecord, actua
 }
 
 func TestTokensManager_FungibleDeploy(t *testing.T) {
-	env := newFungibleTestEnv(t)
+	env := newExtendedTestEnv(t)
 
 	const messageCount = 3
 
 	t.Run("success: deploy fungible and describe", func(t *testing.T) {
 		for user := range env.userRecords {
-			requests := getDeployRequests(user, messageCount)
+			requests := getFungibleDeployRequests(user, messageCount)
 
 			for _, request := range requests {
 				deployResponse, err := env.manager.FungibleDeploy(request)
@@ -1822,7 +1857,7 @@ func TestTokensManager_FungibleDeploy(t *testing.T) {
 	})
 
 	t.Run("error: deploy again", func(t *testing.T) {
-		deployResponseBad, err := env.manager.FungibleDeploy(getDeployRequest("bob", 0))
+		deployResponseBad, err := env.manager.FungibleDeploy(getFungibleDeployRequest("bob", 0))
 		assertTokenHttpErrMessage(t, http.StatusConflict, "token type already exists", deployResponseBad, err)
 	})
 
@@ -1869,9 +1904,9 @@ func TestTokensManager_FungibleDeploy(t *testing.T) {
 }
 
 func TestTokensManager_FungibleMintToken(t *testing.T) {
-	env := newFungibleTestEnv(t)
+	env := newExtendedTestEnv(t)
 
-	response, err := env.manager.FungibleDeploy(getDeployRequest("bob", 0))
+	response, err := env.manager.FungibleDeploy(getFungibleDeployRequest("bob", 0))
 	require.NoError(t, err)
 	typeId := response.TypeId
 
@@ -1881,7 +1916,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		submitResponse, err := env.wrongSignAndSubmit("bob", (*FungibleMintResponse)(mintResponse))
+		submitResponse, err := env.fungibleWrongSignAndSubmit("bob", (*FungibleMintResponse)(mintResponse))
 		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
 	})
 
@@ -1901,7 +1936,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		submitResponse := env.requireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+		submitResponse := env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
 		require.Equal(t, typeId, submitResponse.TypeId)
 
 		desc, err := env.manager.FungibleDescribe(typeId)
@@ -1915,7 +1950,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		submitResponse := env.requireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+		submitResponse := env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
 		require.Equal(t, typeId, submitResponse.TypeId)
 
 		desc, err := env.manager.FungibleDescribe(typeId)
@@ -1929,7 +1964,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
 
-		submitResponse, err := env.wrongSignAndSubmit("bob", (*FungibleMintResponse)(mintResponse))
+		submitResponse, err := env.fungibleWrongSignAndSubmit("bob", (*FungibleMintResponse)(mintResponse))
 		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
 	})
 
@@ -1964,9 +1999,9 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 }
 
 func TestTokensManager_FungibleTransferToken(t *testing.T) {
-	env := newFungibleTestEnv(t)
+	env := newExtendedTestEnv(t)
 
-	deployResponse, err := env.manager.FungibleDeploy(getDeployRequest("bob", 0))
+	deployResponse, err := env.manager.FungibleDeploy(getFungibleDeployRequest("bob", 0))
 	require.NoError(t, err)
 	typeId := deployResponse.TypeId
 
@@ -1975,7 +2010,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, mintResponse)
 
-	env.requireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+	env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
 
 	t.Run("success: reserve to bob", func(t *testing.T) {
 		transferRequest := &types.FungibleTransferRequest{
@@ -1994,7 +2029,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 		assert.Equal(t, "bob", transferResponse.NewOwner)
 		assert.NotEmpty(t, transferResponse.NewAccount)
 
-		env.requireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
+		env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
 
 		desc, err := env.manager.FungibleDescribe(typeId)
 		assert.NoError(t, err)
@@ -2037,7 +2072,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 		assert.Equal(t, "charlie", transferResponse.NewOwner)
 		assert.NotEmpty(t, transferResponse.NewAccount)
 
-		env.requireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
+		env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
 
 		desc, err := env.manager.FungibleDescribe(typeId)
 		assert.NoError(t, err)
@@ -2081,7 +2116,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 		assert.NotEmpty(t, transferResponse.NewAccount)
 		charlieTxAccount = transferResponse.NewAccount
 
-		env.requireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
+		env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
 
 		desc, err := env.manager.FungibleDescribe(typeId)
 		assert.NoError(t, err)
@@ -2129,7 +2164,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 		assert.Equal(t, reserveAccountUser, transferResponse.NewOwner)
 		assert.NotEmpty(t, transferResponse.NewAccount)
 
-		env.requireSignAndSubmit(t, "charlie", (*FungibleTransferResponse)(transferResponse))
+		env.fungibleRequireSignAndSubmit(t, "charlie", (*FungibleTransferResponse)(transferResponse))
 
 		desc, err := env.manager.FungibleDescribe(typeId)
 		assert.NoError(t, err)
@@ -2233,7 +2268,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, response)
 
-		submitResponse, err := env.wrongSignAndSubmit("bob", (*FungibleTransferResponse)(response))
+		submitResponse, err := env.fungibleWrongSignAndSubmit("bob", (*FungibleTransferResponse)(response))
 		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
 	})
 
@@ -2275,9 +2310,9 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 }
 
 func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
-	env := newFungibleTestEnv(t)
+	env := newExtendedTestEnv(t)
 
-	deployResponse, err := env.manager.FungibleDeploy(getDeployRequest("bob", 0))
+	deployResponse, err := env.manager.FungibleDeploy(getFungibleDeployRequest("bob", 0))
 	assert.NoError(t, err)
 	typeId := deployResponse.TypeId
 
@@ -2287,7 +2322,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, mintResponse)
 
-	env.requireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+	env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
 
 	nUsers := len(env.users)
 	accounts := map[string][]string{}
@@ -2302,7 +2337,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, transferResponse)
 
-			env.requireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
+			env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
 
 			accounts[user] = append(accounts[user], transferResponse.NewAccount)
 		}
@@ -2318,7 +2353,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, transferResponse)
 
-		env.requireSignAndSubmit(t, user, (*FungibleTransferResponse)(transferResponse))
+		env.fungibleRequireSignAndSubmit(t, user, (*FungibleTransferResponse)(transferResponse))
 		accounts[reserveAccountUser] = append(accounts[reserveAccountUser], transferResponse.NewAccount)
 	}
 
@@ -2339,7 +2374,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		assert.Equal(t, typeId, response.TypeId)
 		assert.Equal(t, reserveAccountUser, response.Owner)
 
-		env.requireSignAndSubmit(t, "bob", (*FungibleConsolidateResponse)(response))
+		env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleConsolidateResponse)(response))
 
 		accList, err = env.manager.FungibleAccounts(typeId, reserveAccountUser, "")
 		assert.NoError(t, err)
@@ -2359,7 +2394,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		assert.Equal(t, typeId, response.TypeId)
 		assert.Equal(t, "bob", response.Owner)
 
-		env.requireSignAndSubmit(t, "bob", (*FungibleConsolidateResponse)(response))
+		env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleConsolidateResponse)(response))
 
 		accList, err := env.manager.FungibleAccounts(typeId, "bob", mainAccount)
 		assert.NoError(t, err)
@@ -2383,7 +2418,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		assert.Equal(t, typeId, response.TypeId)
 		assert.Equal(t, "charlie", response.Owner)
 
-		env.requireSignAndSubmit(t, "charlie", (*FungibleConsolidateResponse)(response))
+		env.fungibleRequireSignAndSubmit(t, "charlie", (*FungibleConsolidateResponse)(response))
 
 		accList, err := env.manager.FungibleAccounts(typeId, "charlie", mainAccount)
 		assert.NoError(t, err)
@@ -2411,7 +2446,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		assert.Equal(t, typeId, response.TypeId)
 		assert.Equal(t, "dave", response.Owner)
 
-		env.requireSignAndSubmit(t, "dave", (*FungibleConsolidateResponse)(response))
+		env.fungibleRequireSignAndSubmit(t, "dave", (*FungibleConsolidateResponse)(response))
 
 		accList, err := env.manager.FungibleAccounts(typeId, "dave", mainAccount)
 		assert.NoError(t, err)
@@ -2445,7 +2480,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		assert.Equal(t, typeId, response.TypeId)
 		assert.Equal(t, "dave", response.Owner)
 
-		env.requireSignAndSubmit(t, "dave", (*FungibleConsolidateResponse)(response))
+		env.fungibleRequireSignAndSubmit(t, "dave", (*FungibleConsolidateResponse)(response))
 
 		accList, err := env.manager.FungibleAccounts(typeId, "dave", mainAccount)
 		assert.NoError(t, err)
@@ -2515,7 +2550,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, response)
 
-		submitResponse, err := env.wrongSignAndSubmit("dave", (*FungibleConsolidateResponse)(response))
+		submitResponse, err := env.fungibleWrongSignAndSubmit("dave", (*FungibleConsolidateResponse)(response))
 		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
 	})
 
@@ -2544,5 +2579,639 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 		request := &types.FungibleConsolidateRequest{Owner: "dave"}
 		response, err := env.manager.FungiblePrepareConsolidate("a", request)
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
+	})
+}
+
+// ============================================================
+// Rights requireOffer
+// ============================================================
+
+type offerTestEnv struct {
+	extendedTestEnv
+	typeIds       map[string]string
+	assetIds      map[string][]string
+	annotationIds map[string][]string
+	assetOffers   map[string]map[string]types.RightsOfferRecord
+}
+
+func (e *offerTestEnv) offerMintRequest(name, owner, asset string, price uint64) *types.RightsOfferMintRequest {
+	return &types.RightsOfferMintRequest{
+		Name:     name,
+		Owner:    owner,
+		Asset:    asset,
+		Rights:   e.typeIds["rights"],
+		Template: fmt.Sprintf("Template of %s", asset),
+		Price:    price,
+		Currency: e.typeIds["fung"],
+	}
+}
+
+func (e *offerTestEnv) offer(name, owner, asset string, price uint64) (*RightsOfferResponse, error) {
+	offerResp, err := e.manager.RightsOfferMint(
+		e.typeIds["offers"],
+		e.offerMintRequest(name, owner, asset, price),
+	)
+	if offerResp != nil {
+		return (*RightsOfferResponse)(offerResp), err
+	} else {
+		return nil, err
+	}
+}
+
+func (e *offerTestEnv) requireOffer(t *testing.T, name, owner, asset string, price uint64) *RightsOfferResponse {
+	offerResp, err := e.offer(name, owner, asset, price)
+	require.NoError(t, err, "failed to mint offer for: %s", name)
+	require.NotNil(t, offerResp, "failed to mint offer for: %s", name)
+	return offerResp
+}
+
+func fakeToken(t *testing.T, name string) string {
+	tokenTypeIDBase64, err := NameToID(name)
+	require.NoError(t, err)
+	return tokenTypeIDBase64
+}
+
+func (e *offerTestEnv) buy(offer, buyer, meta string) (*RightsOfferBuyResponse, error) {
+	buyResp, err := e.manager.RightsOfferBuy(
+		offer,
+		&types.RightsOfferBuyRequest{
+			BuyerId:  buyer,
+			Metadata: meta,
+		},
+	)
+	if buyResp != nil {
+		return (*RightsOfferBuyResponse)(buyResp), err
+	} else {
+		return nil, err
+	}
+}
+
+func (e *offerTestEnv) requireBuy(t *testing.T, offer, buyer, meta string) *RightsOfferBuyResponse {
+	offerResp, err := e.buy(offer, buyer, meta)
+	require.NoError(t, err, "failed to buy offer: %s", offer)
+	require.NotNil(t, offerResp, "failed to buy offer: %s", offer)
+	return offerResp
+}
+
+func (e *offerTestEnv) update(offer string, enable bool) (*RightsOfferResponse, error) {
+	resp, err := e.manager.RightsOfferUpdate(
+		offer,
+		&types.RightsOfferUpdateRequest{Enable: enable},
+	)
+	if resp != nil {
+		return (*RightsOfferResponse)(resp), err
+	} else {
+		return nil, err
+	}
+}
+
+func (e *offerTestEnv) requireUpdate(t *testing.T, offer string, enable bool) *RightsOfferResponse {
+	resp, err := e.update(offer, enable)
+	require.NoError(t, err, "failed to update offer: %s", offer)
+	require.NotNil(t, resp, "failed to update offer: %s", offer)
+	return resp
+}
+
+func (e *offerTestEnv) mainBalance(t *testing.T, user string) uint64 {
+	accounts, err := e.manager.FungibleAccounts(e.typeIds["fung"], user, "")
+	require.NoError(t, err, "failed getting %s balance", user)
+	for _, acc := range accounts {
+		if acc.Comment == mainAccount {
+			return acc.Balance
+		}
+	}
+	return 0
+}
+
+func (e *offerTestEnv) balance(t *testing.T, user string) uint64 {
+	accounts, err := e.manager.FungibleAccounts(e.typeIds["fung"], user, "")
+	require.NoError(t, err, "failed getting %s balance", user)
+	balance := uint64(0)
+	for _, acc := range accounts {
+		balance += acc.Balance
+	}
+	return balance
+}
+
+func (e *offerTestEnv) getOffers(owner string) (string, string) {
+	var testOfferId string
+	var freeOfferId string
+	for _, offers := range e.assetOffers {
+		for offerId, record := range offers {
+			if record.Owner != owner {
+				continue
+			}
+			if record.Price > 0 {
+				testOfferId = offerId
+			} else {
+				freeOfferId = offerId
+			}
+			if testOfferId != "" && freeOfferId != "" {
+				return testOfferId, freeOfferId
+			}
+		}
+	}
+	return testOfferId, freeOfferId
+}
+
+func newOfferTestEnv(t *testing.T) *offerTestEnv {
+	env := &offerTestEnv{
+		extendedTestEnv: *newExtendedTestEnv(t),
+		typeIds:         map[string]string{},
+		assetIds:        map[string][]string{},
+		annotationIds:   map[string][]string{},
+		assetOffers:     map[string]map[string]types.RightsOfferRecord{},
+	}
+	deploys := []*types.DeployRequest{{
+		Name:  "assets",
+		Class: constants.TokenClass_NFT,
+	}, {
+		Name:  "rights",
+		Class: constants.TokenClass_NFT,
+	}, {
+		Name:  "offers",
+		Class: constants.TokenClass_RIGHTS_OFFER,
+	}, {
+		Name:  "anot",
+		Class: constants.TokenClass_ANNOTATIONS,
+	}}
+	for _, d := range deploys {
+		r, err := env.manager.DeployTokenType(d)
+		require.NoError(t, err, "failed to deploy: %s", d.Name)
+		env.typeIds[d.Name] = r.TypeId
+	}
+
+	fungDeployResp, err := env.manager.FungibleDeploy(&types.FungibleDeployRequest{
+		Name:         "fung",
+		ReserveOwner: "bob",
+	})
+	require.NoError(t, err, "failed to deploy: fungible")
+	env.typeIds["fung"] = fungDeployResp.TypeId
+
+	env.updateUsers(t)
+
+	fungMintResp, err := env.manager.FungiblePrepareMint(env.typeIds["fung"], &types.FungibleMintRequest{Supply: 1_000_000})
+	require.NoError(t, err, "failed to mint: fungible")
+	env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(fungMintResp))
+
+	for _, u := range env.users {
+		transResp, err := env.manager.FungiblePrepareTransfer(env.typeIds["fung"], &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			NewOwner: u,
+			Quantity: 10_000,
+		})
+		require.NoError(t, err, "failed to transfer fungible to: %s", u)
+		env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transResp))
+
+		consResp, err := env.manager.FungiblePrepareConsolidate(env.typeIds["fung"], &types.FungibleConsolidateRequest{
+			Owner: u,
+		})
+		require.NoError(t, err, "failed to consolidate fungible for: %s", u)
+		env.fungibleRequireSignAndSubmit(t, u, (*FungibleConsolidateResponse)(consResp))
+	}
+
+	// Each user (3) have 3 assets, each with 3 offers
+	for dIdx, d := range []string{"movie1", "movie2", "movie3"} {
+		for uIdx, u := range env.users {
+			assetName := fmt.Sprintf("%s by %s", d, u)
+			assetResp, err := env.manager.PrepareMint(env.typeIds["assets"], &types.MintRequest{
+				Owner:     u,
+				AssetData: assetName,
+			})
+			require.NoError(t, err, "failed to mint asset: %s", assetName)
+			env.nftRequireSignAndSubmit(t, u, (*MintResponse)(assetResp))
+			env.assetIds[u] = append(env.assetIds[u], assetResp.TokenId)
+
+			anotName := fmt.Sprintf("Annotation for: %s", assetName)
+			anotResp, err := env.manager.PrepareRegister(env.typeIds["anot"], &types.AnnotationRegisterRequest{
+				Owner:          u,
+				Link:           assetResp.TokenId,
+				AnnotationData: anotName,
+			})
+			require.NoError(t, err, "failed to register annotation: %s", anotName)
+			env.nftRequireSignAndSubmit(t, u, (*AnnotationRegisterResponse)(anotResp))
+			env.annotationIds[u] = append(env.annotationIds[u], anotResp.AnnotationId)
+
+			tokenRecords := map[string]types.RightsOfferRecord{}
+			for i := 0; i < 3; i++ {
+				price := uint64(i + dIdx*10 + uIdx*100)
+				name := fmt.Sprintf("Offer %d for asset %s", i, assetName)
+				offerResp := env.requireOffer(t, name, u, assetResp.TokenId, price)
+				env.offerRequireSignAndSubmit(t, u, offerResp)
+				tokenRecords[offerResp.OfferId] = types.RightsOfferRecord{
+					OfferId:  offerResp.OfferId,
+					Name:     name,
+					Owner:    u,
+					Asset:    assetResp.TokenId,
+					Rights:   env.typeIds["rights"],
+					Template: fmt.Sprintf("Template of %s", assetResp.TokenId),
+					Price:    price,
+					Currency: env.typeIds["fung"],
+					Enabled:  true,
+				}
+			}
+			env.assetOffers[assetResp.TokenId] = tokenRecords
+		}
+	}
+
+	return env
+}
+
+func TestTokensManager_OfferGet(t *testing.T) {
+	env := newOfferTestEnv(t)
+
+	t.Run("success: get everything", func(t *testing.T) {
+		for user, assets := range env.assetIds {
+			for _, assetId := range assets {
+				for offerId, expectedRecord := range env.assetOffers[assetId] {
+					record, err := env.manager.RightsOfferGet(offerId)
+					require.NoError(t, err)
+					require.NotNil(t, record)
+					assert.Equal(t, offerId, record.OfferId)
+					assert.Equal(t, user, record.Owner)
+					assert.Equal(t, assetId, record.Asset)
+					assert.Equal(t, env.typeIds["rights"], record.Rights)
+					assert.Equal(t, expectedRecord.Price, record.Price)
+					assert.Equal(t, env.typeIds["fung"], record.Currency)
+					assert.Equal(t, true, record.Enabled)
+				}
+			}
+		}
+	})
+
+	t.Run("error: get invalid offer", func(t *testing.T) {
+		record, err := env.manager.RightsOfferGet("fake-asset")
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid tokenId", record, err)
+	})
+
+	t.Run("error: get offer type does not exists", func(t *testing.T) {
+		record, err := env.manager.RightsOfferGet(fakeToken(t, "FakeToken") + ".fake")
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "token type not found", record, err)
+	})
+
+	t.Run("error: get offer does not exists", func(t *testing.T) {
+		record, err := env.manager.RightsOfferGet(env.typeIds["offers"] + ".fake")
+		assertTokenHttpErrMessage(t, http.StatusNotFound, `offer \[.*\] was not found`, record, err)
+	})
+
+	t.Run("error: get offer wrong type", func(t *testing.T) {
+		record, err := env.manager.RightsOfferGet(env.annotationIds["bob"][0])
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, `must be rights_offer`, record, err)
+	})
+}
+
+func TestTokensManager_OfferMint(t *testing.T) {
+	env := newOfferTestEnv(t)
+
+	t.Run("error: wrong signature", func(t *testing.T) {
+		offerResp := env.requireOffer(t, "wrongSig", "bob", env.assetIds["bob"][0], 100)
+		submitResponse, err := env.offerWrongSignAndSubmit("bob", offerResp)
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: wrong signer", func(t *testing.T) {
+		offerResp := env.requireOffer(t, "wrongSig", "bob", env.assetIds["bob"][0], 100)
+		submitResponse, err := env.offerSignAndSubmit(t, "charlie", offerResp)
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: invalid asset", func(t *testing.T) {
+		offerResp, err := env.offer("invalidAsset", "bob", "fake-asset", 100)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid tokenId", offerResp, err)
+	})
+
+	t.Run("error: asset type does not exists", func(t *testing.T) {
+		tokenType, _ := NameToID("FakeToken")
+		offerResp, err := env.offer("badAssetType", "bob", tokenType+".fake", 100)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "db '.*' doesn't exist", offerResp, err)
+	})
+
+	t.Run("error: asset does not exists", func(t *testing.T) {
+		offerResp, err := env.offer("badAsset", "bob", env.typeIds["assets"]+".fake", 100)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, `key \[.*\] was not found`, offerResp, err)
+	})
+
+	t.Run("error: asset wrong type", func(t *testing.T) {
+		offerResp, err := env.offer("badAsset", "bob", env.annotationIds["bob"][0], 100)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, `must be nft`, offerResp, err)
+	})
+
+	t.Run("error: rights type does not exist", func(t *testing.T) {
+		offerResp, err := env.manager.RightsOfferMint(env.typeIds["offers"], &types.RightsOfferMintRequest{
+			Name:     "invalidRights",
+			Owner:    "bob",
+			Asset:    env.assetIds["bob"][0],
+			Rights:   "fake-rights",
+			Template: "Template",
+			Price:    100,
+			Currency: env.typeIds["fung"],
+		})
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "token type not found", offerResp, err)
+	})
+
+	t.Run("error: rights wrong type", func(t *testing.T) {
+		offerResp, err := env.manager.RightsOfferMint(env.typeIds["offers"], &types.RightsOfferMintRequest{
+			Name:     "invalidRights",
+			Owner:    "bob",
+			Asset:    env.assetIds["bob"][0],
+			Rights:   env.typeIds["anot"],
+			Template: "Template",
+			Price:    100,
+			Currency: env.typeIds["fung"],
+		})
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "token type must be nft", offerResp, err)
+	})
+
+	t.Run("error: invalid currency type", func(t *testing.T) {
+		offerResp, err := env.manager.RightsOfferMint(env.typeIds["offers"], &types.RightsOfferMintRequest{
+			Name:     "invalidRights",
+			Owner:    "bob",
+			Asset:    env.assetIds["bob"][0],
+			Rights:   env.typeIds["rights"],
+			Template: "Template",
+			Price:    100,
+			Currency: "fake-type",
+		})
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", offerResp, err)
+	})
+
+	t.Run("error: currency type does not exist", func(t *testing.T) {
+		offerResp, err := env.manager.RightsOfferMint(env.typeIds["offers"], &types.RightsOfferMintRequest{
+			Name:     "invalidRights",
+			Owner:    "bob",
+			Asset:    env.assetIds["bob"][0],
+			Rights:   env.typeIds["rights"],
+			Template: "Template",
+			Price:    100,
+			Currency: fakeToken(t, "fake-type"),
+		})
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "token type not found", offerResp, err)
+	})
+
+	t.Run("error: currency wrong type", func(t *testing.T) {
+		offerResp, err := env.manager.RightsOfferMint(env.typeIds["offers"], &types.RightsOfferMintRequest{
+			Name:     "invalidRights",
+			Owner:    "bob",
+			Asset:    env.assetIds["bob"][0],
+			Rights:   env.typeIds["rights"],
+			Template: "Template",
+			Price:    100,
+			Currency: env.typeIds["anot"],
+		})
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "token type must be fungible", offerResp, err)
+	})
+
+	t.Run("error: wrong owner", func(t *testing.T) {
+		offerResp, err := env.offer("wrongOwner", "charlie", env.assetIds["bob"][0], 100)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "owner must own the asset", offerResp, err)
+	})
+}
+
+func TestTokensManager_OfferBuy(t *testing.T) {
+	env := newOfferTestEnv(t)
+
+	meta := "meta"
+	t.Run("success: everyone is buying everything (3 times)", func(t *testing.T) {
+		for _, u := range env.users {
+			balance := env.balance(t, u)
+			for assetOwner, assets := range env.assetIds {
+				for _, assetId := range assets {
+					for offerId, offerRecord := range env.assetOffers[assetId] {
+						price := offerRecord.Price
+						for i := 0; i < 3; i++ {
+							b := env.requireBuy(t, offerId, u, meta)
+							require.NotNil(t, env.offerRequireSignAndSubmit(t, u, b))
+							if u == assetOwner {
+								price = 0
+							}
+							newBalance := env.balance(t, u)
+							assert.Equal(t, int(balance-price), int(newBalance))
+							balance = newBalance
+
+							record, err := env.manager.GetToken(b.TokenId)
+							require.NoError(t, err)
+							require.NotNil(t, record)
+							assert.Equal(t, u, record.Owner)
+							assert.Equal(t, meta, record.AssetMetadata)
+							assert.Equal(t, b.TokenId[len(offerRecord.Rights)+1:], record.AssetDataId)
+							assert.Equal(t, assetId, record.Link)
+							assert.Equal(t, offerId, record.Reference)
+
+							rightsRecord := &types.RightsRecord{}
+							require.NoError(t, json.Unmarshal([]byte(record.AssetData), rightsRecord))
+							require.NotEmpty(t, rightsRecord.RightsId)
+							// This is a random number, there is nothing to validate
+							rightsRecord.RightsId = ""
+							assert.Equal(t, &types.RightsRecord{
+								OfferId:  offerId,
+								RightsId: "",
+								Asset:    assetId,
+								Name:     offerRecord.Name,
+								Rights:   offerRecord.Rights,
+								Template: offerRecord.Template,
+							}, rightsRecord)
+						}
+					}
+				}
+			}
+		}
+	})
+
+	testOfferId, freeOfferId := env.getOffers("bob")
+
+	t.Run("error: wrong signature", func(t *testing.T) {
+		buyResp := env.requireBuy(t, testOfferId, "bob", meta)
+		submitResponse, err := env.offerWrongSignAndSubmit("bob", buyResp)
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: wrong signer", func(t *testing.T) {
+		buyResp := env.requireBuy(t, testOfferId, "bob", meta)
+		submitResponse, err := env.offerSignAndSubmit(t, "charlie", buyResp)
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: invalid offer", func(t *testing.T) {
+		resp, err := env.buy("fake-offer", "bob", meta)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid tokenId", resp, err)
+	})
+
+	t.Run("error: offer type does not exists", func(t *testing.T) {
+		tokenType, _ := NameToID("FakeToken")
+		offerResp, err := env.buy(tokenType+".fake", "bob", meta)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "token type not found", offerResp, err)
+	})
+
+	t.Run("error: offer does not exists", func(t *testing.T) {
+		offerResp, err := env.buy(env.typeIds["offers"]+".fake", "bob", meta)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, `offer \[.*\] was not found`, offerResp, err)
+	})
+
+	t.Run("error: offer wrong type", func(t *testing.T) {
+		offerResp, err := env.buy(env.annotationIds["bob"][0], "bob", meta)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, `must be rights_offer`, offerResp, err)
+	})
+
+	t.Run("error: invalid user", func(t *testing.T) {
+		offerResp, err := env.buy(testOfferId, "fake", meta)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, `does not exist`, offerResp, err)
+	})
+
+	transResp, err := env.manager.FungiblePrepareTransfer(env.typeIds["fung"], &types.FungibleTransferRequest{
+		Owner:    "dave",
+		NewOwner: "charlie",
+		Quantity: env.mainBalance(t, "dave"),
+	})
+	require.NoError(t, err, "failed to transfer fungible from dave to charlie")
+	env.fungibleRequireSignAndSubmit(t, "dave", (*FungibleTransferResponse)(transResp))
+
+	t.Run("error: no funds", func(t *testing.T) {
+		offerResp, err := env.buy(testOfferId, "dave", meta)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "insufficient funds", offerResp, err)
+	})
+
+	t.Run("success: no funds", func(t *testing.T) {
+		env.offerRequireSignAndSubmit(t, "dave", env.requireBuy(t, freeOfferId, "dave", meta))
+	})
+}
+
+func TestTokensManager_OfferUpdate(t *testing.T) {
+	env := newOfferTestEnv(t)
+
+	meta := "meta"
+	t.Run("success: everyone is trying to buy", func(t *testing.T) {
+		for assetOwner, assets := range env.assetIds {
+			for _, assetId := range assets {
+				for offerId := range env.assetOffers[assetId] {
+					require.NotNil(t, env.offerRequireSignAndSubmit(t, assetOwner, env.requireUpdate(t, offerId, false)))
+					for _, u := range env.users {
+						buyResp, err := env.buy(offerId, u, meta)
+						assertTokenHttpErrMessage(t, http.StatusBadRequest, "disabled", buyResp, err)
+					}
+
+					require.NotNil(t, env.offerRequireSignAndSubmit(t, assetOwner, env.requireUpdate(t, offerId, true)))
+					for _, u := range env.users {
+						buyResp := env.requireBuy(t, offerId, u, meta)
+						require.NotNil(t, env.offerRequireSignAndSubmit(t, u, buyResp))
+					}
+				}
+			}
+		}
+	})
+
+	testOfferId, _ := env.getOffers("bob")
+
+	t.Run("error: wrong signature", func(t *testing.T) {
+		submitResponse, err := env.offerWrongSignAndSubmit("bob", env.requireUpdate(t, testOfferId, false))
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: wrong signer", func(t *testing.T) {
+		submitResponse, err := env.offerSignAndSubmit(t, "charlie", env.requireUpdate(t, testOfferId, false))
+		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
+	})
+
+	t.Run("error: invalid offer", func(t *testing.T) {
+		resp, err := env.update("fake-offer", false)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid tokenId", resp, err)
+	})
+
+	t.Run("error: offer type does not exists", func(t *testing.T) {
+		tokenType, _ := NameToID("FakeToken")
+		resp, err := env.update(tokenType+".fake", false)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "token type not found", resp, err)
+	})
+
+	t.Run("error: offer does not exists", func(t *testing.T) {
+		resp, err := env.update(env.typeIds["offers"]+".fake", false)
+		assertTokenHttpErrMessage(t, http.StatusNotFound, `offer \[.*\] was not found`, resp, err)
+	})
+
+	t.Run("error: offer wrong type", func(t *testing.T) {
+		resp, err := env.update(env.annotationIds["bob"][0], false)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, `must be rights_offer`, resp, err)
+	})
+}
+
+func sortOffers(offers []types.RightsOfferRecord) {
+	sort.Slice(offers, func(i, j int) bool {
+		return offers[i].OfferId < offers[j].OfferId
+	})
+}
+
+func TestTokensManager_OfferQuery(t *testing.T) {
+	env := newOfferTestEnv(t)
+
+	t.Run("success: query by owner", func(t *testing.T) {
+		for assetOwner, assets := range env.assetIds {
+			var offers []types.RightsOfferRecord
+			for _, assetId := range assets {
+				for _, offerRecord := range env.assetOffers[assetId] {
+					offers = append(offers, offerRecord)
+				}
+			}
+			sortOffers(offers)
+
+			records, err := env.manager.RightsOfferQuery(env.typeIds["offers"], assetOwner, "")
+			require.NoError(t, err)
+			require.Len(t, records, len(offers))
+
+			sortOffers(records)
+			require.EqualValues(t, offers, records)
+		}
+	})
+
+	t.Run("success: query by asset", func(t *testing.T) {
+		for _, assets := range env.assetIds {
+			for _, assetId := range assets {
+				var offers []types.RightsOfferRecord
+				for _, offerRecord := range env.assetOffers[assetId] {
+					offers = append(offers, offerRecord)
+				}
+				sortOffers(offers)
+
+				records, err := env.manager.RightsOfferQuery(env.typeIds["offers"], "", assetId)
+				require.NoError(t, err)
+				require.Len(t, records, len(offers))
+
+				sortOffers(records)
+				require.EqualValues(t, offers, records)
+			}
+		}
+	})
+
+	t.Run("success: query by owner and asset", func(t *testing.T) {
+		for assetOwner, assets := range env.assetIds {
+			for _, assetId := range assets {
+				var offers []types.RightsOfferRecord
+				for _, offerRecord := range env.assetOffers[assetId] {
+					offers = append(offers, offerRecord)
+				}
+				sortOffers(offers)
+
+				records, err := env.manager.RightsOfferQuery(env.typeIds["offers"], assetOwner, assetId)
+				require.NoError(t, err)
+				require.Len(t, records, len(offers))
+
+				sortOffers(records)
+				require.EqualValues(t, offers, records)
+			}
+		}
+	})
+
+	t.Run("error: no qualifiers", func(t *testing.T) {
+		resp, err := env.manager.RightsOfferQuery(env.typeIds["offers"], "", "")
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "must contain at least one qualifier", resp, err)
+	})
+
+	t.Run("error: offer type does not exists", func(t *testing.T) {
+		tokenType, _ := NameToID("FakeToken")
+		resp, err := env.manager.RightsOfferQuery(tokenType, "", "")
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "token type not found", resp, err)
+	})
+
+	t.Run("error: offer wrong type", func(t *testing.T) {
+		resp, err := env.manager.RightsOfferQuery(env.typeIds["anot"], "", "")
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, `must be rights_offer`, resp, err)
 	})
 }

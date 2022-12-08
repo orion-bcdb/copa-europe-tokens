@@ -191,6 +191,16 @@ func submitContextFromFungible(submitRequest *types.FungibleSubmitRequest) *Subm
 	}
 }
 
+func submitContextFromRights(submitRequest *types.RightsOfferSubmitRequest) *SubmitContext {
+	return &SubmitContext{
+		TxContext:     submitRequest.OfferId,
+		TxEnvelope:    submitRequest.TxEnvelope,
+		TxPayloadHash: submitRequest.TxPayloadHash,
+		Signer:        submitRequest.Signer,
+		Signature:     submitRequest.Signature,
+	}
+}
+
 func (ctx *SubmitContext) ToNFTResponse() *types.SubmitResponse {
 	return &types.SubmitResponse{
 		TokenId:   ctx.TxContext,
@@ -202,6 +212,14 @@ func (ctx *SubmitContext) ToNFTResponse() *types.SubmitResponse {
 func (ctx *SubmitContext) ToFungibleResponse() *types.FungibleSubmitResponse {
 	return &types.FungibleSubmitResponse{
 		TypeId:    ctx.TxContext,
+		TxReceipt: ctx.TxReceipt,
+		TxId:      ctx.TxId,
+	}
+}
+
+func (ctx *SubmitContext) ToRightsResponse() *types.RightsOfferSubmitResponse {
+	return &types.RightsOfferSubmitResponse{
+		OfferId:   ctx.TxContext,
 		TxReceipt: ctx.TxReceipt,
 		TxId:      ctx.TxId,
 	}
@@ -220,6 +238,16 @@ func (ctx *SubmitContext) ToNFTRequest() *types.SubmitRequest {
 func (ctx *SubmitContext) ToFungibleRequest() *types.FungibleSubmitRequest {
 	return &types.FungibleSubmitRequest{
 		TypeId:        ctx.TxContext,
+		TxEnvelope:    ctx.TxEnvelope,
+		TxPayloadHash: ctx.TxPayloadHash,
+		Signer:        ctx.Signer,
+		Signature:     ctx.Signature,
+	}
+}
+
+func (ctx *SubmitContext) ToRightsRequest() *types.RightsOfferSubmitRequest {
+	return &types.RightsOfferSubmitRequest{
+		OfferId:       ctx.TxContext,
 		TxEnvelope:    ctx.TxEnvelope,
 		TxPayloadHash: ctx.TxPayloadHash,
 		Signer:        ctx.Signer,
@@ -268,9 +296,12 @@ func SignTransactionResponse(s orioncrypto.Signer, response SignatureRequester) 
 
 type MintResponse types.MintResponse
 type TransferResponse types.TransferResponse
+type AnnotationRegisterResponse types.AnnotationRegisterResponse
 type FungibleMintResponse types.FungibleMintResponse
 type FungibleTransferResponse types.FungibleTransferResponse
 type FungibleConsolidateResponse types.FungibleConsolidateResponse
+type RightsOfferResponse types.RightsOfferResponse
+type RightsOfferBuyResponse types.RightsOfferBuyResponse
 
 func (r *MintResponse) PrepareSubmit() *SubmitContext {
 	return &SubmitContext{
@@ -283,6 +314,14 @@ func (r *MintResponse) PrepareSubmit() *SubmitContext {
 func (r *TransferResponse) PrepareSubmit() *SubmitContext {
 	return &SubmitContext{
 		TxContext:     r.TokenId,
+		TxEnvelope:    r.TxEnvelope,
+		TxPayloadHash: r.TxPayloadHash,
+	}
+}
+
+func (r *AnnotationRegisterResponse) PrepareSubmit() *SubmitContext {
+	return &SubmitContext{
+		TxContext:     r.AnnotationId,
 		TxEnvelope:    r.TxEnvelope,
 		TxPayloadHash: r.TxPayloadHash,
 	}
@@ -307,6 +346,22 @@ func (r *FungibleTransferResponse) PrepareSubmit() *SubmitContext {
 func (r *FungibleConsolidateResponse) PrepareSubmit() *SubmitContext {
 	return &SubmitContext{
 		TxContext:     r.TypeId,
+		TxEnvelope:    r.TxEnvelope,
+		TxPayloadHash: r.TxPayloadHash,
+	}
+}
+
+func (r *RightsOfferResponse) PrepareSubmit() *SubmitContext {
+	return &SubmitContext{
+		TxContext:     r.OfferId,
+		TxEnvelope:    r.TxEnvelope,
+		TxPayloadHash: r.TxPayloadHash,
+	}
+}
+
+func (r *RightsOfferBuyResponse) PrepareSubmit() *SubmitContext {
+	return &SubmitContext{
+		TxContext:     r.TokenId,
 		TxEnvelope:    r.TxEnvelope,
 		TxPayloadHash: r.TxPayloadHash,
 	}

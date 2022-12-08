@@ -17,6 +17,7 @@ import (
 	"github.com/copa-europe-tokens/pkg/config"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
+	"github.com/google/uuid"
 	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
 	sdkconfig "github.com/hyperledger-labs/orion-sdk-go/pkg/config"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
@@ -318,8 +319,10 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 	case "": //backward compatibility
 		deployRequest.Class = constants.TokenClass_NFT
 		fallthrough
-	case constants.TokenClass_NFT, constants.TokenClass_ANNOTATIONS, constants.TokenClass_RIGHTS_OFFER:
+	case constants.TokenClass_NFT, constants.TokenClass_ANNOTATIONS:
 		indices = []string{"owner", "link", "reference"}
+	case constants.TokenClass_RIGHTS_OFFER:
+		indices = []string{"owner", "asset"}
 	case constants.TokenClass_FUNGIBLE:
 		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("Class is not supported via this API call: %s", deployRequest.Class)}
 	default:
@@ -911,6 +914,7 @@ func (m *Manager) GetAnnotationsByFilter(tokenTypeId, owner, link, reference str
 	if err != nil {
 		return nil, convertErrorType(err)
 	}
+	defer ctx.Abort()
 
 	records := make([]*types.AnnotationRecord, len(results))
 	for i, res := range results {
@@ -1469,25 +1473,226 @@ func (m *Manager) FungibleAccounts(typeId string, owner string, account string) 
 // ====================================================
 
 func (m *Manager) RightsOfferMint(typeId string, request *types.RightsOfferMintRequest) (*types.RightsOfferMintResponse, error) {
-	return nil, common.NewErrInternal("not implemented")
+	ctx := newTxContext(m)
+	defer ctx.Abort()
+
+	if request.Name == "" {
+		return nil, common.NewErrInvalid("Offer's name cannot be empty.")
+	}
+
+	assetCtx, err := ctx.token(request.Asset)
+	if err != nil {
+		return nil, err
+	}
+	assetDesc, err := assetCtx.GetToken()
+	if err != nil {
+		return nil, err
+	}
+	if err := assetCtx.validateTokenType(constants.TokenClass_NFT, "asset"); err != nil {
+		return nil, err
+	}
+	if assetDesc.Owner != request.Owner {
+		return nil, common.NewErrInvalid("Offer's owner must own the asset.")
+	}
+
+	rightsCtx, err := ctx.tokenType(request.Rights)
+	if err != nil {
+		return nil, err
+	}
+	if err := rightsCtx.validateTokenType(constants.TokenClass_NFT, "rights"); err != nil {
+		return nil, err
+	}
+
+	priceCtx, err := ctx.fungible(request.Currency)
+	if err != nil {
+		return nil, err
+	}
+	if err := priceCtx.validateTokenType(constants.TokenClass_FUNGIBLE, "price"); err != nil {
+		return nil, err
+	}
+
+	offerTypeCtx, err := ctx.offerType(typeId)
+	if err != nil {
+		return nil, err
+	}
+	if err := offerTypeCtx.validateTokenType(constants.TokenClass_RIGHTS_OFFER, "type ID"); err != nil {
+		return nil, err
+	}
+	offerCtx, err := offerTypeCtx.offerName(request.Name)
+	if err != nil {
+		return nil, err
+	}
+	record := &types.RightsOfferRecord{
+		OfferId:  offerCtx.tokenId,
+		Name:     request.Name,
+		Owner:    request.Owner,
+		Asset:    request.Asset,
+		Rights:   request.Rights,
+		Template: request.Template,
+		Price:    request.Price,
+		Currency: request.Currency,
+		Enabled:  true,
+	}
+	if err := offerCtx.putOfferRecord(record); err != nil {
+		return nil, err
+	}
+	if err := ctx.Prepare(); err != nil {
+		return nil, err
+	}
+	return &types.RightsOfferMintResponse{
+		OfferId:       offerCtx.tokenId,
+		TxEnvelope:    ctx.GetTxEnvelope(),
+		TxPayloadHash: ctx.GetTxPayloadHash(),
+	}, nil
 }
 
 func (m *Manager) RightsOfferUpdate(offerId string, request *types.RightsOfferUpdateRequest) (*types.RightsOfferUpdateResponse, error) {
-	return nil, common.NewErrInternal("not implemented")
+	ctx, err := newTxContext(m).offer(offerId)
+	if err != nil {
+		return nil, err
+	}
+	defer ctx.Abort()
+	if err := ctx.validateTokenType(constants.TokenClass_RIGHTS_OFFER, "offerId"); err != nil {
+		return nil, err
+	}
+	record, err := ctx.getOfferRecord()
+	if err != nil {
+		return nil, err
+	}
+
+	record.Enabled = request.Enable
+	if err := ctx.putOfferRecord(record); err != nil {
+		return nil, err
+	}
+	if err := ctx.Prepare(); err != nil {
+		return nil, err
+	}
+	return &types.RightsOfferUpdateResponse{
+		OfferId:       ctx.tokenId,
+		TxEnvelope:    ctx.GetTxEnvelope(),
+		TxPayloadHash: ctx.GetTxPayloadHash(),
+	}, nil
 }
 
 func (m *Manager) RightsOfferBuy(offerId string, request *types.RightsOfferBuyRequest) (*types.RightsOfferBuyResponse, error) {
-	return nil, common.NewErrInternal("not implemented")
+	ctx := newTxContext(m)
+	defer ctx.Abort()
+
+	offerCtx, err := ctx.offer(offerId)
+	if err != nil {
+		return nil, err
+	}
+	if err := offerCtx.validateTokenType(constants.TokenClass_RIGHTS_OFFER, "offerId"); err != nil {
+		return nil, err
+	}
+	offer, err := offerCtx.getOfferRecord()
+	if err != nil {
+		return nil, err
+	}
+	if !offer.Enabled {
+		return nil, common.NewErrInvalid("offer '%s' is disabled", offerId)
+	}
+
+	if request.BuyerId != offer.Owner {
+		fungCtx, err := ctx.fungible(offer.Currency)
+		if err != nil {
+			return nil, err
+		}
+		_, err = fungCtx.transfer(request.BuyerId, "main", offer.Owner, offer.Price,
+			fmt.Sprintf("payment for requireOffer %s", offerId))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	rightsUUID, err := uuid.NewRandom()
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to generate tx ID")
+	}
+	recordMeta := &types.RightsRecord{
+		OfferId:  offer.OfferId,
+		RightsId: rightsUUID.String(),
+		Name:     offer.Name,
+		Asset:    offer.Asset,
+		Rights:   offer.Rights,
+		Template: offer.Template,
+	}
+	rawRecordMeta, err := json.Marshal(recordMeta)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to json.Marshal record")
+	}
+	assetData := string(rawRecordMeta)
+
+	rightsCtx, err := ctx.tokenType(offer.Rights)
+	if err != nil {
+		return nil, err
+	}
+	assetCtx, err := rightsCtx.asset(assetData)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := assetCtx.mint(request.BuyerId, request.Metadata, offer.Asset, offer.OfferId); err != nil {
+		return nil, err
+	}
+
+	if err := ctx.Prepare(); err != nil {
+		return nil, err
+	}
+	return &types.RightsOfferBuyResponse{
+		OfferId:       offerId,
+		TokenId:       assetCtx.tokenId,
+		TxEnvelope:    ctx.GetTxEnvelope(),
+		TxPayloadHash: ctx.GetTxPayloadHash(),
+	}, nil
 }
 
 func (m *Manager) RightsOfferSubmitTx(submitRequest *types.RightsOfferSubmitRequest) (*types.RightsOfferSubmitResponse, error) {
-	return nil, common.NewErrInternal("not implemented")
+	ctx := submitContextFromRights(submitRequest)
+	if err := m.submitTx(ctx); err != nil {
+		return nil, err
+	}
+	return ctx.ToRightsResponse(), nil
 }
 
 func (m *Manager) RightsOfferGet(offerId string) (*types.RightsOfferRecord, error) {
-	return nil, common.NewErrInternal("not implemented")
+	ctx, err := newTxContext(m).offer(offerId)
+	if err != nil {
+		return nil, err
+	}
+	defer ctx.Abort()
+	if err := ctx.validateTokenType(constants.TokenClass_RIGHTS_OFFER, "offer ID"); err != nil {
+		return nil, err
+	}
+	offer, err := ctx.getOfferRecord()
+	if err != nil {
+		return nil, err
+	}
+	return offer, nil
 }
 
 func (m *Manager) RightsOfferQuery(typeId string, owner string, asset string) ([]types.RightsOfferRecord, error) {
-	return nil, common.NewErrInternal("not implemented")
+	ctx, err := newTxContext(m).tokenType(typeId)
+	if err != nil {
+		return nil, err
+	}
+	defer ctx.Abort()
+	if err := ctx.validateTokenType(constants.TokenClass_RIGHTS_OFFER, "type ID"); err != nil {
+		return nil, err
+	}
+
+	results, err := ctx.Query(map[string]string{
+		"owner": owner,
+		"asset": asset,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	records := make([]types.RightsOfferRecord, len(results))
+	for i, res := range results {
+		if err = json.Unmarshal(res.GetValue(), &records[i]); err != nil {
+			return nil, errors.Wrap(err, "failed to json.Unmarshal JSONQuery result")
+		}
+	}
+	return records, nil
 }
