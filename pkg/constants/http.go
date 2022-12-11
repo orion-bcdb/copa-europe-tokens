@@ -52,4 +52,15 @@ const (
 	FungibleTransfer    = FungibleTypeRoot + "/transfer-prepare"
 	FungibleConsolidate = FungibleTypeRoot + "/consolidate-prepare"
 	FungibleAccounts    = FungibleTypeRoot + "/accounts"
+
+	// Rights/Offers API
+
+	RightsOfferRoot     = "/tokens/rights-offer"
+	RightsOfferEndpoint = RightsOfferRoot + "/"
+	RightsOfferGet      = RightsOfferRoot + "/{offerId}"
+	RightsOfferSubmit   = RightsOfferRoot + "/submit"
+	RightsOfferMint     = RightsOfferRoot + "/mint-prepare/{typeId}"
+	RightsOfferUpdate   = RightsOfferRoot + "/update-prepare/{offerId}"
+	RightsOfferBuy      = RightsOfferRoot + "/buy-prepare/{offerId}"
+	RightsOfferQuery    = RightsOfferRoot + "/query/{typeId}"
 )

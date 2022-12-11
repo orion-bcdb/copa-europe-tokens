@@ -13,7 +13,7 @@ const typeIdPlaceholder = "typeId"
 
 type fungibleHandler struct{ tokenRouter }
 
-func NewFungibleHandler(manager tokens.Operations, lg *logger.SugarLogger) *fungibleHandler {
+func NewFungibleHandler(manager tokens.Operations, lg *logger.SugarLogger) http.Handler {
 	d := fungibleHandler{newTokenRouter(manager, lg)}
 	d.StrictSlash(true)
 	d.addHandler(constants.FungibleDeploy, d.handleDeploy, http.StatusCreated).Methods(http.MethodPost)

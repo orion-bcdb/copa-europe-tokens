@@ -43,6 +43,7 @@ func NewTokensServer(conf *config.Configuration, lg *logger.SugarLogger) (*Token
 	mux.Handle(constants.TokensAnnotationsEndpoint, httphandlers.NewAnnotationsHandler(tokenManager, lg))
 	mux.Handle(constants.TokensAnnotationsSubTree, httphandlers.NewAnnotationsHandler(tokenManager, lg))
 	mux.Handle(constants.FungibleEndpoint, httphandlers.NewFungibleHandler(tokenManager, lg))
+	mux.Handle(constants.RightsOfferEndpoint, httphandlers.NewRightsOfferHandler(tokenManager, lg))
 
 	netConf := conf.Network
 	addr := fmt.Sprintf("%s:%d", netConf.Address, netConf.Port)

@@ -8,3 +8,7 @@ import "strings"
 func URLForType(path string, typeId string) string {
 	return strings.Replace(path, "{typeId}", typeId, 1)
 }
+
+func URLForOffer(path string, typeId string) string {
+	return strings.Replace(path, "{offerId}", typeId, 1)
+}

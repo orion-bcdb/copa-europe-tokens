@@ -77,6 +77,15 @@ type Operations interface {
 	FungiblePrepareConsolidate(typeId string, request *types.FungibleConsolidateRequest) (*types.FungibleConsolidateResponse, error)
 	FungibleSubmitTx(submitRequest *types.FungibleSubmitRequest) (*types.FungibleSubmitResponse, error)
 	FungibleAccounts(typeId string, owner string, account string) ([]types.FungibleAccountRecord, error)
+
+	// Rights Offer API
+
+	RightsOfferMint(typeId string, request *types.RightsOfferMintRequest) (*types.RightsOfferMintResponse, error)
+	RightsOfferUpdate(offerId string, request *types.RightsOfferUpdateRequest) (*types.RightsOfferUpdateResponse, error)
+	RightsOfferBuy(offerId string, request *types.RightsOfferBuyRequest) (*types.RightsOfferBuyResponse, error)
+	RightsOfferSubmitTx(submitRequest *types.RightsOfferSubmitRequest) (*types.RightsOfferSubmitResponse, error)
+	RightsOfferGet(offerId string) (*types.RightsOfferRecord, error)
+	RightsOfferQuery(typeId string, owner string, asset string) ([]types.RightsOfferRecord, error)
 }
 
 // TODO handle ServerTimeout on Commit
@@ -309,7 +318,7 @@ func (m *Manager) DeployTokenType(deployRequest *types.DeployRequest) (*types.De
 	case "": //backward compatibility
 		deployRequest.Class = constants.TokenClass_NFT
 		fallthrough
-	case constants.TokenClass_NFT, constants.TokenClass_ANNOTATIONS:
+	case constants.TokenClass_NFT, constants.TokenClass_ANNOTATIONS, constants.TokenClass_RIGHTS_OFFER:
 		indices = []string{"owner", "link", "reference"}
 	case constants.TokenClass_FUNGIBLE:
 		return nil, &ErrInvalid{ErrMsg: fmt.Sprintf("Class is not supported via this API call: %s", deployRequest.Class)}
@@ -1453,4 +1462,32 @@ func (m *Manager) FungibleAccounts(typeId string, owner string, account string) 
 	}
 	defer ctx.Abort()
 	return ctx.queryAccounts(owner, account)
+}
+
+// ====================================================
+// Rights Offer functional API implementation
+// ====================================================
+
+func (m *Manager) RightsOfferMint(typeId string, request *types.RightsOfferMintRequest) (*types.RightsOfferMintResponse, error) {
+	return nil, common.NewErrInternal("not implemented")
+}
+
+func (m *Manager) RightsOfferUpdate(offerId string, request *types.RightsOfferUpdateRequest) (*types.RightsOfferUpdateResponse, error) {
+	return nil, common.NewErrInternal("not implemented")
+}
+
+func (m *Manager) RightsOfferBuy(offerId string, request *types.RightsOfferBuyRequest) (*types.RightsOfferBuyResponse, error) {
+	return nil, common.NewErrInternal("not implemented")
+}
+
+func (m *Manager) RightsOfferSubmitTx(submitRequest *types.RightsOfferSubmitRequest) (*types.RightsOfferSubmitResponse, error) {
+	return nil, common.NewErrInternal("not implemented")
+}
+
+func (m *Manager) RightsOfferGet(offerId string) (*types.RightsOfferRecord, error) {
+	return nil, common.NewErrInternal("not implemented")
+}
+
+func (m *Manager) RightsOfferQuery(typeId string, owner string, asset string) ([]types.RightsOfferRecord, error) {
+	return nil, common.NewErrInternal("not implemented")
 }

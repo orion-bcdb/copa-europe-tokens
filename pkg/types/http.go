@@ -236,3 +236,78 @@ type FungibleAccountRecord struct {
 	Balance uint64 `json:"balance"`
 	Comment string `json:"comment"`
 }
+
+// ====================================================
+//  Rights Offer API
+// ====================================================
+
+type RightsOfferMintRequest struct {
+	Name     string `json:"name"`     // An offer name chosen by the mint requester
+	Owner    string `json:"owner"`    // The owner's user ID (must be the asset's owner)
+	Asset    string `json:"asset"`    // An asset's token ID of class NFT
+	Rights   string `json:"rights"`   // A token type ID of class NFT
+	Template string `json:"template"` // A template text to be attached to each issued right token
+	Price    uint64 `json:"price"`    // The price of the rights
+	Currency string `json:"currency"` // A token type ID of class FUNGIBLE
+}
+
+type RightsOfferResponse struct {
+	OfferId       string `json:"offerId"`
+	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
+}
+
+type RightsOfferMintResponse RightsOfferResponse
+
+type RightsOfferUpdateRequest struct {
+	Enable bool `json:"enable"`
+}
+
+type RightsOfferUpdateResponse RightsOfferResponse
+
+type RightsOfferBuyRequest struct {
+	BuyerId  string `json:"buyerId"`  // The user ID of the buyer to which the new token will be issued
+	Metadata string `json:"metadata"` // A metadata to be attached to the new issued token (amendable later by the buyer)
+}
+
+type RightsOfferBuyResponse struct {
+	OfferId       string `json:"offerId"`
+	TokenId       string `json:"tokenId"`
+	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
+}
+
+type RightsOfferSubmitRequest struct {
+	OfferId       string `json:"offerId"`
+	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
+	Signer        string `json:"signer"`
+	Signature     string `json:"signature"` //base64 (std, padded) encoding of bytes
+}
+
+type RightsOfferSubmitResponse struct {
+	OfferId   string `json:"offerId"`
+	TxId      string `json:"txId"`
+	TxReceipt string `json:"txReceipt"`
+}
+
+type RightsOfferRecord struct {
+	OfferId  string `json:"offerId"`
+	Name     string `json:"name"`
+	Owner    string `json:"owner"`
+	Asset    string `json:"asset"`
+	Rights   string `json:"rights"`
+	Template string `json:"template"`
+	Price    uint64 `json:"price"`
+	Currency string `json:"currency"`
+	Enabled  bool   `json:"enabled"`
+}
+
+type RightsRecord struct {
+	OfferId  string `json:"offerId"`
+	RightsId string `json:"rightsId"`
+	Name     string `json:"name"`
+	Asset    string `json:"asset"`
+	Rights   string `json:"rights"`
+	Template string `json:"template"`
+}
