@@ -306,8 +306,6 @@ type RightsOfferRecord struct {
 type RightsRecord struct {
 	OfferId  string `json:"offerId"`
 	RightsId string `json:"rightsId"`
-	Name     string `json:"name"`
 	Asset    string `json:"asset"`
-	Rights   string `json:"rights"`
 	Template string `json:"template"`
 }

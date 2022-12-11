@@ -1023,19 +1023,19 @@ func TestTokensServer(t *testing.T) {
 		t.Run("buy", func(t *testing.T) {
 			require.NotEmpty(t, offerId)
 
-			updateResp := tokens.RightsOfferBuyResponse{}
+			buyResp := tokens.RightsOfferBuyResponse{}
 			env.testRightsPostSignAndSubmit(t,
 				common.URLForOffer(constants.RightsOfferBuy, offerId),
 				&types.RightsOfferBuyRequest{BuyerId: "charlie"},
-				&updateResp,
+				&buyResp,
 				http.StatusOK,
 				signerCharlie,
 			)
-			require.NotEmpty(t, updateResp.TokenId)
+			require.NotEmpty(t, buyResp.TokenId)
 
 			tokenRecord := types.TokenRecord{}
 			env.testGetRequest(t,
-				common.URLForToken(constants.TokensAssetsQuery, updateResp.TokenId),
+				common.URLForToken(constants.TokensAssetsQuery, buyResp.TokenId),
 				&tokenRecord,
 			)
 			assert.Equal(t, "charlie", tokenRecord.Owner)
@@ -1045,9 +1045,7 @@ func TestTokensServer(t *testing.T) {
 			assetData := &types.RightsRecord{}
 			require.NoError(t, json.Unmarshal([]byte(tokenRecord.AssetData), assetData))
 			assert.Equal(t, offerRecord.Asset, assetData.Asset)
-			assert.Equal(t, offerRecord.Name, assetData.Name)
 			assert.Equal(t, offerRecord.OfferId, assetData.OfferId)
-			assert.Equal(t, offerRecord.Rights, assetData.Rights)
 			assert.Equal(t, offerRecord.Template, assetData.Template)
 		})
 

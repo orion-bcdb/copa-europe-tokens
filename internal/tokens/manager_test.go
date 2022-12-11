@@ -2583,7 +2583,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 }
 
 // ============================================================
-// Rights requireOffer
+// Rights Offer
 // ============================================================
 
 type offerTestEnv struct {
@@ -2732,7 +2732,7 @@ func newOfferTestEnv(t *testing.T) *offerTestEnv {
 		Name:  "offers",
 		Class: constants.TokenClass_RIGHTS_OFFER,
 	}, {
-		Name:  "anot",
+		Name:  "annot",
 		Class: constants.TokenClass_ANNOTATIONS,
 	}}
 	for _, d := range deploys {
@@ -2782,15 +2782,15 @@ func newOfferTestEnv(t *testing.T) *offerTestEnv {
 			env.nftRequireSignAndSubmit(t, u, (*MintResponse)(assetResp))
 			env.assetIds[u] = append(env.assetIds[u], assetResp.TokenId)
 
-			anotName := fmt.Sprintf("Annotation for: %s", assetName)
-			anotResp, err := env.manager.PrepareRegister(env.typeIds["anot"], &types.AnnotationRegisterRequest{
+			annotName := fmt.Sprintf("Annotation for: %s", assetName)
+			annotResp, err := env.manager.PrepareRegister(env.typeIds["annot"], &types.AnnotationRegisterRequest{
 				Owner:          u,
 				Link:           assetResp.TokenId,
-				AnnotationData: anotName,
+				AnnotationData: annotName,
 			})
-			require.NoError(t, err, "failed to register annotation: %s", anotName)
-			env.nftRequireSignAndSubmit(t, u, (*AnnotationRegisterResponse)(anotResp))
-			env.annotationIds[u] = append(env.annotationIds[u], anotResp.AnnotationId)
+			require.NoError(t, err, "failed to register annotation: %s", annotName)
+			env.nftRequireSignAndSubmit(t, u, (*AnnotationRegisterResponse)(annotResp))
+			env.annotationIds[u] = append(env.annotationIds[u], annotResp.AnnotationId)
 
 			tokenRecords := map[string]types.RightsOfferRecord{}
 			for i := 0; i < 3; i++ {
@@ -2914,7 +2914,7 @@ func TestTokensManager_OfferMint(t *testing.T) {
 			Name:     "invalidRights",
 			Owner:    "bob",
 			Asset:    env.assetIds["bob"][0],
-			Rights:   env.typeIds["anot"],
+			Rights:   env.typeIds["annot"],
 			Template: "Template",
 			Price:    100,
 			Currency: env.typeIds["fung"],
@@ -2956,7 +2956,7 @@ func TestTokensManager_OfferMint(t *testing.T) {
 			Rights:   env.typeIds["rights"],
 			Template: "Template",
 			Price:    100,
-			Currency: env.typeIds["anot"],
+			Currency: env.typeIds["annot"],
 		})
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "token type must be fungible", offerResp, err)
 	})
@@ -3006,8 +3006,6 @@ func TestTokensManager_OfferBuy(t *testing.T) {
 								OfferId:  offerId,
 								RightsId: "",
 								Asset:    assetId,
-								Name:     offerRecord.Name,
-								Rights:   offerRecord.Rights,
 								Template: offerRecord.Template,
 							}, rightsRecord)
 						}
@@ -3211,7 +3209,7 @@ func TestTokensManager_OfferQuery(t *testing.T) {
 	})
 
 	t.Run("error: offer wrong type", func(t *testing.T) {
-		resp, err := env.manager.RightsOfferQuery(env.typeIds["anot"], "", "")
+		resp, err := env.manager.RightsOfferQuery(env.typeIds["annot"], "", "")
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, `must be rights_offer`, resp, err)
 	})
 }

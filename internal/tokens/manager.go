@@ -1609,19 +1609,17 @@ func (m *Manager) RightsOfferBuy(offerId string, request *types.RightsOfferBuyRe
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to generate tx ID")
 	}
-	recordMeta := &types.RightsRecord{
+	record := &types.RightsRecord{
 		OfferId:  offer.OfferId,
 		RightsId: rightsUUID.String(),
-		Name:     offer.Name,
 		Asset:    offer.Asset,
-		Rights:   offer.Rights,
 		Template: offer.Template,
 	}
-	rawRecordMeta, err := json.Marshal(recordMeta)
+	rawRecord, err := json.Marshal(record)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to json.Marshal record")
 	}
-	assetData := string(rawRecordMeta)
+	assetData := string(rawRecord)
 
 	rightsCtx, err := ctx.tokenType(offer.Rights)
 	if err != nil {
