@@ -2977,15 +2977,15 @@ func TestTokensManager_OfferBuy(t *testing.T) {
 			for assetOwner, assets := range env.assetIds {
 				for _, assetId := range assets {
 					for offerId, offerRecord := range env.assetOffers[assetId] {
-						price := offerRecord.Price
+						if u == assetOwner {
+							continue
+						}
+
 						for i := 0; i < 3; i++ {
 							b := env.requireBuy(t, offerId, u, meta)
 							require.NotNil(t, env.offerRequireSignAndSubmit(t, u, b))
-							if u == assetOwner {
-								price = 0
-							}
 							newBalance := env.balance(t, u)
-							assert.Equal(t, int(balance-price), int(newBalance))
+							assert.Equal(t, int(balance-offerRecord.Price), int(newBalance))
 							balance = newBalance
 
 							record, err := env.manager.GetToken(b.TokenId)
@@ -3000,14 +3000,7 @@ func TestTokensManager_OfferBuy(t *testing.T) {
 							rightsRecord := &types.RightsRecord{}
 							require.NoError(t, json.Unmarshal([]byte(record.AssetData), rightsRecord))
 							require.NotEmpty(t, rightsRecord.RightsId)
-							// This is a random number, there is nothing to validate
-							rightsRecord.RightsId = ""
-							assert.Equal(t, &types.RightsRecord{
-								OfferId:  offerId,
-								RightsId: "",
-								Asset:    assetId,
-								Template: offerRecord.Template,
-							}, rightsRecord)
+							assert.Equal(t, offerRecord.Template, rightsRecord.Template)
 						}
 					}
 				}
@@ -3018,35 +3011,35 @@ func TestTokensManager_OfferBuy(t *testing.T) {
 	testOfferId, freeOfferId := env.getOffers("bob")
 
 	t.Run("error: wrong signature", func(t *testing.T) {
-		buyResp := env.requireBuy(t, testOfferId, "bob", meta)
-		submitResponse, err := env.offerWrongSignAndSubmit("bob", buyResp)
+		buyResp := env.requireBuy(t, testOfferId, "charlie", meta)
+		submitResponse, err := env.offerWrongSignAndSubmit("charlie", buyResp)
 		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
 	})
 
 	t.Run("error: wrong signer", func(t *testing.T) {
-		buyResp := env.requireBuy(t, testOfferId, "bob", meta)
-		submitResponse, err := env.offerSignAndSubmit(t, "charlie", buyResp)
+		buyResp := env.requireBuy(t, testOfferId, "charlie", meta)
+		submitResponse, err := env.offerSignAndSubmit(t, "dave", buyResp)
 		assertTokenHttpErr(t, http.StatusForbidden, submitResponse, err)
 	})
 
 	t.Run("error: invalid offer", func(t *testing.T) {
-		resp, err := env.buy("fake-offer", "bob", meta)
+		resp, err := env.buy("fake-offer", "charlie", meta)
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid tokenId", resp, err)
 	})
 
 	t.Run("error: offer type does not exists", func(t *testing.T) {
 		tokenType, _ := NameToID("FakeToken")
-		offerResp, err := env.buy(tokenType+".fake", "bob", meta)
+		offerResp, err := env.buy(tokenType+".fake", "charlie", meta)
 		assertTokenHttpErrMessage(t, http.StatusNotFound, "token type not found", offerResp, err)
 	})
 
 	t.Run("error: offer does not exists", func(t *testing.T) {
-		offerResp, err := env.buy(env.typeIds["offers"]+".fake", "bob", meta)
+		offerResp, err := env.buy(env.typeIds["offers"]+".fake", "charlie", meta)
 		assertTokenHttpErrMessage(t, http.StatusNotFound, `offer \[.*\] was not found`, offerResp, err)
 	})
 
 	t.Run("error: offer wrong type", func(t *testing.T) {
-		offerResp, err := env.buy(env.annotationIds["bob"][0], "bob", meta)
+		offerResp, err := env.buy(env.annotationIds["bob"][0], "charlie", meta)
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, `must be rights_offer`, offerResp, err)
 	})
 
@@ -3080,15 +3073,21 @@ func TestTokensManager_OfferUpdate(t *testing.T) {
 	t.Run("success: everyone is trying to buy", func(t *testing.T) {
 		for assetOwner, assets := range env.assetIds {
 			for _, assetId := range assets {
-				for offerId := range env.assetOffers[assetId] {
+				for offerId, offerRecord := range env.assetOffers[assetId] {
 					require.NotNil(t, env.offerRequireSignAndSubmit(t, assetOwner, env.requireUpdate(t, offerId, false)))
 					for _, u := range env.users {
+						if u == offerRecord.Owner {
+							continue
+						}
 						buyResp, err := env.buy(offerId, u, meta)
 						assertTokenHttpErrMessage(t, http.StatusBadRequest, "disabled", buyResp, err)
 					}
 
 					require.NotNil(t, env.offerRequireSignAndSubmit(t, assetOwner, env.requireUpdate(t, offerId, true)))
 					for _, u := range env.users {
+						if u == offerRecord.Owner {
+							continue
+						}
 						buyResp := env.requireBuy(t, offerId, u, meta)
 						require.NotNil(t, env.offerRequireSignAndSubmit(t, u, buyResp))
 					}
@@ -3098,6 +3097,11 @@ func TestTokensManager_OfferUpdate(t *testing.T) {
 	})
 
 	testOfferId, _ := env.getOffers("bob")
+
+	t.Run("error: state unchanged", func(t *testing.T) {
+		resp, err := env.update(testOfferId, true)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "state was not change", resp, err)
+	})
 
 	t.Run("error: wrong signature", func(t *testing.T) {
 		submitResponse, err := env.offerWrongSignAndSubmit("bob", env.requireUpdate(t, testOfferId, false))

@@ -1560,6 +1560,10 @@ func (m *Manager) RightsOfferUpdate(offerId string, request *types.RightsOfferUp
 		return nil, err
 	}
 
+	if record.Enabled == request.Enable {
+		return nil, common.NewErrInvalid("the offer state was not changed - enabled: %t", record.Enabled)
+	}
+
 	record.Enabled = request.Enable
 	if err := ctx.putOfferRecord(record); err != nil {
 		return nil, err
@@ -1593,16 +1597,14 @@ func (m *Manager) RightsOfferBuy(offerId string, request *types.RightsOfferBuyRe
 		return nil, common.NewErrInvalid("offer '%s' is disabled", offerId)
 	}
 
-	if request.BuyerId != offer.Owner {
-		fungCtx, err := ctx.fungible(offer.Currency)
-		if err != nil {
-			return nil, err
-		}
-		_, err = fungCtx.transfer(request.BuyerId, "main", offer.Owner, offer.Price,
-			fmt.Sprintf("payment for requireOffer %s", offerId))
-		if err != nil {
-			return nil, err
-		}
+	fungCtx, err := ctx.fungible(offer.Currency)
+	if err != nil {
+		return nil, err
+	}
+	newRecord, err := fungCtx.transfer(request.BuyerId, "main", offer.Owner, offer.Price,
+		fmt.Sprintf("payment for requireOffer %s", offerId))
+	if err != nil {
+		return nil, err
 	}
 
 	rightsUUID, err := uuid.NewRandom()
@@ -1610,9 +1612,7 @@ func (m *Manager) RightsOfferBuy(offerId string, request *types.RightsOfferBuyRe
 		return nil, errors.Wrapf(err, "Failed to generate tx ID")
 	}
 	record := &types.RightsRecord{
-		OfferId:  offer.OfferId,
 		RightsId: rightsUUID.String(),
-		Asset:    offer.Asset,
 		Template: offer.Template,
 	}
 	rawRecord, err := json.Marshal(record)
@@ -1639,6 +1639,7 @@ func (m *Manager) RightsOfferBuy(offerId string, request *types.RightsOfferBuyRe
 	return &types.RightsOfferBuyResponse{
 		OfferId:       offerId,
 		TokenId:       assetCtx.tokenId,
+		Transfer:      *newRecord,
 		TxEnvelope:    ctx.GetTxEnvelope(),
 		TxPayloadHash: ctx.GetTxPayloadHash(),
 	}, nil

@@ -745,6 +745,7 @@ func TestTokensServer(t *testing.T) {
 	})
 
 	var fungibleTypeId string
+	charlieFungibleQuantity := uint64(3)
 	t.Run("Fungible", func(t *testing.T) {
 		var typeId string
 		deployRequest := types.FungibleDeployRequest{
@@ -821,12 +822,11 @@ func TestTokensServer(t *testing.T) {
 			assert.Equal(t, supply, describeResp.Supply)
 		})
 
-		charlieQuantity := uint64(1)
 		t.Run("transfer", func(t *testing.T) {
 			transReq := types.FungibleTransferRequest{
 				Owner:    "reserve",
 				NewOwner: "charlie",
-				Quantity: charlieQuantity,
+				Quantity: charlieFungibleQuantity,
 			}
 			transResp := tokens.FungibleTransferResponse{}
 			env.testPostSignAndSubmit(t,
@@ -852,30 +852,20 @@ func TestTokensServer(t *testing.T) {
 		})
 
 		t.Run("reserve account", func(t *testing.T) {
-			var accounts []types.FungibleAccountRecord
-			env.testGetRequestWithQuery(t,
-				common.URLForType(constants.FungibleAccounts, typeId),
-				url.Values{"owner": []string{"reserve"}}.Encode(),
-				&accounts,
-			)
+			accounts := env.getFungibleAccounts(t, typeId, "reserve", "")
 			assert.Len(t, accounts, 1)
 			assert.Equal(t, "reserve", accounts[0].Owner)
 			assert.Equal(t, "main", accounts[0].Account)
-			assert.Equal(t, supply-charlieQuantity, accounts[0].Balance)
+			assert.Equal(t, supply-charlieFungibleQuantity, accounts[0].Balance)
 		})
 
 		t.Run("charlie's accounts", func(t *testing.T) {
-			var accounts []types.FungibleAccountRecord
-			env.testGetRequestWithQuery(t,
-				common.URLForType(constants.FungibleAccounts, typeId),
-				url.Values{"owner": []string{"charlie"}}.Encode(),
-				&accounts,
-			)
+			accounts := env.getFungibleAccounts(t, typeId, "charlie", "")
 			assert.Len(t, accounts, 1)
 			assert.Equal(t, "charlie", accounts[0].Owner)
 			assert.NotEmpty(t, accounts[0].Account)
 			assert.NotEqual(t, "main", accounts[0].Account)
-			assert.Equal(t, charlieQuantity, accounts[0].Balance)
+			assert.Equal(t, charlieFungibleQuantity, accounts[0].Balance)
 		})
 
 		t.Run("consolidate", func(t *testing.T) {
@@ -895,16 +885,11 @@ func TestTokensServer(t *testing.T) {
 		})
 
 		t.Run("charlie's main account", func(t *testing.T) {
-			var accounts []types.FungibleAccountRecord
-			env.testGetRequestWithQuery(t,
-				common.URLForType(constants.FungibleAccounts, typeId),
-				url.Values{"owner": []string{"charlie"}}.Encode(),
-				&accounts,
-			)
+			accounts := env.getFungibleAccounts(t, typeId, "charlie", "")
 			assert.Len(t, accounts, 1)
 			assert.Equal(t, "charlie", accounts[0].Owner)
 			assert.Equal(t, "main", accounts[0].Account)
-			assert.Equal(t, charlieQuantity, accounts[0].Balance)
+			assert.Equal(t, charlieFungibleQuantity, accounts[0].Balance)
 		})
 	})
 
@@ -1004,7 +989,17 @@ func TestTokensServer(t *testing.T) {
 				common.URLForOffer(constants.RightsOfferGet, offerId),
 				&record,
 			)
-			assert.Equal(t, false, record.Enabled)
+			require.Equal(t, false, record.Enabled)
+
+			buyResp := types.HttpResponseErr{}
+			env.testPostRequest(t,
+				common.URLForOffer(constants.RightsOfferBuy, offerId),
+				&types.RightsOfferBuyRequest{BuyerId: "charlie"},
+				&buyResp,
+				// We expect "bad request" because charlie has no fungible tokens left in its main account
+				http.StatusBadRequest,
+			)
+			require.Regexp(t, `(?i)disabled`, buyResp.ErrMsg)
 
 			env.testRightsPostSignAndSubmit(t,
 				common.URLForOffer(constants.RightsOfferUpdate, offerId),
@@ -1020,33 +1015,62 @@ func TestTokensServer(t *testing.T) {
 			assert.Equal(t, true, record.Enabled)
 		})
 
-		t.Run("buy", func(t *testing.T) {
-			require.NotEmpty(t, offerId)
+		charlieBalance := charlieFungibleQuantity
+		for i := 0; charlieBalance > 0; i++ {
+			t.Run(fmt.Sprintf("buy charlie %d", i), func(t *testing.T) {
+				require.NotEmpty(t, offerId)
 
-			buyResp := tokens.RightsOfferBuyResponse{}
-			env.testRightsPostSignAndSubmit(t,
+				userAccounts := env.getFungibleAccounts(t, fungibleTypeId, "charlie", "main")
+				require.Len(t, userAccounts, 1)
+				charlieBalance = userAccounts[0].Balance
+
+				buyResp := tokens.RightsOfferBuyResponse{}
+				env.testRightsPostSignAndSubmit(t,
+					common.URLForOffer(constants.RightsOfferBuy, offerId),
+					&types.RightsOfferBuyRequest{BuyerId: "charlie"},
+					&buyResp,
+					http.StatusOK,
+					signerCharlie,
+				)
+				require.NotEmpty(t, buyResp.TokenId)
+
+				tokenRecord := types.TokenRecord{}
+				env.testGetRequest(t,
+					common.URLForToken(constants.TokensAssetsQuery, buyResp.TokenId),
+					&tokenRecord,
+				)
+				assert.Equal(t, "charlie", tokenRecord.Owner)
+				assert.Equal(t, offerRecord.Asset, tokenRecord.Link)
+				assert.Equal(t, offerRecord.OfferId, tokenRecord.Reference)
+
+				assetData := &types.RightsRecord{}
+				require.NoError(t, json.Unmarshal([]byte(tokenRecord.AssetData), assetData))
+				assert.Equal(t, offerRecord.Template, assetData.Template)
+
+				userAccounts = env.getFungibleAccounts(t, fungibleTypeId, "charlie", "main")
+				require.Len(t, userAccounts, 1)
+				assert.Equal(t, charlieBalance-offerRecord.Price, userAccounts[0].Balance)
+				charlieBalance = userAccounts[0].Balance
+
+				ownerAccounts := env.getFungibleAccounts(t, fungibleTypeId, offerRecord.Owner, buyResp.Transfer.Account)
+				require.Len(t, ownerAccounts, 1)
+				assert.Equal(t, offerRecord.Price, ownerAccounts[0].Balance)
+			})
+		}
+
+		t.Run("buy no funds", func(t *testing.T) {
+			require.NotEmpty(t, offerId)
+			require.Equal(t, uint64(0), charlieBalance)
+
+			buyResp := types.HttpResponseErr{}
+			env.testPostRequest(t,
 				common.URLForOffer(constants.RightsOfferBuy, offerId),
 				&types.RightsOfferBuyRequest{BuyerId: "charlie"},
 				&buyResp,
-				http.StatusOK,
-				signerCharlie,
+				// We expect "bad request" because charlie has no fungible tokens left in its main account
+				http.StatusBadRequest,
 			)
-			require.NotEmpty(t, buyResp.TokenId)
-
-			tokenRecord := types.TokenRecord{}
-			env.testGetRequest(t,
-				common.URLForToken(constants.TokensAssetsQuery, buyResp.TokenId),
-				&tokenRecord,
-			)
-			assert.Equal(t, "charlie", tokenRecord.Owner)
-			assert.Equal(t, offerRecord.Asset, tokenRecord.Link)
-			assert.Equal(t, offerRecord.OfferId, tokenRecord.Reference)
-
-			assetData := &types.RightsRecord{}
-			require.NoError(t, json.Unmarshal([]byte(tokenRecord.AssetData), assetData))
-			assert.Equal(t, offerRecord.Asset, assetData.Asset)
-			assert.Equal(t, offerRecord.OfferId, assetData.OfferId)
-			assert.Equal(t, offerRecord.Template, assetData.Template)
+			require.Regexp(t, `(?i)insufficient funds`, buyResp.ErrMsg)
 		})
 
 		t.Run("query by asset ID", func(t *testing.T) {
@@ -1175,6 +1199,16 @@ func (e *serverTestEnv) testRightsPostSignAndSubmit(
 		http.StatusOK,
 	)
 	return &submitResponse
+}
+
+func (e *serverTestEnv) getFungibleAccounts(t *testing.T, typeId string, owner string, account string) []types.FungibleAccountRecord {
+	var accounts []types.FungibleAccountRecord
+	e.testGetRequestWithQuery(t,
+		common.URLForType(constants.FungibleAccounts, typeId),
+		url.Values{"owner": []string{owner}, "account": []string{account}}.Encode(),
+		&accounts,
+	)
+	return accounts
 }
 
 func deployTokenType(t *testing.T, httpClient *http.Client, baseURL *url.URL, deployReq2 *types.DeployRequest) *types.DeployResponse {
