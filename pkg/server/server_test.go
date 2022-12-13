@@ -82,6 +82,14 @@ func (e *serverTestEnv) Put(t *testing.T, path string, body interface{}) *http.R
 	return resp
 }
 
+func (e *serverTestEnv) updateUsers(t *testing.T, records ...*types.UserRecord) {
+	for _, record := range records {
+		record.Privilege = nil
+		resp := e.Put(t, constants.TokensUsersSubTree+record.Identity, record)
+		assertResponse(t, http.StatusOK, resp, &types.UserRecord{})
+	}
+}
+
 func TestTokensServer(t *testing.T) {
 	dir, err := ioutil.TempDir("", "tokens-server-test")
 	require.NoError(t, err)
@@ -736,6 +744,8 @@ func TestTokensServer(t *testing.T) {
 		})
 	})
 
+	var fungibleTypeId string
+	charlieFungibleQuantity := uint64(3)
 	t.Run("Fungible", func(t *testing.T) {
 		var typeId string
 		deployRequest := types.FungibleDeployRequest{
@@ -760,6 +770,7 @@ func TestTokensServer(t *testing.T) {
 			lg.Infof("Fung resp: %v", response)
 		})
 		require.NotEmpty(t, typeId)
+		fungibleTypeId = typeId
 
 		t.Run("get-types", func(t *testing.T) {
 			var response []types.TokenDescription
@@ -775,15 +786,7 @@ func TestTokensServer(t *testing.T) {
 			assert.Contains(t, tokenTypes, typeId)
 		})
 
-		// Update "bob"
-		userRecordBob.Privilege = nil
-		resp = env.Put(t, constants.TokensUsersSubTree+"bob", userRecordBob)
-		assertResponse(t, http.StatusOK, resp, &types.UserRecord{})
-
-		// Update "charlie"
-		userRecordCharlie.Privilege = nil
-		resp = env.Put(t, constants.TokensUsersSubTree+"charlie", userRecordCharlie)
-		assertResponse(t, http.StatusOK, resp, &types.UserRecord{})
+		env.updateUsers(t, userRecordBob, userRecordCharlie)
 
 		t.Run("describe", func(t *testing.T) {
 			response := types.FungibleDescribeResponse{}
@@ -819,12 +822,11 @@ func TestTokensServer(t *testing.T) {
 			assert.Equal(t, supply, describeResp.Supply)
 		})
 
-		charlieQuantity := uint64(1)
 		t.Run("transfer", func(t *testing.T) {
 			transReq := types.FungibleTransferRequest{
 				Owner:    "reserve",
 				NewOwner: "charlie",
-				Quantity: charlieQuantity,
+				Quantity: charlieFungibleQuantity,
 			}
 			transResp := tokens.FungibleTransferResponse{}
 			env.testPostSignAndSubmit(t,
@@ -850,30 +852,20 @@ func TestTokensServer(t *testing.T) {
 		})
 
 		t.Run("reserve account", func(t *testing.T) {
-			var accounts []types.FungibleAccountRecord
-			env.testGetRequestWithQuery(t,
-				common.URLForType(constants.FungibleAccounts, typeId),
-				url.Values{"owner": []string{"reserve"}}.Encode(),
-				&accounts,
-			)
+			accounts := env.getFungibleAccounts(t, typeId, "reserve", "")
 			assert.Len(t, accounts, 1)
 			assert.Equal(t, "reserve", accounts[0].Owner)
 			assert.Equal(t, "main", accounts[0].Account)
-			assert.Equal(t, supply-charlieQuantity, accounts[0].Balance)
+			assert.Equal(t, supply-charlieFungibleQuantity, accounts[0].Balance)
 		})
 
 		t.Run("charlie's accounts", func(t *testing.T) {
-			var accounts []types.FungibleAccountRecord
-			env.testGetRequestWithQuery(t,
-				common.URLForType(constants.FungibleAccounts, typeId),
-				url.Values{"owner": []string{"charlie"}}.Encode(),
-				&accounts,
-			)
+			accounts := env.getFungibleAccounts(t, typeId, "charlie", "")
 			assert.Len(t, accounts, 1)
 			assert.Equal(t, "charlie", accounts[0].Owner)
 			assert.NotEmpty(t, accounts[0].Account)
 			assert.NotEqual(t, "main", accounts[0].Account)
-			assert.Equal(t, charlieQuantity, accounts[0].Balance)
+			assert.Equal(t, charlieFungibleQuantity, accounts[0].Balance)
 		})
 
 		t.Run("consolidate", func(t *testing.T) {
@@ -893,16 +885,228 @@ func TestTokensServer(t *testing.T) {
 		})
 
 		t.Run("charlie's main account", func(t *testing.T) {
-			var accounts []types.FungibleAccountRecord
-			env.testGetRequestWithQuery(t,
-				common.URLForType(constants.FungibleAccounts, typeId),
-				url.Values{"owner": []string{"charlie"}}.Encode(),
-				&accounts,
-			)
+			accounts := env.getFungibleAccounts(t, typeId, "charlie", "")
 			assert.Len(t, accounts, 1)
 			assert.Equal(t, "charlie", accounts[0].Owner)
 			assert.Equal(t, "main", accounts[0].Account)
-			assert.Equal(t, charlieQuantity, accounts[0].Balance)
+			assert.Equal(t, charlieFungibleQuantity, accounts[0].Balance)
+		})
+	})
+
+	t.Run("Rights offer", func(t *testing.T) {
+		var typeId string
+		deployRequest := types.DeployRequest{
+			Name:        "Offers test",
+			Description: "Offers test description",
+			Class:       constants.TokenClass_RIGHTS_OFFER,
+		}
+
+		t.Run("deploy", func(t *testing.T) {
+			response := types.DeployResponse{}
+			env.testPostRequest(t,
+				constants.TokensTypesEndpoint,
+				&deployRequest,
+				&response,
+				http.StatusCreated,
+			)
+			require.NotEmpty(t, response.TypeId)
+			typeId = response.TypeId
+			assert.Equal(t, deployRequest.Name, response.Name)
+			assert.Equal(t, deployRequest.Description, response.Description)
+			lg.Infof("Rights offer deploy resp: %v", response)
+
+			env.updateUsers(t, userRecordBob, userRecordCharlie)
+		})
+
+		t.Run("get-types", func(t *testing.T) {
+			require.NotEmpty(t, typeId)
+			var response []types.TokenDescription
+			env.testGetRequest(t,
+				constants.TokensTypesEndpoint,
+				&response,
+			)
+			assert.GreaterOrEqual(t, len(response), 1)
+			tokenTypes := make([]string, len(response))
+			for i, token := range response {
+				tokenTypes[i] = token.TypeId
+			}
+			assert.Contains(t, tokenTypes, typeId)
+		})
+
+		var offerId string
+		var offerRecord types.RightsOfferRecord
+		t.Run("mint and get", func(t *testing.T) {
+			require.NotEmpty(t, typeId)
+			require.NotEmpty(t, fungibleTypeId)
+
+			mintReq := types.RightsOfferMintRequest{
+				Name:     "name",
+				Owner:    "bob",
+				Asset:    submitResponse5.TokenId,
+				Rights:   deployResp1.TypeId,
+				Template: "template",
+				Price:    1,
+				Currency: fungibleTypeId,
+			}
+			mintResp := tokens.RightsOfferResponse{}
+			env.testRightsPostSignAndSubmit(t,
+				common.URLForType(constants.RightsOfferMint, typeId),
+				&mintReq,
+				&mintResp,
+				http.StatusOK,
+				signerBob,
+			)
+			require.NotEmpty(t, mintResp.OfferId)
+			offerId = mintResp.OfferId
+
+			env.testGetRequest(t,
+				common.URLForOffer(constants.RightsOfferGet, offerId),
+				&offerRecord,
+			)
+			assert.Equal(t, mintReq.Name, offerRecord.Name)
+			assert.Equal(t, mintReq.Owner, offerRecord.Owner)
+			assert.Equal(t, mintReq.Asset, offerRecord.Asset)
+			assert.Equal(t, mintReq.Rights, offerRecord.Rights)
+			assert.Equal(t, mintReq.Template, offerRecord.Template)
+			assert.Equal(t, mintReq.Price, offerRecord.Price)
+			assert.Equal(t, mintReq.Currency, offerRecord.Currency)
+			assert.Equal(t, true, offerRecord.Enabled)
+		})
+
+		t.Run("update and get", func(t *testing.T) {
+			require.NotEmpty(t, offerId)
+
+			updateResp := tokens.RightsOfferResponse{}
+			env.testRightsPostSignAndSubmit(t,
+				common.URLForOffer(constants.RightsOfferUpdate, offerId),
+				&types.RightsOfferUpdateRequest{Enable: false},
+				&updateResp,
+				http.StatusOK,
+				signerBob,
+			)
+			record := types.RightsOfferRecord{}
+			env.testGetRequest(t,
+				common.URLForOffer(constants.RightsOfferGet, offerId),
+				&record,
+			)
+			require.Equal(t, false, record.Enabled)
+
+			buyResp := types.HttpResponseErr{}
+			env.testPostRequest(t,
+				common.URLForOffer(constants.RightsOfferBuy, offerId),
+				&types.RightsOfferBuyRequest{BuyerId: "charlie"},
+				&buyResp,
+				// We expect "bad request" because charlie has no fungible tokens left in its main account
+				http.StatusBadRequest,
+			)
+			require.Regexp(t, `(?i)disabled`, buyResp.ErrMsg)
+
+			env.testRightsPostSignAndSubmit(t,
+				common.URLForOffer(constants.RightsOfferUpdate, offerId),
+				&types.RightsOfferUpdateRequest{Enable: true},
+				&updateResp,
+				http.StatusOK,
+				signerBob,
+			)
+			env.testGetRequest(t,
+				common.URLForOffer(constants.RightsOfferGet, offerId),
+				&record,
+			)
+			assert.Equal(t, true, record.Enabled)
+		})
+
+		charlieBalance := charlieFungibleQuantity
+		for i := 0; charlieBalance > 0; i++ {
+			t.Run(fmt.Sprintf("buy charlie %d", i), func(t *testing.T) {
+				require.NotEmpty(t, offerId)
+
+				userAccounts := env.getFungibleAccounts(t, fungibleTypeId, "charlie", "main")
+				require.Len(t, userAccounts, 1)
+				charlieBalance = userAccounts[0].Balance
+
+				buyResp := tokens.RightsOfferBuyResponse{}
+				env.testRightsPostSignAndSubmit(t,
+					common.URLForOffer(constants.RightsOfferBuy, offerId),
+					&types.RightsOfferBuyRequest{BuyerId: "charlie"},
+					&buyResp,
+					http.StatusOK,
+					signerCharlie,
+				)
+				require.NotEmpty(t, buyResp.TokenId)
+
+				tokenRecord := types.TokenRecord{}
+				env.testGetRequest(t,
+					common.URLForToken(constants.TokensAssetsQuery, buyResp.TokenId),
+					&tokenRecord,
+				)
+				assert.Equal(t, "charlie", tokenRecord.Owner)
+				assert.Equal(t, offerRecord.Asset, tokenRecord.Link)
+				assert.Equal(t, offerRecord.OfferId, tokenRecord.Reference)
+
+				assetData := &types.RightsRecord{}
+				require.NoError(t, json.Unmarshal([]byte(tokenRecord.AssetData), assetData))
+				assert.Equal(t, offerRecord.Template, assetData.Template)
+
+				userAccounts = env.getFungibleAccounts(t, fungibleTypeId, "charlie", "main")
+				require.Len(t, userAccounts, 1)
+				assert.Equal(t, charlieBalance-offerRecord.Price, userAccounts[0].Balance)
+				charlieBalance = userAccounts[0].Balance
+
+				ownerAccounts := env.getFungibleAccounts(t, fungibleTypeId, offerRecord.Owner, buyResp.Transfer.Account)
+				require.Len(t, ownerAccounts, 1)
+				assert.Equal(t, offerRecord.Price, ownerAccounts[0].Balance)
+			})
+		}
+
+		t.Run("buy no funds", func(t *testing.T) {
+			require.NotEmpty(t, offerId)
+			require.Equal(t, uint64(0), charlieBalance)
+
+			buyResp := types.HttpResponseErr{}
+			env.testPostRequest(t,
+				common.URLForOffer(constants.RightsOfferBuy, offerId),
+				&types.RightsOfferBuyRequest{BuyerId: "charlie"},
+				&buyResp,
+				// We expect "bad request" because charlie has no fungible tokens left in its main account
+				http.StatusBadRequest,
+			)
+			require.Regexp(t, `(?i)insufficient funds`, buyResp.ErrMsg)
+		})
+
+		t.Run("query by asset ID", func(t *testing.T) {
+			require.NotEmpty(t, offerId)
+			var offers []types.RightsOfferRecord
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.RightsOfferQuery, typeId),
+				url.Values{"asset": []string{offerRecord.Asset}}.Encode(),
+				&offers,
+			)
+			assert.Len(t, offers, 1)
+			assert.Equal(t, offerRecord, offers[0])
+		})
+
+		t.Run("query by owner", func(t *testing.T) {
+			require.NotEmpty(t, offerId)
+			var offers []types.RightsOfferRecord
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.RightsOfferQuery, typeId),
+				url.Values{"owner": []string{"bob"}}.Encode(),
+				&offers,
+			)
+			assert.Len(t, offers, 1)
+			assert.Equal(t, offerRecord, offers[0])
+		})
+
+		t.Run("query by owner and asset ID", func(t *testing.T) {
+			require.NotEmpty(t, offerId)
+			var offers []types.RightsOfferRecord
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.RightsOfferQuery, typeId),
+				url.Values{"owner": []string{"bob"}, "asset": []string{offerRecord.Asset}}.Encode(),
+				&offers,
+			)
+			assert.Len(t, offers, 1)
+			assert.Equal(t, offerRecord, offers[0])
 		})
 	})
 
@@ -952,9 +1156,9 @@ func (e *serverTestEnv) testGetRequestWithQuery(
 	assertResponse(t, http.StatusOK, e.GetWithQuery(t, path, query), response)
 }
 
-func (e *serverTestEnv) testPostSignAndSubmit(
+func (e *serverTestEnv) testPostPrepareAndSign(
 	t *testing.T, path string, request interface{}, response tokens.SignatureRequester, status int, signer crypto.Signer,
-) *types.FungibleSubmitResponse {
+) *tokens.SubmitContext {
 	// Prepare
 	e.testPostRequest(t, path, request, response, status)
 
@@ -962,6 +1166,13 @@ func (e *serverTestEnv) testPostSignAndSubmit(
 	submitRequest, err := tokens.SignTransactionResponse(signer, response)
 	require.NoError(t, err)
 
+	return submitRequest
+}
+
+func (e *serverTestEnv) testPostSignAndSubmit(
+	t *testing.T, path string, request interface{}, response tokens.SignatureRequester, status int, signer crypto.Signer,
+) *types.FungibleSubmitResponse {
+	submitRequest := e.testPostPrepareAndSign(t, path, request, response, status, signer)
 	submitResponse := types.FungibleSubmitResponse{}
 	// Submit
 	e.testPostRequest(
@@ -971,8 +1182,33 @@ func (e *serverTestEnv) testPostSignAndSubmit(
 		&submitResponse,
 		http.StatusOK,
 	)
-
 	return &submitResponse
+}
+
+func (e *serverTestEnv) testRightsPostSignAndSubmit(
+	t *testing.T, path string, request interface{}, response tokens.SignatureRequester, status int, signer crypto.Signer,
+) *types.RightsOfferSubmitResponse {
+	submitRequest := e.testPostPrepareAndSign(t, path, request, response, status, signer)
+	submitResponse := types.RightsOfferSubmitResponse{}
+	// Submit
+	e.testPostRequest(
+		t,
+		constants.RightsOfferSubmit,
+		submitRequest.ToRightsRequest(),
+		&submitResponse,
+		http.StatusOK,
+	)
+	return &submitResponse
+}
+
+func (e *serverTestEnv) getFungibleAccounts(t *testing.T, typeId string, owner string, account string) []types.FungibleAccountRecord {
+	var accounts []types.FungibleAccountRecord
+	e.testGetRequestWithQuery(t,
+		common.URLForType(constants.FungibleAccounts, typeId),
+		url.Values{"owner": []string{owner}, "account": []string{account}}.Encode(),
+		&accounts,
+	)
+	return accounts
 }
 
 func deployTokenType(t *testing.T, httpClient *http.Client, baseURL *url.URL, deployReq2 *types.DeployRequest) *types.DeployResponse {

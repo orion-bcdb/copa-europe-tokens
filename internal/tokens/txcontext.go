@@ -109,6 +109,22 @@ func (ctx *TxContext) fungible(typeId string) (*FungibleTxContext, error) {
 	return &FungibleTxContext{*genericCtx}, nil
 }
 
+func (ctx *TxContext) offerType(typeId string) (*OfferTypeTxContext, error) {
+	genericCtx, err := ctx.tokenType(typeId)
+	if err != nil {
+		return nil, err
+	}
+	return &OfferTypeTxContext{*genericCtx}, nil
+}
+
+func (ctx *TxContext) offer(offerId string) (*OfferTxContext, error) {
+	genericCtx, err := ctx.token(offerId)
+	if err != nil {
+		return nil, err
+	}
+	return &OfferTxContext{*genericCtx}, nil
+}
+
 // ResetTx creates a new transaction. It will abort previous transaction if existed.
 func (ctx *TxContext) ResetTx() error {
 	if ctx.i.dataTx != nil {

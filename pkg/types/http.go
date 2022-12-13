@@ -271,10 +271,11 @@ type RightsOfferBuyRequest struct {
 }
 
 type RightsOfferBuyResponse struct {
-	OfferId       string `json:"offerId"`
-	TokenId       string `json:"tokenId"`
-	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
-	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
+	OfferId       string                `json:"offerId"`       // The purchased offer
+	TokenId       string                `json:"tokenId"`       // The newly issued rights token
+	Transfer      FungibleAccountRecord `json:"transfer"`      // The fungible transaction details
+	TxEnvelope    string                `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
+	TxPayloadHash string                `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
 }
 
 type RightsOfferSubmitRequest struct {
@@ -304,10 +305,6 @@ type RightsOfferRecord struct {
 }
 
 type RightsRecord struct {
-	OfferId  string `json:"offerId"`
 	RightsId string `json:"rightsId"`
-	Name     string `json:"name"`
-	Asset    string `json:"asset"`
-	Rights   string `json:"rights"`
 	Template string `json:"template"`
 }
