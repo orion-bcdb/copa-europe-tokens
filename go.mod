@@ -5,8 +5,8 @@ go 1.16
 require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
-	github.com/hyperledger-labs/orion-sdk-go v0.2.6
-	github.com/hyperledger-labs/orion-server v0.2.6
+	github.com/hyperledger-labs/orion-sdk-go v0.2.7
+	github.com/hyperledger-labs/orion-server v0.2.7
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/viper v1.10.1
@@ -14,3 +14,4 @@ require (
 	go.uber.org/zap v1.18.1
 	google.golang.org/protobuf v1.28.1
 )
+
