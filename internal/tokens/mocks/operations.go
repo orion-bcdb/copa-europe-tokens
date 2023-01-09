@@ -74,6 +74,22 @@ type Operations struct {
 		result1 *types.FungibleDescribeResponse
 		result2 error
 	}
+	FungibleMovementsStub        func(string, string, int64, string) (*types.FungibleMovementsResponse, error)
+	fungibleMovementsMutex       sync.RWMutex
+	fungibleMovementsArgsForCall []struct {
+		arg1 string
+		arg2 string
+		arg3 int64
+		arg4 string
+	}
+	fungibleMovementsReturns struct {
+		result1 *types.FungibleMovementsResponse
+		result2 error
+	}
+	fungibleMovementsReturnsOnCall map[int]struct {
+		result1 *types.FungibleMovementsResponse
+		result2 error
+	}
 	FungiblePrepareConsolidateStub        func(string, *types.FungibleConsolidateRequest) (*types.FungibleConsolidateResponse, error)
 	fungiblePrepareConsolidateMutex       sync.RWMutex
 	fungiblePrepareConsolidateArgsForCall []struct {
@@ -730,6 +746,73 @@ func (fake *Operations) FungibleDescribeReturnsOnCall(i int, result1 *types.Fung
 	}
 	fake.fungibleDescribeReturnsOnCall[i] = struct {
 		result1 *types.FungibleDescribeResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungibleMovements(arg1 string, arg2 string, arg3 int64, arg4 string) (*types.FungibleMovementsResponse, error) {
+	fake.fungibleMovementsMutex.Lock()
+	ret, specificReturn := fake.fungibleMovementsReturnsOnCall[len(fake.fungibleMovementsArgsForCall)]
+	fake.fungibleMovementsArgsForCall = append(fake.fungibleMovementsArgsForCall, struct {
+		arg1 string
+		arg2 string
+		arg3 int64
+		arg4 string
+	}{arg1, arg2, arg3, arg4})
+	stub := fake.FungibleMovementsStub
+	fakeReturns := fake.fungibleMovementsReturns
+	fake.recordInvocation("FungibleMovements", []interface{}{arg1, arg2, arg3, arg4})
+	fake.fungibleMovementsMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2, arg3, arg4)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *Operations) FungibleMovementsCallCount() int {
+	fake.fungibleMovementsMutex.RLock()
+	defer fake.fungibleMovementsMutex.RUnlock()
+	return len(fake.fungibleMovementsArgsForCall)
+}
+
+func (fake *Operations) FungibleMovementsCalls(stub func(string, string, int64, string) (*types.FungibleMovementsResponse, error)) {
+	fake.fungibleMovementsMutex.Lock()
+	defer fake.fungibleMovementsMutex.Unlock()
+	fake.FungibleMovementsStub = stub
+}
+
+func (fake *Operations) FungibleMovementsArgsForCall(i int) (string, string, int64, string) {
+	fake.fungibleMovementsMutex.RLock()
+	defer fake.fungibleMovementsMutex.RUnlock()
+	argsForCall := fake.fungibleMovementsArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
+}
+
+func (fake *Operations) FungibleMovementsReturns(result1 *types.FungibleMovementsResponse, result2 error) {
+	fake.fungibleMovementsMutex.Lock()
+	defer fake.fungibleMovementsMutex.Unlock()
+	fake.FungibleMovementsStub = nil
+	fake.fungibleMovementsReturns = struct {
+		result1 *types.FungibleMovementsResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Operations) FungibleMovementsReturnsOnCall(i int, result1 *types.FungibleMovementsResponse, result2 error) {
+	fake.fungibleMovementsMutex.Lock()
+	defer fake.fungibleMovementsMutex.Unlock()
+	fake.FungibleMovementsStub = nil
+	if fake.fungibleMovementsReturnsOnCall == nil {
+		fake.fungibleMovementsReturnsOnCall = make(map[int]struct {
+			result1 *types.FungibleMovementsResponse
+			result2 error
+		})
+	}
+	fake.fungibleMovementsReturnsOnCall[i] = struct {
+		result1 *types.FungibleMovementsResponse
 		result2 error
 	}{result1, result2}
 }
@@ -2343,6 +2426,8 @@ func (fake *Operations) Invocations() map[string][][]interface{} {
 	defer fake.fungibleDeployMutex.RUnlock()
 	fake.fungibleDescribeMutex.RLock()
 	defer fake.fungibleDescribeMutex.RUnlock()
+	fake.fungibleMovementsMutex.RLock()
+	defer fake.fungibleMovementsMutex.RUnlock()
 	fake.fungiblePrepareConsolidateMutex.RLock()
 	defer fake.fungiblePrepareConsolidateMutex.RUnlock()
 	fake.fungiblePrepareMintMutex.RLock()

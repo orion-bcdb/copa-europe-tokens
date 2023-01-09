@@ -2,7 +2,9 @@ package httphandlers
 
 import (
 	"net/http"
+	"strconv"
 
+	"github.com/copa-europe-tokens/internal/common"
 	"github.com/copa-europe-tokens/internal/tokens"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
@@ -23,6 +25,7 @@ func NewFungibleHandler(manager tokens.Operations, lg *logger.SugarLogger) http.
 	d.addHandler(constants.FungibleTransfer, d.handleTransfer, http.StatusOK).Methods(http.MethodPost)
 	d.addHandler(constants.FungibleConsolidate, d.handleConsolidate, http.StatusOK).Methods(http.MethodPost)
 	d.addHandler(constants.FungibleAccounts, d.handleAccounts, http.StatusOK).Methods(http.MethodGet)
+	d.addHandler(constants.FungibleMovements, d.handleMovements, http.StatusOK).Methods(http.MethodGet)
 	return &d
 }
 
@@ -64,6 +67,14 @@ func (d *fungibleHandler) handleConsolidate(request *http.Request, params map[st
 
 func (d *fungibleHandler) handleAccounts(_ *http.Request, params map[string]string) (interface{}, error) {
 	return d.manager.FungibleAccounts(params[typeIdPlaceholder], params["owner"], params["account"])
+}
+
+func (d *fungibleHandler) handleMovements(_ *http.Request, params map[string]string) (interface{}, error) {
+	limit, err := strconv.ParseInt(params["limit"], 10, 32)
+	if err != nil {
+		return nil, common.NewErrInvalid("Request limit cannot be parsed: %s", err)
+	}
+	return d.manager.FungibleMovements(params[typeIdPlaceholder], params["owner"], limit, params["startToken"])
 }
 
 func (d *fungibleHandler) handleSubmit(request *http.Request, _ map[string]string) (interface{}, error) {

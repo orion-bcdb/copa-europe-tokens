@@ -237,6 +237,20 @@ type FungibleAccountRecord struct {
 	Comment string `json:"comment"`
 }
 
+type FungibleMovementRecord struct {
+	SourceAccounts     []string `json:"sourceAccounts"`     // the source accounts (there may be multiple sources for consolidate)
+	DestinationAccount string   `json:"destinationAccount"` // the receiver account
+	MainBalance        uint64   `json:"mainBalance"`        // the balance of the main account
+	IncomeBalance      uint64   `json:"incomeBalance"`      // the sum of all incoming accounts balance
+}
+
+type FungibleMovementsResponse struct {
+	TypeId         string                   `json:"typeId"`         // the token type that was queried
+	Owner          string                   `json:"owner"`          // the user ID that was queried
+	NextStartToken string                   `json:"nextStartToken"` // opaque base64 encoding to be used for the next query
+	Movements      []FungibleMovementRecord `json:"movements"`      // the movements ordered from the latest to the oldest
+}
+
 // ====================================================
 //  Rights Offer API
 // ====================================================
