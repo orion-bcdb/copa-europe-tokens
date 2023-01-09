@@ -10,7 +10,6 @@ import (
 	"github.com/copa-europe-tokens/internal/common"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 )
 
@@ -195,13 +194,12 @@ func (ctx *FungibleTxContext) transfer(
 		fromAccount = mainAccount
 	}
 
-	// TODO: use the actual orion TX ID
-	txUUID, err := uuid.NewRandom()
+	txID, err := ctx.TxID()
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to generate tx ID")
+		return nil, errors.Wrapf(err, "Failed to fetch transaction's tx ID")
 	}
 	newRecord := &types.FungibleAccountRecord{
-		Account: txUUID.String(),
+		Account: txID,
 		Owner:   toUser,
 		Balance: quantity,
 		Comment: comment,

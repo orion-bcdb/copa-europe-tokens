@@ -152,6 +152,16 @@ func (ctx *TxContext) tx() (bcdb.DataTxContext, error) {
 	return ctx.i.dataTx, nil
 }
 
+func (ctx *TxContext) TxID() (txID string, err error) {
+	tx, err := ctx.tx()
+	if err != nil {
+		return
+	}
+
+	txID = tx.TxID()
+	return
+}
+
 // Abort a TX if it was initiated
 func (ctx *TxContext) Abort() {
 	if ctx != nil && ctx.i.dataTx != nil {

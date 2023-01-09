@@ -17,7 +17,6 @@ import (
 	"github.com/copa-europe-tokens/pkg/config"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
-	"github.com/google/uuid"
 	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
 	sdkconfig "github.com/hyperledger-labs/orion-sdk-go/pkg/config"
 	"github.com/hyperledger-labs/orion-server/pkg/logger"
@@ -1607,12 +1606,12 @@ func (m *Manager) RightsOfferBuy(offerId string, request *types.RightsOfferBuyRe
 		return nil, err
 	}
 
-	rightsUUID, err := uuid.NewRandom()
+	rightsTxID, err := ctx.TxID()
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to generate tx ID")
+		return nil, errors.Wrapf(err, "Failed to fetch transaction's tx ID")
 	}
 	record := &types.RightsRecord{
-		RightsId: rightsUUID.String(),
+		RightsId: rightsTxID,
 		Template: offer.Template,
 	}
 	rawRecord, err := json.Marshal(record)
