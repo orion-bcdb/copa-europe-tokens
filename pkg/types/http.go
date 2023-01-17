@@ -257,7 +257,6 @@ type FungibleMovementRecord struct {
 	SourceAccounts     []FungibleIncomingMovementRecord `json:"sourceAccounts,omitempty"`     // the incoming accounts' movements (for consolidate, otherwise empty)
 	DestinationAccount string                           `json:"destinationAccount,omitempty"` // the receiver's account (for transfer, otherwise empty)
 	MainBalance        uint64                           `json:"mainBalance"`                  // the balance of the main account after this movement
-	IncomingBalance    uint64                           `json:"incomeBalance"`                // the sum of all incoming accounts balance after this movement
 }
 
 type FungibleMovementsResponse struct {

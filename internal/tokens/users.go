@@ -90,7 +90,7 @@ func (ctx *UserTxContext) getUserRecord() (*oriontypes.User, error) {
 		return nil, err
 	}
 
-	user, err := tx.GetUser(ctx.userId)
+	user, _, err := tx.GetUser(ctx.userId)
 	if err != nil {
 		return nil, wrapOrionError(err, "failed to get user [%s]", ctx.userId)
 	}

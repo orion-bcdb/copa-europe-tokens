@@ -106,7 +106,7 @@ func (ctx *TxContext) fungible(typeId string) (*FungibleTxContext, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &FungibleTxContext{*genericCtx}, nil
+	return &FungibleTxContext{TokenTypeTxContext: *genericCtx}, nil
 }
 
 func (ctx *TxContext) offerType(typeId string) (*OfferTypeTxContext, error) {

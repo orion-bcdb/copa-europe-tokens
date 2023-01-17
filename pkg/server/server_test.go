@@ -827,6 +827,7 @@ func TestTokensServer(t *testing.T) {
 				Owner:    "reserve",
 				NewOwner: "charlie",
 				Quantity: charlieFungibleQuantity,
+				Comment:  "gift",
 			}
 			transResp := tokens.FungibleTransferResponse{}
 			env.testPostSignAndSubmit(t,
@@ -890,6 +891,31 @@ func TestTokensServer(t *testing.T) {
 			assert.Equal(t, "charlie", accounts[0].Owner)
 			assert.Equal(t, "main", accounts[0].Account)
 			assert.Equal(t, charlieFungibleQuantity, accounts[0].Balance)
+		})
+
+		t.Run("charlie's movements", func(t *testing.T) {
+			var movementResponse types.FungibleMovementsResponse
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.FungibleMovements, typeId),
+				url.Values{"owner": []string{"charlie"}, "limit": []string{"10"}}.Encode(),
+				&movementResponse,
+			)
+			assert.Equal(t, typeId, movementResponse.TypeId)
+			assert.Equal(t, "charlie", movementResponse.Owner)
+			assert.Empty(t, movementResponse.NextStartToken)
+			assert.Len(t, movementResponse.Movements, 1)
+			movement := movementResponse.Movements[0]
+			assert.Equal(t, "consolidation", movement.ActionType)
+			assert.Equal(t, charlieFungibleQuantity, movement.ActionValue)
+			assert.Equal(t, charlieFungibleQuantity, movement.MainBalance)
+			assert.Empty(t, movement.DestinationAccount)
+			assert.Len(t, movement.SourceAccounts, 1)
+			src := &movement.SourceAccounts[0]
+			assert.Equal(t, "gift", src.Comment)
+			assert.Contains(t, "reserve", src.SourceOwner)
+			assert.Equal(t, charlieFungibleQuantity, src.Quantity)
+			assert.Contains(t, src.Account, "charlie")
+			assert.Less(t, src.Version.BlockNum, movement.Version.BlockNum)
 		})
 	})
 

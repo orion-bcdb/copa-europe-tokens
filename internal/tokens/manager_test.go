@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -2578,6 +2579,166 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 	t.Run("error: invalid type", func(t *testing.T) {
 		request := &types.FungibleConsolidateRequest{Owner: "dave"}
 		response, err := env.manager.FungiblePrepareConsolidate("a", request)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
+	})
+}
+
+func TestTokensManager_FungibleMovements(t *testing.T) {
+	env := newExtendedTestEnv(t)
+	deployResponse, err := env.manager.FungibleDeploy(getFungibleDeployRequest("bob", 0))
+	require.NoError(t, err)
+	require.NotNil(t, deployResponse)
+	typeId := deployResponse.TypeId
+	env.updateUsers(t)
+
+	mintResponse, err := env.manager.FungiblePrepareMint(typeId, &types.FungibleMintRequest{Supply: 100_000})
+	require.NoError(t, err)
+	require.NotNil(t, mintResponse)
+	env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+
+	for _, user := range env.users {
+		transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			NewOwner: user,
+			Quantity: 1_000,
+			Comment:  "gift",
+		})
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+		env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
+
+		consResp, err := env.manager.FungiblePrepareConsolidate(typeId, &types.FungibleConsolidateRequest{Owner: user})
+		require.NoError(t, err)
+		require.NotNil(t, consResp)
+		env.fungibleRequireSignAndSubmit(t, user, (*FungibleConsolidateResponse)(consResp))
+	}
+
+	for _, user1 := range env.users {
+		for _, user2 := range env.users {
+			if user1 == user2 {
+				continue
+			}
+			transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, &types.FungibleTransferRequest{
+				Owner:    user1,
+				NewOwner: user2,
+				Quantity: 1,
+				Comment:  "transfer",
+			})
+			require.NoError(t, err)
+			require.NotNil(t, transferResponse)
+			env.fungibleRequireSignAndSubmit(t, user1, (*FungibleTransferResponse)(transferResponse))
+		}
+	}
+
+	for _, user := range env.users {
+		consResp, err := env.manager.FungiblePrepareConsolidate(typeId, &types.FungibleConsolidateRequest{Owner: user})
+		require.NoError(t, err)
+		require.NotNil(t, consResp)
+		env.fungibleRequireSignAndSubmit(t, user, (*FungibleConsolidateResponse)(consResp))
+	}
+
+	// Expected movements for each user (from oldest to newest)
+	// [cons] balance: 1,000
+	//   - reserve -> user:txID (1,000)
+	// [out] balance: 999 -> user1:txID (1)
+	// [out] balance: 998 -> user2:txID (1)
+	// [cons] balance: 1,000
+	//   - user1 -> user:txID (1)
+	//   - user2 -> user:txID (1)
+	expectedActionType := []string{"consolidation", "outgoing transfer", "outgoing transfer", "consolidation"}
+	expectedActionValue := []uint64{2, 1, 1, 1_000}
+	expectedBalance := []uint64{1_000, 998, 999, 1_000}
+	expectedConsolidateLen := []int{2, 0, 0, 1}
+	expectedComments := []string{"transfer", "", "", "gift"}
+	expectedSource := [][]string{env.users, {}, {}, {reserveAccountUser}}
+	expectedQuantity := []uint64{1, 0, 0, 1_000}
+
+	validateMovement := func(user string, i int, movement *types.FungibleMovementRecord) {
+		assert.Equal(t, expectedActionType[i], movement.ActionType)
+		assert.Equal(t, expectedActionValue[i], movement.ActionValue)
+		assert.Equal(t, expectedBalance[i], movement.MainBalance)
+		assert.Len(t, movement.SourceAccounts, expectedConsolidateLen[i])
+		if movement.ActionType == "outgoing transfer" {
+			assert.Condition(t, func() bool {
+				for _, u := range env.users {
+					if strings.Contains(movement.DestinationAccount, u) {
+						return true
+					}
+				}
+				return false
+			})
+		} else { // == "consolidation"
+			assert.Empty(t, movement.DestinationAccount)
+			for _, o := range movement.SourceAccounts {
+				assert.Equal(t, expectedComments[i], o.Comment)
+				assert.Contains(t, expectedSource[i], o.SourceOwner)
+				assert.Equal(t, expectedQuantity[i], o.Quantity)
+				assert.Contains(t, o.Account, user)
+				assert.Less(t, o.Version.BlockNum, movement.Version.BlockNum)
+			}
+		}
+	}
+
+	for _, user := range env.users {
+		// limit <= 0 is unlimited
+		for _, limit := range []int64{-1, 0, 1_000} {
+			t.Run(fmt.Sprintf("success: limit=%d (%s)", limit, user), func(t *testing.T) {
+				response, err := env.manager.FungibleMovements(typeId, user, limit, "")
+				require.NoError(t, err)
+				require.NotNil(t, response)
+				assert.Equal(t, typeId, response.TypeId)
+				assert.Equal(t, user, response.Owner)
+				assert.Empty(t, response.NextStartToken)
+				assert.Len(t, response.Movements, 4)
+				for i, movement := range response.Movements {
+					validateMovement(user, i, &movement)
+				}
+			})
+		}
+	}
+
+	for _, user := range env.users {
+		t.Run(fmt.Sprintf("success: limit=1 (%s)", user), func(t *testing.T) {
+			startToken := ""
+			for i := 0; i < 4; i++ {
+				response, err := env.manager.FungibleMovements(typeId, user, 1, startToken)
+				require.NoError(t, err)
+				require.NotNil(t, response)
+				assert.Equal(t, typeId, response.TypeId)
+				assert.Equal(t, user, response.Owner)
+				assert.Len(t, response.Movements, 1)
+				validateMovement(user, i, &response.Movements[0])
+				if i < 3 {
+					require.NotEmpty(t, response.NextStartToken)
+				} else { // i == 3
+					require.Empty(t, response.NextStartToken)
+				}
+				startToken = response.NextStartToken
+			}
+		})
+	}
+
+	t.Run("error: owner does not exists", func(t *testing.T) {
+		response, _ := env.manager.FungibleMovements(typeId, "fake-user", 100, "")
+		assert.Empty(t, response.Movements)
+	})
+
+	t.Run("error: invalid start token", func(t *testing.T) {
+		response, err := env.manager.FungibleMovements(typeId, "fake-user", 100, "abc")
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid start token", response, err)
+	})
+
+	t.Run("error: type does not exists", func(t *testing.T) {
+		tokenTypeIDBase64, _ := NameToID("FakeToken")
+		response, err := env.manager.FungibleMovements(tokenTypeIDBase64, "bob", 100, "")
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "type not found", response, err)
+
+		response, err = env.manager.FungibleMovements(tokenTypeIDBase64, "fake-user", 100, "")
+		assertTokenHttpErrMessage(t, http.StatusNotFound, "type not found", response, err)
+	})
+
+	t.Run("error: invalid type", func(t *testing.T) {
+		response, err := env.manager.FungibleMovements("a", "bob", 100, "")
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
 	})
 }
