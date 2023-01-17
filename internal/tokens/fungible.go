@@ -4,12 +4,16 @@
 package tokens
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/copa-europe-tokens/internal/common"
 	"github.com/copa-europe-tokens/pkg/constants"
 	"github.com/copa-europe-tokens/pkg/types"
+	"github.com/hyperledger-labs/orion-sdk-go/pkg/bcdb"
+	oriontypes "github.com/hyperledger-labs/orion-server/pkg/types"
 	"github.com/pkg/errors"
 )
 
@@ -31,12 +35,82 @@ type ReserveAccountRecord struct {
 	Supply  uint64
 }
 
+type MovementStartPosition struct {
+	Version *oriontypes.Version `json:"version,omitempty"`
+}
+
+func (p *MovementStartPosition) Marshal() (string, error) {
+	if p.Version == nil {
+		return "", nil
+	}
+	data, err := json.Marshal(p)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to marshal start token")
+
+	}
+	return base64.RawURLEncoding.EncodeToString(data), nil
+}
+
+func (p *MovementStartPosition) Unmarshal(raw string) error {
+	if raw == "" {
+		p.Version = nil
+		return nil
+	}
+
+	data, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, p)
+}
+
+// behaves like v1 - v2
+func versionCompare(v1, v2 *oriontypes.Version) int {
+	if v1 == nil && v2 == nil {
+		return 0
+	} else if v1 == nil {
+		return -1
+	} else if v2 == nil {
+		return 1
+	} else if v1.BlockNum != v2.BlockNum {
+		if v1.BlockNum < v2.BlockNum {
+			return -1
+		} else {
+			return 1
+		}
+	} else if v1.TxNum != v2.TxNum {
+		if v1.TxNum < v2.TxNum {
+			return -1
+		} else {
+			return 1
+		}
+	}
+
+	return 0
+}
+
+func (p *MovementStartPosition) Compare(v *oriontypes.Version) int {
+	if p.Version == nil {
+		return 1
+	}
+	return versionCompare(p.Version, v)
+}
+
 type FungibleTxContext struct {
 	TokenTypeTxContext
+	ledger bcdb.Ledger
 }
 
 func getAccountKey(owner string, account string) string {
 	return fmt.Sprintf("%s:%s", owner, account)
+}
+
+func splitAccountKey(key string) (owner string, account string) {
+	// Account is either the main account or the txID, which does not contain ":".
+	lastInd := strings.LastIndex(key, ":")
+	owner = key[:lastInd]
+	account = key[lastInd+1:]
+	return
 }
 
 func getAccountKeyFromRecord(record *types.FungibleAccountRecord) string {
@@ -233,4 +307,82 @@ func (ctx *FungibleTxContext) transfer(
 	}
 
 	return newRecord, nil
+}
+
+func (ctx *FungibleTxContext) ltx() (bcdb.Ledger, error) {
+	if ctx.ledger != nil {
+		return ctx.ledger, nil
+	}
+	ltx, err := ctx.custodianSession.Ledger()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create ledger TX")
+	}
+	ctx.ledger = ltx
+	return ltx, nil
+}
+
+type OwnerAccountOperation struct {
+	ownerRead   map[string]*oriontypes.DataRead
+	ownerWrite  map[string]*oriontypes.DataWrite
+	ownerDelete map[string]*oriontypes.DataDelete
+	otherRead   map[string]*oriontypes.DataRead
+	otherWrite  map[string]*oriontypes.DataWrite
+	otherDelete map[string]*oriontypes.DataDelete
+}
+
+func (ctx *FungibleTxContext) getMovementTxOperations(owner string, ver *oriontypes.Version) (*OwnerAccountOperation, error) {
+	ltx, err := ctx.ltx()
+	if err != nil {
+		return nil, err
+	}
+	tx, err := ltx.GetTxContent(ver.BlockNum, ver.TxNum)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read tx data")
+	}
+	env := tx.GetDataTxEnvelope()
+	if env == nil {
+		return nil, common.NewErrInternal("movement TX referred to a non data tx")
+	}
+	if len(env.Payload.DbOperations) == 0 {
+		return nil, common.NewErrInternal("movement TX referred to a data tx that had no modifications")
+	}
+	if len(env.Payload.DbOperations) > 1 {
+		return nil, common.NewErrInternal("movement TX referred to a data tx that modified more than one token type")
+	}
+	dbOp := env.Payload.DbOperations[0]
+	if dbOp.DbName != ctx.dbName {
+		return nil, common.NewErrInternal("movement TX referred to a data tx that modified the wrong token type")
+	}
+	ret := &OwnerAccountOperation{
+		ownerRead:   map[string]*oriontypes.DataRead{},
+		ownerWrite:  map[string]*oriontypes.DataWrite{},
+		ownerDelete: map[string]*oriontypes.DataDelete{},
+		otherRead:   map[string]*oriontypes.DataRead{},
+		otherWrite:  map[string]*oriontypes.DataWrite{},
+		otherDelete: map[string]*oriontypes.DataDelete{},
+	}
+
+	userAccountPrefix := getAccountKey(owner, "")
+	for _, o := range dbOp.DataReads {
+		if strings.HasPrefix(o.Key, userAccountPrefix) {
+			ret.ownerRead[o.Key] = o
+		} else {
+			ret.otherRead[o.Key] = o
+		}
+	}
+	for _, o := range dbOp.DataWrites {
+		if strings.HasPrefix(o.Key, userAccountPrefix) {
+			ret.ownerWrite[o.Key] = o
+		} else {
+			ret.otherWrite[o.Key] = o
+		}
+	}
+	for _, o := range dbOp.DataDeletes {
+		if strings.HasPrefix(o.Key, userAccountPrefix) {
+			ret.ownerDelete[o.Key] = o
+		} else {
+			ret.otherDelete[o.Key] = o
+		}
+	}
+	return ret, nil
 }

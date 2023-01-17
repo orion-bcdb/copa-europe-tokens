@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io/ioutil"
+	"sort"
 	"strings"
 
 	"github.com/copa-europe-tokens/internal/common"
@@ -212,7 +213,7 @@ func (m *Manager) deployNewTokenType(desc *types.TokenDescription, indices ...st
 	}
 	defer abort(userTx)
 
-	custodian, err := userTx.GetUser(m.config.Users.Custodian.UserID)
+	custodian, _, err := userTx.GetUser(m.config.Users.Custodian.UserID)
 	if err != nil {
 		return wrapOrionError(err, "failed to get user [%s]", m.config.Users.Custodian.UserID)
 	}
@@ -945,7 +946,7 @@ func (m *Manager) writeUser(userRecord *types.UserRecord, insert bool) error {
 		return errors.Wrap(err, "failed to create userTx")
 	}
 
-	user, err := userTx.GetUser(userRecord.Identity)
+	user, _, err := userTx.GetUser(userRecord.Identity)
 	if err != nil {
 		userTx.Abort()
 		return errors.Wrapf(err, "failed to get user: %s", userRecord.Identity)
@@ -1014,7 +1015,7 @@ func (m *Manager) RemoveUser(userId string) error {
 		return errors.Wrap(err, "failed to create userTx")
 	}
 
-	user, err := userTx.GetUser(userId)
+	user, _, err := userTx.GetUser(userId)
 	if err != nil {
 		userTx.Abort()
 		return errors.Wrapf(err, "failed to get user: %s", userId)
@@ -1049,7 +1050,7 @@ func (m *Manager) GetUser(userId string) (*types.UserRecord, error) {
 	}
 	defer userTx.Abort()
 
-	user, err := userTx.GetUser(userId)
+	user, _, err := userTx.GetUser(userId)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get user: %s", userId)
 	}
@@ -1119,7 +1120,7 @@ func (m *Manager) enrollCustodian() (err error) {
 	}
 	defer abort(tx)
 
-	user, err := tx.GetUser(m.config.Users.Custodian.UserID)
+	user, _, err := tx.GetUser(m.config.Users.Custodian.UserID)
 	if err != nil {
 		return err
 	}
@@ -1469,7 +1470,146 @@ func (m *Manager) FungibleAccounts(typeId string, owner string, account string) 
 }
 
 func (m *Manager) FungibleMovements(typeId string, owner string, limit int64, startToken string) (*types.FungibleMovementsResponse, error) {
-	return nil, errors.New("not implemented")
+	ctx, err := newTxContext(m).fungible(typeId)
+	if err != nil {
+		return nil, err
+	}
+	defer ctx.Abort()
+	if err := ctx.validateTokenType(constants.TokenClass_FUNGIBLE, "type ID"); err != nil {
+		return nil, err
+	}
+
+	start := MovementStartPosition{}
+	if err := start.Unmarshal(startToken); err != nil {
+		return nil, common.NewErrInvalid("invalid start token: %s.", err)
+	}
+
+	ptx, err := m.adminSession.Provenance()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create provenance TX")
+	}
+	mainAccountKey := getAccountKey(owner, mainAccount)
+	allHistory, err := ptx.GetHistoricalData(ctx.dbName, mainAccountKey)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read account's historical data")
+	}
+
+	// We sort the values from newest to oldest (the highest version is first)
+	sort.SliceStable(allHistory, func(i, j int) bool {
+		return versionCompare(allHistory[i].Metadata.Version, allHistory[j].Metadata.Version) > 0
+	})
+
+	var history []*oriontypes.ValueWithMetadata
+	for i, v := range allHistory {
+		if start.Compare(v.Metadata.Version) > 0 {
+			history = allHistory[i:]
+			break
+		}
+	}
+
+	var movements []types.FungibleMovementRecord
+	for _, v := range history {
+		if limit > 0 && int64(len(movements)) >= limit {
+			break
+		}
+
+		mainRecord, err := unmarshalAccountRecord(v.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		ver := v.Metadata.Version
+		movement := types.FungibleMovementRecord{
+			Version: types.TxVersion{
+				BlockNum: ver.BlockNum,
+				TxNum:    ver.TxNum,
+			},
+			MainBalance: mainRecord.Balance,
+		}
+
+		op, err := ctx.getMovementTxOperations(owner, ver)
+		if err != nil {
+			return nil, err
+		}
+
+		if op.ownerRead[mainAccountKey] == nil || op.ownerWrite[mainAccountKey] == nil {
+			return nil, common.NewErrInternal("movement TX referred to a data tx that do not update the main account: %+v", op)
+		}
+
+		if len(op.otherWrite) > 1 {
+			return nil, common.NewErrInternal("movement TX updates more than one account")
+		} else if len(op.otherWrite) == 1 {
+			movement.ActionType = "outgoing transfer"
+			for accKey, o := range op.otherWrite {
+				movement.DestinationAccount = accKey
+				accRec, err := unmarshalAccountRecord(o.Value)
+				if err != nil {
+					return nil, err
+				}
+				movement.ActionValue = accRec.Balance
+			}
+		} else {
+			movement.ActionType = "consolidation"
+			for incomingKey := range op.ownerDelete {
+				o, ok := op.ownerRead[incomingKey]
+				if !ok {
+					return nil, common.NewErrInternal("movement TX identified as consolidation, but referred to a data tx that deletes account without reading it")
+				}
+				incomingVer := o.Version
+				incomingOp, err := ctx.getMovementTxOperations(owner, incomingVer)
+				if err != nil {
+					return nil, err
+				}
+				if len(incomingOp.ownerWrite) != 1 {
+					return nil, common.NewErrInternal("movement TX identified as consolidation, but referred to a data tx that update more/less than one owner account")
+				}
+				if len(incomingOp.otherRead) != 1 {
+					return nil, common.NewErrInternal("movement TX identified as consolidation, but referred to a data tx that read more/less than one non owner account")
+				}
+				accWrite, ok := incomingOp.ownerWrite[incomingKey]
+				if !ok {
+					return nil, common.NewErrInternal("consolidation TX read version incorrect")
+				}
+				accRecord, err := unmarshalAccountRecord(accWrite.Value)
+				if err != nil {
+					return nil, err
+				}
+				var sourceOwner string
+				for sourceKey := range incomingOp.otherRead {
+					sourceOwner, _ = splitAccountKey(sourceKey)
+				}
+				movement.SourceAccounts = append(movement.SourceAccounts, types.FungibleIncomingMovementRecord{
+					Version: types.TxVersion{
+						BlockNum: incomingVer.BlockNum,
+						TxNum:    incomingVer.TxNum,
+					},
+					Account:     incomingKey,
+					Quantity:    accRecord.Balance,
+					Comment:     accRecord.Comment,
+					SourceOwner: sourceOwner,
+				})
+				movement.ActionValue += accRecord.Balance
+			}
+		}
+
+		movements = append(movements, movement)
+		start.Version = ver
+	}
+
+	if len(movements) == len(history) {
+		start.Version = nil
+	}
+
+	nextStartToken, err := start.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	return &types.FungibleMovementsResponse{
+		TypeId:         typeId,
+		Owner:          owner,
+		Movements:      movements,
+		NextStartToken: nextStartToken,
+	}, nil
 }
 
 // ====================================================
