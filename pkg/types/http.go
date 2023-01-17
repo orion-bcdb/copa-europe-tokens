@@ -3,8 +3,6 @@
 
 package types
 
-import oriontypes "github.com/hyperledger-labs/orion-server/pkg/types"
-
 // ====================================================
 // Errors
 // ====================================================
@@ -239,19 +237,25 @@ type FungibleAccountRecord struct {
 	Comment string `json:"comment"`
 }
 
+type TxVersion struct {
+	BlockNum uint64 `json:"blockNum,omitempty"`
+	TxNum    uint64 `json:"txNum,omitempty"`
+}
+
 type FungibleIncomingMovementRecord struct {
-	MovementVersion *oriontypes.Version `json:"movementVersion"` // the incoming account version for this movement
-	Account         string              `json:"account"`         // the incoming account ID
-	Quantity        uint64              `json:"quantity"`        // the incoming account balance
-	Comment         string              `json:"comment"`         // the incoming account comment
-	SourceOwner     string              `json:"sourceOwner"`     // the user ID that transferred the fungible tokens
+	Version     TxVersion `json:"version"`     // the incoming account version for this movement
+	Account     string    `json:"account"`     // the incoming account ID
+	Quantity    uint64    `json:"quantity"`    // the incoming account balance
+	Comment     string    `json:"comment"`     // the incoming account comment
+	SourceOwner string    `json:"sourceOwner"` // the user ID that transferred the fungible tokens
 }
 
 type FungibleMovementRecord struct {
-	MovementVersion    *oriontypes.Version              `json:"movementVersion"`              // the main account version for this movement
-	SourceMovements    []FungibleIncomingMovementRecord `json:"sourceMovements,omitempty"`    // the incoming accounts' movements (for consolidate, otherwise empty)
-	DestinationAccount string                           `json:"destinationAccount,omitempty"` // the receiver's account (for transfer, otherwise empty)
+	Version            TxVersion                        `json:"version"`                      // the main account version for this movement
+	ActionType         string                           `json:"actionType"`                   // "outgoing transfer" or "consolidation"
 	ActionValue        uint64                           `json:"actionValue"`                  // the quantity of moved tokens
+	SourceAccounts     []FungibleIncomingMovementRecord `json:"sourceAccounts,omitempty"`     // the incoming accounts' movements (for consolidate, otherwise empty)
+	DestinationAccount string                           `json:"destinationAccount,omitempty"` // the receiver's account (for transfer, otherwise empty)
 	MainBalance        uint64                           `json:"mainBalance"`                  // the balance of the main account after this movement
 	IncomingBalance    uint64                           `json:"incomeBalance"`                // the sum of all incoming accounts balance after this movement
 }
