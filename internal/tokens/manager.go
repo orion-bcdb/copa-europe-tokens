@@ -77,6 +77,7 @@ type Operations interface {
 	FungiblePrepareConsolidate(typeId string, request *types.FungibleConsolidateRequest) (*types.FungibleConsolidateResponse, error)
 	FungibleSubmitTx(submitRequest *types.FungibleSubmitRequest) (*types.FungibleSubmitResponse, error)
 	FungibleAccounts(typeId string, owner string, account string) ([]types.FungibleAccountRecord, error)
+	FungibleMovements(typeId string, owner string, limit int64, startToken string) (*types.FungibleMovementsResponse, error)
 
 	// Rights Offer API
 
@@ -1465,6 +1466,10 @@ func (m *Manager) FungibleAccounts(typeId string, owner string, account string) 
 	}
 	defer ctx.Abort()
 	return ctx.queryAccounts(owner, account)
+}
+
+func (m *Manager) FungibleMovements(typeId string, owner string, limit int64, startToken string) (*types.FungibleMovementsResponse, error) {
+	return nil, errors.New("not implemented")
 }
 
 // ====================================================

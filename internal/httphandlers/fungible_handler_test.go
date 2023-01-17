@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/copa-europe-tokens/internal/common"
@@ -54,7 +55,9 @@ func requireResponse(t *testing.T, expectedStatus int, expectedResponse interfac
 	err = decoder.Decode(&responseBody)
 	require.NoError(t, err, "Status: %d, Response: %s", resp.Code, buf.String())
 
-	require.Equal(t, expectedResponse, responseBody, "Response: %+v", responseBody)
+	if expectedResponse != nil {
+		require.Equal(t, expectedResponse, responseBody, "Response: %+v", responseBody)
+	}
 }
 
 type NewHandlerFunc func(manager tokens.Operations, lg *logger.SugarLogger) http.Handler
@@ -364,4 +367,64 @@ func TestHandler_FungibleAccounts(t *testing.T) {
 	requestHandlerErrorsTest(t, NewFungibleHandler, func(mockManager *mocks.Operations, err error) {
 		mockManager.FungibleAccountsReturns(nil, err)
 	}, nil, buildTestUrl(path), method, "not-found", "invalid", "other")
+}
+
+func TestHandler_FungibleMovements(t *testing.T) {
+	typeId := "aAbBcCdDeEfFgG"
+	owner := "user1"
+	startToken := "FfFfFf"
+	path := common.URLForType(constants.FungibleMovements, typeId)
+	method := http.MethodGet
+
+	query := url.Values{
+		"owner":      []string{owner},
+		"limit":      []string{strconv.FormatInt(0, 10)},
+		"startToken": []string{startToken},
+	}
+
+	for _, limit := range []int64{-1, 1, 0} {
+		t.Run(fmt.Sprintf("success:limit=%v", limit), func(t *testing.T) {
+			expectedResponse := &types.FungibleMovementsResponse{
+				TypeId:         typeId,
+				Owner:          owner,
+				NextStartToken: startToken,
+			}
+
+			mockManager := mocks.Operations{}
+			mockManager.FungibleMovementsReturns(expectedResponse, nil)
+
+			query["limit"] = []string{strconv.FormatInt(limit, 10)}
+			reqUrl := buildTestUrlWithQuery(path, query)
+			requestHandlerTest(t,
+				&mockManager, NewFungibleHandler, nil, reqUrl, method,
+				http.StatusOK, expectedResponse, &types.FungibleMovementsResponse{},
+			)
+
+			calledTypeId, calledOwner, calledLimit, calledStartToken := mockManager.FungibleMovementsArgsForCall(0)
+			expectedLimit, parseErr := strconv.ParseInt(query.Get("limit"), 10, 64)
+			require.NoError(t, parseErr)
+			require.Equal(t, typeId, calledTypeId, "reqUrl: %v", reqUrl)
+			require.Equal(t, query.Get("owner"), calledOwner, "reqUrl: %v", reqUrl)
+			require.Equal(t, expectedLimit, calledLimit, "reqUrl: %v", reqUrl)
+			require.Equal(t, query.Get("startToken"), calledStartToken, "reqUrl: %v", reqUrl)
+		})
+	}
+
+	requestHandlerErrorsTest(t, NewFungibleHandler, func(mockManager *mocks.Operations, err error) {
+		mockManager.FungibleMovementsReturns(nil, err)
+	}, nil, buildTestUrlWithQuery(path, query), method, "not-found", "invalid", "other")
+
+	t.Run("error:limit=invalid", func(t *testing.T) {
+		mockManager := mocks.Operations{}
+		query["limit"] = []string{"invalid"}
+		reqUrl := buildTestUrlWithQuery(path, query)
+		response := types.HttpResponseErr{}
+		requestHandlerTest(t,
+			&mockManager, NewFungibleHandler, nil, reqUrl, method,
+			http.StatusBadRequest, nil, &response,
+		)
+
+		require.Equal(t, 0, mockManager.FungibleMovementsCallCount())
+		require.Contains(t, response.ErrMsg, "limit cannot be parsed")
+	})
 }

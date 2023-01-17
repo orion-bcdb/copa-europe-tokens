@@ -52,6 +52,7 @@ const (
 	FungibleTransfer    = FungibleTypeRoot + "/transfer-prepare"
 	FungibleConsolidate = FungibleTypeRoot + "/consolidate-prepare"
 	FungibleAccounts    = FungibleTypeRoot + "/accounts"
+	FungibleMovements   = FungibleTypeRoot + "/movements"
 
 	// Rights/Offers API
 
