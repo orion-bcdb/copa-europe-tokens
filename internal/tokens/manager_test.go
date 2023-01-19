@@ -2645,37 +2645,39 @@ func TestTokensManager_FungibleMovements(t *testing.T) {
 	// [cons] balance: 1,000
 	//   - user1 -> user:txID (1)
 	//   - user2 -> user:txID (1)
-	expectedActionType := []string{"consolidation", "outgoing transfer", "outgoing transfer", "consolidation"}
-	expectedActionValue := []uint64{2, 1, 1, 1_000}
+	expectedSourceLen := []int{2, 0, 0, 1}
+	expectedDestinationLen := []int{0, 1, 1, 0}
 	expectedBalance := []uint64{1_000, 998, 999, 1_000}
-	expectedConsolidateLen := []int{2, 0, 0, 1}
-	expectedComments := []string{"transfer", "", "", "gift"}
-	expectedSource := [][]string{env.users, {}, {}, {reserveAccountUser}}
-	expectedQuantity := []uint64{1, 0, 0, 1_000}
+	expectedComments := []string{"transfer", "transfer", "transfer", "gift"}
+	expectedSourceOwner := [][]string{env.users, {}, {}, {reserveAccountUser}}
+	expectedQuantity := []uint64{1, 1, 1, 1_000}
 
 	validateMovement := func(user string, i int, movement *types.FungibleMovementRecord) {
-		assert.Equal(t, expectedActionType[i], movement.ActionType)
-		assert.Equal(t, expectedActionValue[i], movement.ActionValue)
+		assert.Len(t, movement.SourceAccounts, expectedSourceLen[i])
+		assert.Len(t, movement.DestinationAccounts, expectedDestinationLen[i])
 		assert.Equal(t, expectedBalance[i], movement.MainBalance)
-		assert.Len(t, movement.SourceAccounts, expectedConsolidateLen[i])
-		if movement.ActionType == "outgoing transfer" {
+
+		// outgoing transfer
+		for _, o := range movement.DestinationAccounts {
+			assert.Equal(t, expectedComments[i], o.Comment)
+			assert.Equal(t, expectedQuantity[i], o.Quantity)
 			assert.Condition(t, func() bool {
 				for _, u := range env.users {
-					if strings.Contains(movement.DestinationAccount, u) {
+					if u != user && strings.Contains(o.Account, u) {
 						return true
 					}
 				}
 				return false
 			})
-		} else { // == "consolidation"
-			assert.Empty(t, movement.DestinationAccount)
-			for _, o := range movement.SourceAccounts {
-				assert.Equal(t, expectedComments[i], o.Comment)
-				assert.Contains(t, expectedSource[i], o.SourceOwner)
-				assert.Equal(t, expectedQuantity[i], o.Quantity)
-				assert.Contains(t, o.Account, user)
-				assert.Less(t, o.Version.BlockNum, movement.Version.BlockNum)
-			}
+		}
+
+		// consolidation
+		for _, o := range movement.SourceAccounts {
+			assert.Contains(t, o.Account, user)
+			assert.Equal(t, expectedComments[i], o.Comment)
+			assert.Equal(t, expectedQuantity[i], o.Quantity)
+			assert.Contains(t, expectedSourceOwner[i], o.SourceOwner)
+			assert.Less(t, o.Version.BlockNum, movement.Version.BlockNum)
 		}
 	}
 

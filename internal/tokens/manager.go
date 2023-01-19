@@ -1536,60 +1536,55 @@ func (m *Manager) FungibleMovements(typeId string, owner string, limit int64, st
 			return nil, common.NewErrInternal("movement TX referred to a data tx that do not update the main account: %+v", op)
 		}
 
-		if len(op.otherWrite) > 1 {
-			return nil, common.NewErrInternal("movement TX updates more than one account")
-		} else if len(op.otherWrite) == 1 {
-			movement.ActionType = "outgoing transfer"
-			for accKey, o := range op.otherWrite {
-				movement.DestinationAccount = accKey
-				accRec, err := unmarshalAccountRecord(o.Value)
-				if err != nil {
-					return nil, err
-				}
-				movement.ActionValue = accRec.Balance
+		// Outgoing transfers
+		for accKey, o := range op.otherWrite {
+			accRecord, err := unmarshalAccountRecord(o.Value)
+			if err != nil {
+				return nil, err
 			}
-		} else {
-			movement.ActionType = "consolidation"
-			for incomingKey := range op.ownerDelete {
-				o, ok := op.ownerRead[incomingKey]
-				if !ok {
-					return nil, common.NewErrInternal("movement TX identified as consolidation, but referred to a data tx that deletes account without reading it")
-				}
-				incomingVer := o.Version
-				incomingOp, err := ctx.getMovementTxOperations(owner, incomingVer)
-				if err != nil {
-					return nil, err
-				}
-				if len(incomingOp.ownerWrite) != 1 {
-					return nil, common.NewErrInternal("movement TX identified as consolidation, but referred to a data tx that update more/less than one owner account")
-				}
-				if len(incomingOp.otherRead) != 1 {
-					return nil, common.NewErrInternal("movement TX identified as consolidation, but referred to a data tx that read more/less than one non owner account")
-				}
-				accWrite, ok := incomingOp.ownerWrite[incomingKey]
-				if !ok {
-					return nil, common.NewErrInternal("consolidation TX read version incorrect")
-				}
-				accRecord, err := unmarshalAccountRecord(accWrite.Value)
-				if err != nil {
-					return nil, err
-				}
-				var sourceOwner string
-				for sourceKey := range incomingOp.otherRead {
-					sourceOwner, _ = splitAccountKey(sourceKey)
-				}
-				movement.SourceAccounts = append(movement.SourceAccounts, types.FungibleIncomingMovementRecord{
-					Version: types.TxVersion{
-						BlockNum: incomingVer.BlockNum,
-						TxNum:    incomingVer.TxNum,
-					},
-					Account:     incomingKey,
-					Quantity:    accRecord.Balance,
-					Comment:     accRecord.Comment,
-					SourceOwner: sourceOwner,
-				})
-				movement.ActionValue += accRecord.Balance
+			movement.DestinationAccounts = append(movement.DestinationAccounts, types.FungibleOutgoingTxAccountRecord{
+				Account:  accKey,
+				Quantity: accRecord.Balance,
+				Comment:  accRecord.Comment,
+			})
+		}
+
+		// Consolidation
+		for incomingKey := range op.ownerDelete {
+			o, ok := op.ownerRead[incomingKey]
+			if !ok {
+				return nil, common.NewErrInternal("movement TX identified as consolidation, but referred to a data tx that deletes account without reading it")
 			}
+			incomingVer := o.Version
+			incomingOp, err := ctx.getMovementTxOperations(owner, incomingVer)
+			if err != nil {
+				return nil, err
+			}
+			if len(incomingOp.otherRead) != 1 {
+				return nil, common.NewErrInternal("movement TX identified as consolidation, but referred to a data tx that read more/less than one non owner account")
+			}
+			accWrite, ok := incomingOp.ownerWrite[incomingKey]
+			if !ok {
+				return nil, common.NewErrInternal("consolidation TX read version incorrect")
+			}
+			accRecord, err := unmarshalAccountRecord(accWrite.Value)
+			if err != nil {
+				return nil, err
+			}
+			var sourceOwner string
+			for sourceKey := range incomingOp.otherRead {
+				sourceOwner, _ = splitAccountKey(sourceKey)
+			}
+			movement.SourceAccounts = append(movement.SourceAccounts, types.FungibleIncomingTxAccountRecord{
+				Version: types.TxVersion{
+					BlockNum: incomingVer.BlockNum,
+					TxNum:    incomingVer.TxNum,
+				},
+				Account:     incomingKey,
+				Quantity:    accRecord.Balance,
+				Comment:     accRecord.Comment,
+				SourceOwner: sourceOwner,
+			})
 		}
 
 		movements = append(movements, movement)

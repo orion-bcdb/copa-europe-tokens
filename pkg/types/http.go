@@ -242,21 +242,25 @@ type TxVersion struct {
 	TxNum    uint64 `json:"txNum,omitempty"`
 }
 
-type FungibleIncomingMovementRecord struct {
-	Version     TxVersion `json:"version"`     // the incoming account version for this movement
-	Account     string    `json:"account"`     // the incoming account ID
-	Quantity    uint64    `json:"quantity"`    // the incoming account balance
-	Comment     string    `json:"comment"`     // the incoming account comment
+type FungibleIncomingTxAccountRecord struct {
+	Version     TxVersion `json:"version"`     // the tx account version for this movement
+	Account     string    `json:"account"`     // the tx account ID
+	Quantity    uint64    `json:"quantity"`    // the tx account balance
+	Comment     string    `json:"comment"`     // the tx account comment
 	SourceOwner string    `json:"sourceOwner"` // the user ID that transferred the fungible tokens
 }
 
+type FungibleOutgoingTxAccountRecord struct {
+	Account  string `json:"account"`  // the tx account ID
+	Quantity uint64 `json:"quantity"` // the tx account balance
+	Comment  string `json:"comment"`  // the tx account comment
+}
+
 type FungibleMovementRecord struct {
-	Version            TxVersion                        `json:"version"`                      // the main account version for this movement
-	ActionType         string                           `json:"actionType"`                   // "outgoing transfer" or "consolidation"
-	ActionValue        uint64                           `json:"actionValue"`                  // the quantity of moved tokens
-	SourceAccounts     []FungibleIncomingMovementRecord `json:"sourceAccounts,omitempty"`     // the incoming accounts' movements (for consolidate, otherwise empty)
-	DestinationAccount string                           `json:"destinationAccount,omitempty"` // the receiver's account (for transfer, otherwise empty)
-	MainBalance        uint64                           `json:"mainBalance"`                  // the balance of the main account after this movement
+	Version             TxVersion                         `json:"version"`                       // the main account version for this movement
+	SourceAccounts      []FungibleIncomingTxAccountRecord `json:"sourceAccounts,omitempty"`      // the incoming accounts' movements (for consolidate, otherwise empty)
+	DestinationAccounts []FungibleOutgoingTxAccountRecord `json:"destinationAccounts,omitempty"` // the receivers' accounts (for transfer, otherwise empty)
+	MainBalance         uint64                            `json:"mainBalance"`                   // the balance of the main account after this movement
 }
 
 type FungibleMovementsResponse struct {
