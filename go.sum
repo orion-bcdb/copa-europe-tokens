@@ -349,12 +349,10 @@ github.com/hidal-go/hidalgo v0.0.0-20190814174001-42e03f3b5eaa/go.mod h1:bPkrxDl
 github.com/hidal-go/hidalgo v0.0.0-20201109092204-05749a6d73df h1:bvz3e467dv98bVHQ9F5QbGKtGvyQO3rPD8lwu6fZ/D4=
 github.com/hidal-go/hidalgo v0.0.0-20201109092204-05749a6d73df/go.mod h1:bPkrxDlroXxigw8BMWTEPTv4W5/rQwNgg2BECXsgyX0=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
-github.com/hyperledger-labs/orion-sdk-go v0.2.7/go.mod h1:J705eb+WcnL1gJfGtwQkikVvfVaWlxCQBYmsjZ4tEjE=
-github.com/hyperledger-labs/orion-sdk-go v0.2.8-0.20230116063932-9d3ca8eeb2f8 h1:kKV+wmPQmuJCsSPY9yMmsSod4D70hQ76ZYGnhDkuY/8=
-github.com/hyperledger-labs/orion-sdk-go v0.2.8-0.20230116063932-9d3ca8eeb2f8/go.mod h1:eVtjkdsfapcNnZU8U4kSTJER9Qa7SDhQFD0BiakboXc=
-github.com/hyperledger-labs/orion-server v0.2.7/go.mod h1:2r+yOJL1a7r/ZZbc1t0LDhT3fRSv1WcQ33OLh/dHIuw=
-github.com/hyperledger-labs/orion-server v0.2.8-0.20230115132402-64d6d18634b0 h1:QA8de3/klx/2cRkmxDceld2f51x/VottAJ7gU/ASJsk=
-github.com/hyperledger-labs/orion-server v0.2.8-0.20230115132402-64d6d18634b0/go.mod h1:DMM9+Ytsqna9ji/N5EcCc2i+FQsTuIF35zq472CvIe4=
+github.com/hyperledger-labs/orion-sdk-go v0.2.8 h1:TNieJvlbCc70qXCc9C5xgppMmommDjZVGlm1YJD9bXw=
+github.com/hyperledger-labs/orion-sdk-go v0.2.8/go.mod h1:xnjlegzj7vGXIbwwi+p4o1pUb2IQ/+dBwisIQTKijxY=
+github.com/hyperledger-labs/orion-server v0.2.8 h1:nyRgYCp6xjHJyDiKfaH+GyP4OS6LYTrJg2Ow+4/CJnw=
+github.com/hyperledger-labs/orion-server v0.2.8/go.mod h1:DMM9+Ytsqna9ji/N5EcCc2i+FQsTuIF35zq472CvIe4=
 github.com/iancoleman/strcase v0.2.0/go.mod h1:iwCmte+B7n89clKwxIoIXy/HfoL7AsD47ZCWhYzw7ho=
 github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
