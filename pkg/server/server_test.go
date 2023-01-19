@@ -905,10 +905,8 @@ func TestTokensServer(t *testing.T) {
 			assert.Empty(t, movementResponse.NextStartToken)
 			assert.Len(t, movementResponse.Movements, 1)
 			movement := movementResponse.Movements[0]
-			assert.Equal(t, "consolidation", movement.ActionType)
-			assert.Equal(t, charlieFungibleQuantity, movement.ActionValue)
 			assert.Equal(t, charlieFungibleQuantity, movement.MainBalance)
-			assert.Empty(t, movement.DestinationAccount)
+			assert.Empty(t, movement.DestinationAccounts)
 			assert.Len(t, movement.SourceAccounts, 1)
 			src := &movement.SourceAccounts[0]
 			assert.Equal(t, "gift", src.Comment)

@@ -309,7 +309,7 @@ func (ctx *FungibleTxContext) transfer(
 	return newRecord, nil
 }
 
-func (ctx *FungibleTxContext) ltx() (bcdb.Ledger, error) {
+func (ctx *FungibleTxContext) ledgerTx() (bcdb.Ledger, error) {
 	if ctx.ledger != nil {
 		return ctx.ledger, nil
 	}
@@ -331,7 +331,7 @@ type OwnerAccountOperation struct {
 }
 
 func (ctx *FungibleTxContext) getMovementTxOperations(owner string, ver *oriontypes.Version) (*OwnerAccountOperation, error) {
-	ltx, err := ctx.ltx()
+	ltx, err := ctx.ledgerTx()
 	if err != nil {
 		return nil, err
 	}
