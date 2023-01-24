@@ -1912,7 +1912,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 	typeId := response.TypeId
 
 	t.Run("error: wrong signature (before mint)", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintRequest := &types.FungibleMintRequest{Quantity: 5}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
@@ -1922,7 +1922,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 	})
 
 	t.Run("error: wrong signer (before mint)", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintRequest := &types.FungibleMintRequest{Quantity: 5}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
@@ -1932,7 +1932,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 	})
 
 	t.Run("success: signed by owner", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintRequest := &types.FungibleMintRequest{Quantity: 5}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
@@ -1946,7 +1946,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 	})
 
 	t.Run("success: second mint", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintRequest := &types.FungibleMintRequest{Quantity: 5}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
@@ -1960,7 +1960,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 	})
 
 	t.Run("error: wrong signature (after mint)", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintRequest := &types.FungibleMintRequest{Quantity: 5}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
@@ -1970,7 +1970,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 	})
 
 	t.Run("error: wrong signer (after mint)", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Supply: 5}
+		mintRequest := &types.FungibleMintRequest{Quantity: 5}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
@@ -1980,20 +1980,20 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 	})
 
 	t.Run("error: zero supply", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Supply: 0}
+		mintRequest := &types.FungibleMintRequest{Quantity: 0}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "must be a positive", mintResponse, err)
 	})
 
 	t.Run("error: type does not exists", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Supply: 1}
+		mintRequest := &types.FungibleMintRequest{Quantity: 1}
 		tokenTypeIDBase64, _ := NameToID("FakeToken")
 		response, err := env.manager.FungiblePrepareMint(tokenTypeIDBase64, mintRequest)
 		assertTokenHttpErrMessage(t, http.StatusNotFound, "db '.*' doesn't exist", response, err)
 	})
 
 	t.Run("error: invalid type", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Supply: 1}
+		mintRequest := &types.FungibleMintRequest{Quantity: 1}
 		response, err := env.manager.FungiblePrepareMint("a", mintRequest)
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
 	})
@@ -2006,7 +2006,7 @@ func TestTokensManager_FungibleTransferToken(t *testing.T) {
 	require.NoError(t, err)
 	typeId := deployResponse.TypeId
 
-	mintRequest := &types.FungibleMintRequest{Supply: 10}
+	mintRequest := &types.FungibleMintRequest{Quantity: 10}
 	mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
 	require.NoError(t, err)
 	require.NotNil(t, mintResponse)
@@ -2319,7 +2319,7 @@ func TestTokensManager_FungibleConsolidateToken(t *testing.T) {
 
 	env.updateUsers(t)
 
-	mintResponse, err := env.manager.FungiblePrepareMint(typeId, &types.FungibleMintRequest{Supply: 100})
+	mintResponse, err := env.manager.FungiblePrepareMint(typeId, &types.FungibleMintRequest{Quantity: 100})
 	require.NoError(t, err)
 	require.NotNil(t, mintResponse)
 
@@ -2591,7 +2591,7 @@ func TestTokensManager_FungibleMovements(t *testing.T) {
 	typeId := deployResponse.TypeId
 	env.updateUsers(t)
 
-	mintResponse, err := env.manager.FungiblePrepareMint(typeId, &types.FungibleMintRequest{Supply: 100_000})
+	mintResponse, err := env.manager.FungiblePrepareMint(typeId, &types.FungibleMintRequest{Quantity: 100_000})
 	require.NoError(t, err)
 	require.NotNil(t, mintResponse)
 	env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
@@ -2913,7 +2913,7 @@ func newOfferTestEnv(t *testing.T) *offerTestEnv {
 
 	env.updateUsers(t)
 
-	fungMintResp, err := env.manager.FungiblePrepareMint(env.typeIds["fung"], &types.FungibleMintRequest{Supply: 1_000_000})
+	fungMintResp, err := env.manager.FungiblePrepareMint(env.typeIds["fung"], &types.FungibleMintRequest{Quantity: 1_000_000})
 	require.NoError(t, err, "failed to mint: fungible")
 	env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(fungMintResp))
 
