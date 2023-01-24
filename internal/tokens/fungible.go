@@ -27,12 +27,14 @@ func FungibleTypeURL(typeId string) string {
 }
 
 type ReserveAccountComment struct {
-	Supply uint64 `json:"supply"`
+	Supply          uint64                     `json:"supply"`
+	LastMintRequest *types.FungibleMintRequest `json:"lastMintRequest,omitempty"`
 }
 
 type ReserveAccountRecord struct {
-	Balance uint64
-	Supply  uint64
+	Balance         uint64
+	Supply          uint64
+	LastMintRequest *types.FungibleMintRequest
 }
 
 type MovementStartPosition struct {
@@ -213,13 +215,17 @@ func (ctx *FungibleTxContext) getReserveAccount() (*ReserveAccountRecord, error)
 	}
 
 	return &ReserveAccountRecord{
-		Balance: record.Balance,
-		Supply:  comment.Supply,
+		Balance:         record.Balance,
+		Supply:          comment.Supply,
+		LastMintRequest: comment.LastMintRequest,
 	}, nil
 }
 
 func (ctx *FungibleTxContext) putReserveAccount(reserve *ReserveAccountRecord) error {
-	serializedComment, err := encodeReserveAccountComment(&ReserveAccountComment{Supply: reserve.Supply})
+	serializedComment, err := encodeReserveAccountComment(&ReserveAccountComment{
+		Supply:          reserve.Supply,
+		LastMintRequest: reserve.LastMintRequest,
+	})
 	if err != nil {
 		return err
 	}

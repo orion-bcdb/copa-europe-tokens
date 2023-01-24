@@ -1296,8 +1296,8 @@ func (m *Manager) FungibleDescribe(typeId string) (*types.FungibleDescribeRespon
 }
 
 func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMintRequest) (*types.FungibleMintResponse, error) {
-	if request.Supply == 0 {
-		return nil, common.NewErrInvalid("Supply must be a positive integer (supply > 0).")
+	if request.Quantity == 0 {
+		return nil, common.NewErrInvalid("Quantity must be a positive integer (quantity > 0).")
 	}
 
 	ctx, err := newTxContext(m).fungible(typeId)
@@ -1311,8 +1311,9 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 		return nil, err
 	}
 
-	reserve.Balance += request.Supply
-	reserve.Supply += request.Supply
+	reserve.Balance += request.Quantity
+	reserve.Supply += request.Quantity
+	reserve.LastMintRequest = request
 
 	if err = ctx.putReserveAccount(reserve); err != nil {
 		return nil, err

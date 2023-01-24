@@ -802,7 +802,7 @@ func TestTokensServer(t *testing.T) {
 
 		supply := uint64(5)
 		t.Run("mint", func(t *testing.T) {
-			mintReq := types.FungibleMintRequest{Supply: supply}
+			mintReq := types.FungibleMintRequest{Quantity: supply}
 			mintResp := tokens.FungibleMintResponse{}
 			env.testPostSignAndSubmit(t,
 				common.URLForType(constants.FungibleMint, typeId),

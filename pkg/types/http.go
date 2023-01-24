@@ -160,100 +160,101 @@ type AnnotationRecord struct {
 // ====================================================
 
 type FungibleDeployRequest struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	ReserveOwner string `json:"reserveOwner"`
+	Name         string `json:"name"`         // the name of the token (unique)
+	Description  string `json:"description"`  // a free form description of the token
+	ReserveOwner string `json:"reserveOwner"` // the owner (user ID) of the reserve account
 }
 
 type FungibleDeployResponse struct {
-	TypeId       string `json:"typeId"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Supply       uint64 `json:"supply"`
-	ReserveOwner string `json:"reserveOwner"`
-	Url          string `json:"url"`
+	TypeId       string `json:"typeId"`       // the unique ID of the token
+	Name         string `json:"name"`         // the name of the token
+	Description  string `json:"description"`  // a free form description of the token
+	Supply       uint64 `json:"supply"`       // the current supply of the token
+	ReserveOwner string `json:"reserveOwner"` // the owner (user ID) of the reserve account
+	Url          string `json:"url"`          // the token address
 }
 
 type FungibleDescribeResponse FungibleDeployResponse
 
 type FungibleMintRequest struct {
-	Supply uint64 `json:"supply"`
+	Quantity uint64 `json:"quantity"` // the quantity of tokens added to the supply
+	Comment  string `json:"comment"`  // a free form description of the operation
 }
 
 type FungibleMintResponse struct {
-	TypeId        string `json:"typeId"`
-	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
-	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
+	TypeId        string `json:"typeId"`        // the unique ID of the token
+	TxEnvelope    string `json:"txEnvelope"`    // base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` // base64 (std, padded) encoding of bytes
 }
 
 type FungibleTransferRequest struct {
-	Owner    string `json:"owner"`
-	Account  string `json:"account"`
-	NewOwner string `json:"newOwner"`
-	Quantity uint64 `json:"quantity"`
-	Comment  string `json:"comment"`
+	Owner    string `json:"owner"`    // the owner of the source account
+	Account  string `json:"account"`  // the source account
+	NewOwner string `json:"newOwner"` // the transfer destination user ID
+	Quantity uint64 `json:"quantity"` // the quantity of tokens to transfer
+	Comment  string `json:"comment"`  // a free form description of the operation
 }
 
 type FungibleTransferResponse struct {
-	TypeId        string `json:"typeId"`
-	Owner         string `json:"owner"`
-	Account       string `json:"account"`
-	NewOwner      string `json:"newOwner"`
-	NewAccount    string `json:"newAccount"`
-	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
-	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
+	TypeId        string `json:"typeId"`        // the unique ID of the token
+	Owner         string `json:"owner"`         // the owner of the source account
+	Account       string `json:"account"`       // the source account
+	NewOwner      string `json:"newOwner"`      // the transfer destination user ID
+	NewAccount    string `json:"newAccount"`    // the transfer destination account ID
+	TxEnvelope    string `json:"txEnvelope"`    // base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` // base64 (std, padded) encoding of bytes
 }
 
 type FungibleConsolidateRequest struct {
-	Owner    string   `json:"owner"`
-	Accounts []string `json:"accounts"`
+	Owner    string   `json:"owner"`    // the owner of the account(s)
+	Accounts []string `json:"accounts"` // the account IDs to consolidate
 }
 
 type FungibleConsolidateResponse struct {
-	TypeId        string `json:"typeId"`
-	Owner         string `json:"owner"`
-	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
-	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
+	TypeId        string `json:"typeId"`        // the unique ID of the token
+	Owner         string `json:"owner"`         // the owner of the account(s)
+	TxEnvelope    string `json:"txEnvelope"`    // base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` // base64 (std, padded) encoding of bytes
 }
 
 type FungibleSubmitRequest struct {
-	TypeId        string `json:"typeId"`
-	TxEnvelope    string `json:"txEnvelope"`    //base64 (std, padded) encoding of bytes
-	TxPayloadHash string `json:"txPayloadHash"` //base64 (std, padded) encoding of bytes
-	Signer        string `json:"signer"`
-	Signature     string `json:"signature"` //base64 (std, padded) encoding of bytes
+	TypeId        string `json:"typeId"`        // the unique ID of the token
+	TxEnvelope    string `json:"txEnvelope"`    // base64 (std, padded) encoding of bytes
+	TxPayloadHash string `json:"txPayloadHash"` // base64 (std, padded) encoding of bytes
+	Signer        string `json:"signer"`        // the signers of the operation
+	Signature     string `json:"signature"`     // base64 (std, padded) encoding of bytes
 }
 
 type FungibleSubmitResponse struct {
-	TypeId    string `json:"typeId"`
-	TxId      string `json:"txId"`
-	TxReceipt string `json:"txReceipt"`
+	TypeId    string `json:"typeId"`    // the unique ID of the token
+	TxId      string `json:"txId"`      // the transaction ID
+	TxReceipt string `json:"txReceipt"` // the transaction receipt
 }
 
 type FungibleAccountRecord struct {
-	Account string `json:"account"`
-	Owner   string `json:"owner"`
-	Balance uint64 `json:"balance"`
-	Comment string `json:"comment"`
+	Account string `json:"account"` // the account ID (main or TX ID)
+	Owner   string `json:"owner"`   // the owner of the account (user ID)
+	Balance uint64 `json:"balance"` // the account's balance
+	Comment string `json:"comment"` // a free form description of the account ("main" or the transfer's description)
 }
 
 type TxVersion struct {
-	BlockNum uint64 `json:"blockNum,omitempty"`
-	TxNum    uint64 `json:"txNum,omitempty"`
+	BlockNum uint64 `json:"blockNum"` // the block to which an operation was inserted
+	TxNum    uint64 `json:"txNum"`    // the TX index in the block
 }
 
 type FungibleIncomingTxAccountRecord struct {
 	Version     TxVersion `json:"version"`     // the tx account version for this movement
 	Account     string    `json:"account"`     // the tx account ID
 	Quantity    uint64    `json:"quantity"`    // the tx account balance
-	Comment     string    `json:"comment"`     // the tx account comment
+	Comment     string    `json:"comment"`     // a free form description of the operation (the transfer's description)
 	SourceOwner string    `json:"sourceOwner"` // the user ID that transferred the fungible tokens
 }
 
 type FungibleOutgoingTxAccountRecord struct {
 	Account  string `json:"account"`  // the tx account ID
 	Quantity uint64 `json:"quantity"` // the tx account balance
-	Comment  string `json:"comment"`  // the tx account comment
+	Comment  string `json:"comment"`  // a free form description of the operation (the transfer's description)
 }
 
 type FungibleMovementRecord struct {
