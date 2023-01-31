@@ -1311,6 +1311,12 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 		return nil, err
 	}
 
+	if isAddOverflow64(reserve.Balance, request.Quantity) {
+		return nil, common.NewErrInvalid("Cannot mint due to reserve balance overflow.")
+	}
+	if isAddOverflow64(reserve.Supply, request.Quantity) {
+		return nil, common.NewErrInvalid("Cannot mint due to supply overflow.")
+	}
 	reserve.Balance += request.Quantity
 	reserve.Supply += request.Quantity
 	reserve.LastMintRequest = request
@@ -1430,6 +1436,7 @@ func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.Fungi
 			return nil, err
 		}
 
+		// This never overflows because the total supply cannot exceed max uint64
 		mainRecord.Balance += accRecord.Balance
 
 		if err = ctx.deleteAccountRecord(accRecord); err != nil {

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"os"
 	"path"
@@ -1996,6 +1997,33 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 		mintRequest := &types.FungibleMintRequest{Quantity: 1}
 		response, err := env.manager.FungiblePrepareMint("a", mintRequest)
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
+	})
+
+	t.Run("error: balance overflow", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxUint64}
+		response, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "balance overflow", response, err)
+	})
+
+	t.Run("error: supply overflow", func(t *testing.T) {
+		desc, err := env.manager.FungibleDescribe(typeId)
+		require.NoError(t, err)
+
+		transferRequest := &types.FungibleTransferRequest{
+			Owner:    reserveAccountUser,
+			Account:  mainAccount,
+			NewOwner: "bob",
+			Quantity: desc.Supply,
+			Comment:  "tip",
+		}
+		transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
+		require.NoError(t, err)
+		require.NotNil(t, transferResponse)
+		env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
+
+		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxUint64 - desc.Supply + 1}
+		response, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "supply overflow", response, err)
 	})
 }
 
