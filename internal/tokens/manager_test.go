@@ -1999,29 +1999,8 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
 	})
 
-	t.Run("error: balance overflow", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxUint64}
-		response, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
-		assertTokenHttpErrMessage(t, http.StatusBadRequest, "balance overflow", response, err)
-	})
-
 	t.Run("error: supply overflow", func(t *testing.T) {
-		desc, err := env.manager.FungibleDescribe(typeId)
-		require.NoError(t, err)
-
-		transferRequest := &types.FungibleTransferRequest{
-			Owner:    reserveAccountUser,
-			Account:  mainAccount,
-			NewOwner: "bob",
-			Quantity: desc.Supply,
-			Comment:  "tip",
-		}
-		transferResponse, err := env.manager.FungiblePrepareTransfer(typeId, transferRequest)
-		require.NoError(t, err)
-		require.NotNil(t, transferResponse)
-		env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleTransferResponse)(transferResponse))
-
-		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxUint64 - desc.Supply + 1}
+		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxUint64}
 		response, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "supply overflow", response, err)
 	})
@@ -2619,7 +2598,11 @@ func TestTokensManager_FungibleMovements(t *testing.T) {
 	typeId := deployResponse.TypeId
 	env.updateUsers(t)
 
-	mintResponse, err := env.manager.FungiblePrepareMint(typeId, &types.FungibleMintRequest{Quantity: 100_000})
+	mintRequest := types.FungibleMintRequest{
+		Quantity: 100_000,
+		Comment:  "seed",
+	}
+	mintResponse, err := env.manager.FungiblePrepareMint(typeId, &mintRequest)
 	require.NoError(t, err)
 	require.NotNil(t, mintResponse)
 	env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
@@ -2747,6 +2730,22 @@ func TestTokensManager_FungibleMovements(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("success: reserve (mint)", func(t *testing.T) {
+		response, err := env.manager.FungibleMovements(typeId, "reserve", 100, "")
+		require.NoError(t, err)
+		require.NotNil(t, response)
+		assert.Equal(t, typeId, response.TypeId)
+		assert.Equal(t, "reserve", response.Owner)
+		require.Len(t, response.Movements, 4)
+		movement := &response.Movements[3]
+		assert.Empty(t, movement.SourceAccounts)
+		assert.Empty(t, movement.DestinationAccounts)
+		require.NotNil(t, movement.MintRecord)
+		assert.Equal(t, mintRequest.Quantity, movement.MintRecord.Quantity)
+		assert.Equal(t, mintRequest.Quantity, movement.MintRecord.Supply)
+		assert.Equal(t, mintRequest.Comment, movement.MintRecord.Comment)
+	})
 
 	t.Run("error: owner does not exists", func(t *testing.T) {
 		response, _ := env.manager.FungibleMovements(typeId, "fake-user", 100, "")

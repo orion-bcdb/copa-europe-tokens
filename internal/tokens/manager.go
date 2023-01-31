@@ -1311,12 +1311,10 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 		return nil, err
 	}
 
-	if isAddOverflow64(reserve.Balance, request.Quantity) {
-		return nil, common.NewErrInvalid("Cannot mint due to reserve balance overflow.")
-	}
 	if isAddOverflow64(reserve.Supply, request.Quantity) {
-		return nil, common.NewErrInvalid("Cannot mint due to supply overflow.")
+		return nil, common.NewErrInvalid("cannot mint due to supply overflow.")
 	}
+	// The balance never overflows because the total supply cannot exceed max uint64
 	reserve.Balance += request.Quantity
 	reserve.Supply += request.Quantity
 	reserve.LastMintRequest = request
@@ -1436,7 +1434,7 @@ func (m *Manager) FungiblePrepareConsolidate(typeId string, request *types.Fungi
 			return nil, err
 		}
 
-		// This never overflows because the total supply cannot exceed max uint64
+		// This balance never overflows because the total supply cannot exceed max uint64
 		mainRecord.Balance += accRecord.Balance
 
 		if err = ctx.deleteAccountRecord(accRecord); err != nil {
@@ -1593,6 +1591,19 @@ func (m *Manager) FungibleMovements(typeId string, owner string, limit int64, st
 				Comment:     accRecord.Comment,
 				SourceOwner: sourceOwner,
 			})
+		}
+
+		// Mint
+		if owner == reserveAccountUser && len(movement.DestinationAccounts) == 0 && len(movement.SourceAccounts) == 0 {
+			reserveDesc, err := decodeReserveAccountComment(mainRecord.Comment)
+			if err != nil {
+				return nil, err
+			}
+			movement.MintRecord = &types.FungibleMintTxRecord{
+				Supply:   reserveDesc.Supply,
+				Quantity: reserveDesc.LastMintRequest.Quantity,
+				Comment:  reserveDesc.LastMintRequest.Comment,
+			}
 		}
 
 		movements = append(movements, movement)
