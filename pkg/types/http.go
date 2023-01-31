@@ -257,10 +257,17 @@ type FungibleOutgoingTxAccountRecord struct {
 	Comment  string `json:"comment"`  // a free form description of the operation (the transfer's description)
 }
 
+type FungibleMintTxRecord struct {
+	Supply   uint64 `json:"supply"`   // the total supply of the token after this tx
+	Quantity uint64 `json:"quantity"` // the tx minted quantity
+	Comment  string `json:"comment"`  // a free form description of the operation (the mint's description)
+}
+
 type FungibleMovementRecord struct {
 	Version             TxVersion                         `json:"version"`                       // the main account version for this movement
 	SourceAccounts      []FungibleIncomingTxAccountRecord `json:"sourceAccounts,omitempty"`      // the incoming accounts' movements (for consolidate, otherwise empty)
 	DestinationAccounts []FungibleOutgoingTxAccountRecord `json:"destinationAccounts,omitempty"` // the receivers' accounts (for transfer, otherwise empty)
+	MintRecord          *FungibleMintTxRecord             `json:"mintRecord,omitempty"`          // the mint record (for mint, otherwise empty)
 	MainBalance         uint64                            `json:"mainBalance"`                   // the balance of the main account after this movement
 }
 

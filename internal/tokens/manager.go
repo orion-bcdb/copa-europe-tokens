@@ -1595,6 +1595,19 @@ func (m *Manager) FungibleMovements(typeId string, owner string, limit int64, st
 			})
 		}
 
+		// Mint
+		if owner == reserveAccountUser && len(movement.DestinationAccounts) == 0 && len(movement.SourceAccounts) == 0 {
+			reserveDesc, err := decodeReserveAccountComment(mainRecord.Comment)
+			if err != nil {
+				return nil, err
+			}
+			movement.MintRecord = &types.FungibleMintTxRecord{
+				Supply:   reserveDesc.Supply,
+				Quantity: reserveDesc.LastMintRequest.Quantity,
+				Comment:  reserveDesc.LastMintRequest.Comment,
+			}
+		}
+
 		movements = append(movements, movement)
 		start.Version = ver
 	}
