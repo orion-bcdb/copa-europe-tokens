@@ -6,6 +6,7 @@ package tokens
 import (
 	"crypto"
 	"encoding/base64"
+	"math"
 	"net/http"
 	"regexp"
 	"strings"
@@ -108,6 +109,10 @@ func convertErrorType(err error) error {
 	default:
 		return err
 	}
+}
+
+func isAddOverflow64(a, b uint64) bool {
+	return a > math.MaxUint64-b
 }
 
 // ====================================================
