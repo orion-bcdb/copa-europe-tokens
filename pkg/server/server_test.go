@@ -802,7 +802,7 @@ func TestTokensServer(t *testing.T) {
 
 		supply := uint64(5)
 		t.Run("mint", func(t *testing.T) {
-			mintReq := types.FungibleMintRequest{Quantity: supply}
+			mintReq := types.FungibleMintRequest{Quantity: supply, Comment: "seed"}
 			mintResp := tokens.FungibleMintResponse{}
 			env.testPostSignAndSubmit(t,
 				common.URLForType(constants.FungibleMint, typeId),
@@ -914,6 +914,38 @@ func TestTokensServer(t *testing.T) {
 			assert.Equal(t, charlieFungibleQuantity, src.Quantity)
 			assert.Contains(t, src.Account, "charlie")
 			assert.Less(t, src.Version.BlockNum, movement.Version.BlockNum)
+		})
+
+		t.Run("reserve's movements", func(t *testing.T) {
+			var movementResponse types.FungibleMovementsResponse
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.FungibleMovements, typeId),
+				url.Values{"owner": []string{"reserve"}, "limit": []string{"10"}}.Encode(),
+				&movementResponse,
+			)
+			assert.Equal(t, typeId, movementResponse.TypeId)
+			assert.Equal(t, "reserve", movementResponse.Owner)
+			assert.Empty(t, movementResponse.NextStartToken)
+			assert.Len(t, movementResponse.Movements, 2)
+			movement1 := movementResponse.Movements[0]
+			assert.Equal(t, supply-charlieFungibleQuantity, movement1.MainBalance)
+			assert.Empty(t, movement1.SourceAccounts)
+			assert.Nil(t, movement1.MintRecord)
+			assert.Len(t, movement1.DestinationAccounts, 1)
+			dst := &movement1.DestinationAccounts[0]
+			assert.Equal(t, "gift", dst.Comment)
+			assert.Equal(t, charlieFungibleQuantity, dst.Quantity)
+			assert.Contains(t, dst.Account, "charlie")
+
+			movement2 := movementResponse.Movements[1]
+			assert.Equal(t, supply, movement2.MainBalance)
+			assert.Empty(t, movement2.SourceAccounts)
+			assert.Empty(t, movement2.DestinationAccounts)
+			assert.NotNil(t, movement2.MintRecord)
+			mnt := movement2.MintRecord
+			assert.Equal(t, "seed", mnt.Comment)
+			assert.Equal(t, supply, mnt.Quantity)
+			assert.Equal(t, supply, mnt.Supply)
 		})
 	})
 
