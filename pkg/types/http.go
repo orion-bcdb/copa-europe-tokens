@@ -177,7 +177,7 @@ type FungibleDeployResponse struct {
 type FungibleDescribeResponse FungibleDeployResponse
 
 type FungibleMintRequest struct {
-	Quantity uint64 `json:"quantity"` // the quantity of tokens added to the supply
+	Quantity int64  `json:"quantity"` // the quantity of tokens added/burnt to the supply
 	Comment  string `json:"comment"`  // a free form description of the operation
 }
 
@@ -259,7 +259,7 @@ type FungibleOutgoingTxAccountRecord struct {
 
 type FungibleMintTxRecord struct {
 	Supply   uint64 `json:"supply"`   // the total supply of the token after this tx
-	Quantity uint64 `json:"quantity"` // the tx minted quantity
+	Quantity int64  `json:"quantity"` // the tx minted/burnt quantity
 	Comment  string `json:"comment"`  // a free form description of the operation (the mint's description)
 }
 

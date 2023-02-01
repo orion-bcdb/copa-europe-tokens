@@ -802,7 +802,7 @@ func TestTokensServer(t *testing.T) {
 
 		supply := uint64(5)
 		t.Run("mint", func(t *testing.T) {
-			mintReq := types.FungibleMintRequest{Quantity: supply, Comment: "seed"}
+			mintReq := types.FungibleMintRequest{Quantity: int64(supply), Comment: "seed"}
 			mintResp := tokens.FungibleMintResponse{}
 			env.testPostSignAndSubmit(t,
 				common.URLForType(constants.FungibleMint, typeId),
@@ -820,6 +820,28 @@ func TestTokensServer(t *testing.T) {
 			)
 			assert.Equal(t, typeId, describeResp.TypeId)
 			assert.Equal(t, supply, describeResp.Supply)
+		})
+
+		t.Run("burn", func(t *testing.T) {
+			mintReq := types.FungibleMintRequest{Quantity: -1, Comment: "burn"}
+			mintResp := tokens.FungibleMintResponse{}
+			env.testPostSignAndSubmit(t,
+				common.URLForType(constants.FungibleMint, typeId),
+				&mintReq,
+				&mintResp,
+				http.StatusOK,
+				signerBob,
+			)
+			assert.Equal(t, typeId, mintResp.TypeId)
+
+			describeResp := types.FungibleDescribeResponse{}
+			env.testGetRequest(t,
+				common.URLForType(constants.FungibleTypeRoot, typeId),
+				&describeResp,
+			)
+			assert.Equal(t, typeId, describeResp.TypeId)
+			assert.Equal(t, supply-1, describeResp.Supply)
+			supply -= 1
 		})
 
 		t.Run("transfer", func(t *testing.T) {
@@ -926,7 +948,7 @@ func TestTokensServer(t *testing.T) {
 			assert.Equal(t, typeId, movementResponse.TypeId)
 			assert.Equal(t, "reserve", movementResponse.Owner)
 			assert.Empty(t, movementResponse.NextStartToken)
-			assert.Len(t, movementResponse.Movements, 2)
+			assert.Len(t, movementResponse.Movements, 3)
 			movement1 := movementResponse.Movements[0]
 			assert.Equal(t, supply-charlieFungibleQuantity, movement1.MainBalance)
 			assert.Empty(t, movement1.SourceAccounts)
@@ -942,10 +964,20 @@ func TestTokensServer(t *testing.T) {
 			assert.Empty(t, movement2.SourceAccounts)
 			assert.Empty(t, movement2.DestinationAccounts)
 			assert.NotNil(t, movement2.MintRecord)
-			mnt := movement2.MintRecord
-			assert.Equal(t, "seed", mnt.Comment)
-			assert.Equal(t, supply, mnt.Quantity)
-			assert.Equal(t, supply, mnt.Supply)
+			mnt2 := movement2.MintRecord
+			assert.Equal(t, "burn", mnt2.Comment)
+			assert.Equal(t, int64(-1), mnt2.Quantity)
+			assert.Equal(t, supply, mnt2.Supply)
+
+			movement3 := movementResponse.Movements[2]
+			assert.Equal(t, supply+1, movement3.MainBalance)
+			assert.Empty(t, movement3.SourceAccounts)
+			assert.Empty(t, movement3.DestinationAccounts)
+			assert.NotNil(t, movement3.MintRecord)
+			mnt3 := movement3.MintRecord
+			assert.Equal(t, "seed", mnt3.Comment)
+			assert.Equal(t, int64(supply+1), mnt3.Quantity)
+			assert.Equal(t, supply+1, mnt3.Supply)
 		})
 	})
 

@@ -1297,7 +1297,7 @@ func (m *Manager) FungibleDescribe(typeId string) (*types.FungibleDescribeRespon
 
 func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMintRequest) (*types.FungibleMintResponse, error) {
 	if request.Quantity == 0 {
-		return nil, common.NewErrInvalid("Quantity must be a positive integer (quantity > 0).")
+		return nil, common.NewErrInvalid("quantity must be a non-zero integer.")
 	}
 
 	ctx, err := newTxContext(m).fungible(typeId)
@@ -1311,12 +1311,28 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 		return nil, err
 	}
 
-	if isAddOverflow64(reserve.Supply, request.Quantity) {
-		return nil, common.NewErrInvalid("cannot mint due to supply overflow.")
+	if request.Quantity > 0 {
+		q := uint64(request.Quantity)
+		if isAddOverflow64(reserve.Supply, q) {
+			return nil, common.NewErrInvalid("cannot mint due to supply overflow.")
+		}
+		// The balance does not overflow because it is equal or less than the supply
+		reserve.Balance += q
+		reserve.Supply += q
+
+	} else {
+		// Regarding the corner case where request.Quantity == MinInt64 == -1<<63:
+		// Theoretically, this case causes an overflow because: -MinInt64 = 1<<63 > 1<<63-1 = MaxInt64.
+		// But in practice, the binary representation of -1<<63 is identical to 1<<63,
+		// and the two's complement of 1<<63 is also 1<<63, so it produces the correct outcome.
+		q := uint64(-request.Quantity)
+		if reserve.Balance < q {
+			return nil, common.NewErrInvalid("cannot burn due to insufficient balance.")
+		}
+		// The supply is sufficient because it is equal or grater than the balance
+		reserve.Balance -= q
+		reserve.Supply -= q
 	}
-	// The balance never overflows because the total supply cannot exceed max uint64
-	reserve.Balance += request.Quantity
-	reserve.Supply += request.Quantity
 	reserve.LastMintRequest = request
 
 	if err = ctx.putReserveAccount(reserve); err != nil {

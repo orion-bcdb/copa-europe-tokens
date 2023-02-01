@@ -1960,6 +1960,44 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 		require.Equal(t, uint64(10), desc.Supply)
 	})
 
+	t.Run("success: burn", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Quantity: -5}
+		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+
+		submitResponse := env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+		require.Equal(t, typeId, submitResponse.TypeId)
+
+		desc, err := env.manager.FungibleDescribe(typeId)
+		require.NoError(t, err)
+		require.Equal(t, uint64(5), desc.Supply)
+	})
+
+	t.Run("success: burn (corner case)", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxInt64}
+		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+		submitResponse := env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+		require.Equal(t, typeId, submitResponse.TypeId)
+
+		desc, err := env.manager.FungibleDescribe(typeId)
+		require.NoError(t, err)
+		require.Equal(t, uint64(math.MaxInt64)+5, desc.Supply)
+
+		mintRequest = &types.FungibleMintRequest{Quantity: math.MinInt64}
+		mintResponse, err = env.manager.FungiblePrepareMint(typeId, mintRequest)
+		require.NoError(t, err)
+		require.NotNil(t, mintResponse)
+		submitResponse = env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+		require.Equal(t, typeId, submitResponse.TypeId)
+
+		desc, err = env.manager.FungibleDescribe(typeId)
+		require.NoError(t, err)
+		require.Equal(t, uint64(4), desc.Supply)
+	})
+
 	t.Run("error: wrong signature (after mint)", func(t *testing.T) {
 		mintRequest := &types.FungibleMintRequest{Quantity: 5}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
@@ -1983,7 +2021,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 	t.Run("error: zero supply", func(t *testing.T) {
 		mintRequest := &types.FungibleMintRequest{Quantity: 0}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
-		assertTokenHttpErrMessage(t, http.StatusBadRequest, "must be a positive", mintResponse, err)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "must be a non-zero", mintResponse, err)
 	})
 
 	t.Run("error: type does not exists", func(t *testing.T) {
@@ -1999,10 +2037,25 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "invalid type id", response, err)
 	})
 
-	t.Run("error: supply overflow", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxUint64}
-		response, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
-		assertTokenHttpErrMessage(t, http.StatusBadRequest, "supply overflow", response, err)
+	t.Run("error: burn insufficient balance", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Quantity: -math.MaxInt64}
+		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "insufficient balance", mintResponse, err)
+
+		// Also test this corner case
+		mintRequest = &types.FungibleMintRequest{Quantity: math.MinInt64}
+		mintResponse, err = env.manager.FungiblePrepareMint(typeId, mintRequest)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "insufficient balance", mintResponse, err)
+	})
+
+	t.Run("error: mint supply overflow", func(t *testing.T) {
+		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxInt64}
+		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
+		require.NoError(t, err)
+		_ = env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
+
+		mintResponse, err = env.manager.FungiblePrepareMint(typeId, mintRequest)
+		assertTokenHttpErrMessage(t, http.StatusBadRequest, "supply overflow", mintResponse, err)
 	})
 }
 
@@ -2743,7 +2796,7 @@ func TestTokensManager_FungibleMovements(t *testing.T) {
 		assert.Empty(t, movement.DestinationAccounts)
 		require.NotNil(t, movement.MintRecord)
 		assert.Equal(t, mintRequest.Quantity, movement.MintRecord.Quantity)
-		assert.Equal(t, mintRequest.Quantity, movement.MintRecord.Supply)
+		assert.Equal(t, uint64(mintRequest.Quantity), movement.MintRecord.Supply)
 		assert.Equal(t, mintRequest.Comment, movement.MintRecord.Comment)
 	})
 
