@@ -802,7 +802,7 @@ func TestTokensServer(t *testing.T) {
 
 		supply := uint64(5)
 		t.Run("mint", func(t *testing.T) {
-			mintReq := types.FungibleMintRequest{Quantity: int64(supply), Comment: "seed"}
+			mintReq := types.FungibleMintRequest{Quantity: supply, Comment: "seed"}
 			mintResp := tokens.FungibleMintResponse{}
 			env.testPostSignAndSubmit(t,
 				common.URLForType(constants.FungibleMint, typeId),
@@ -823,7 +823,7 @@ func TestTokensServer(t *testing.T) {
 		})
 
 		t.Run("burn", func(t *testing.T) {
-			mintReq := types.FungibleMintRequest{Quantity: -1, Comment: "burn"}
+			mintReq := types.FungibleMintRequest{Quantity: 1, Burn: true, Comment: "burn"}
 			mintResp := tokens.FungibleMintResponse{}
 			env.testPostSignAndSubmit(t,
 				common.URLForType(constants.FungibleMint, typeId),
@@ -966,7 +966,8 @@ func TestTokensServer(t *testing.T) {
 			assert.NotNil(t, movement2.MintRecord)
 			mnt2 := movement2.MintRecord
 			assert.Equal(t, "burn", mnt2.Comment)
-			assert.Equal(t, int64(-1), mnt2.Quantity)
+			assert.Equal(t, uint64(1), mnt2.Quantity)
+			assert.True(t, mnt2.Burn)
 			assert.Equal(t, supply, mnt2.Supply)
 
 			movement3 := movementResponse.Movements[2]
@@ -976,7 +977,8 @@ func TestTokensServer(t *testing.T) {
 			assert.NotNil(t, movement3.MintRecord)
 			mnt3 := movement3.MintRecord
 			assert.Equal(t, "seed", mnt3.Comment)
-			assert.Equal(t, int64(supply+1), mnt3.Quantity)
+			assert.Equal(t, supply+1, mnt3.Quantity)
+			assert.False(t, mnt3.Burn)
 			assert.Equal(t, supply+1, mnt3.Supply)
 		})
 	})

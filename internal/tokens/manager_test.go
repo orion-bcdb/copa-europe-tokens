@@ -1961,7 +1961,7 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 	})
 
 	t.Run("success: burn", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Quantity: -5}
+		mintRequest := &types.FungibleMintRequest{Quantity: 5, Burn: true}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
 		require.NoError(t, err)
 		require.NotNil(t, mintResponse)
@@ -1972,30 +1972,6 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 		desc, err := env.manager.FungibleDescribe(typeId)
 		require.NoError(t, err)
 		require.Equal(t, uint64(5), desc.Supply)
-	})
-
-	t.Run("success: burn (corner case)", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxInt64}
-		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
-		require.NoError(t, err)
-		require.NotNil(t, mintResponse)
-		submitResponse := env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
-		require.Equal(t, typeId, submitResponse.TypeId)
-
-		desc, err := env.manager.FungibleDescribe(typeId)
-		require.NoError(t, err)
-		require.Equal(t, uint64(math.MaxInt64)+5, desc.Supply)
-
-		mintRequest = &types.FungibleMintRequest{Quantity: math.MinInt64}
-		mintResponse, err = env.manager.FungiblePrepareMint(typeId, mintRequest)
-		require.NoError(t, err)
-		require.NotNil(t, mintResponse)
-		submitResponse = env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
-		require.Equal(t, typeId, submitResponse.TypeId)
-
-		desc, err = env.manager.FungibleDescribe(typeId)
-		require.NoError(t, err)
-		require.Equal(t, uint64(4), desc.Supply)
 	})
 
 	t.Run("error: wrong signature (after mint)", func(t *testing.T) {
@@ -2038,23 +2014,14 @@ func TestTokensManager_FungibleMintToken(t *testing.T) {
 	})
 
 	t.Run("error: burn insufficient balance", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Quantity: -math.MaxInt64}
+		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxUint64, Burn: true}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
-		assertTokenHttpErrMessage(t, http.StatusBadRequest, "insufficient balance", mintResponse, err)
-
-		// Also test this corner case
-		mintRequest = &types.FungibleMintRequest{Quantity: math.MinInt64}
-		mintResponse, err = env.manager.FungiblePrepareMint(typeId, mintRequest)
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "insufficient balance", mintResponse, err)
 	})
 
 	t.Run("error: mint supply overflow", func(t *testing.T) {
-		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxInt64}
+		mintRequest := &types.FungibleMintRequest{Quantity: math.MaxUint64}
 		mintResponse, err := env.manager.FungiblePrepareMint(typeId, mintRequest)
-		require.NoError(t, err)
-		_ = env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(mintResponse))
-
-		mintResponse, err = env.manager.FungiblePrepareMint(typeId, mintRequest)
 		assertTokenHttpErrMessage(t, http.StatusBadRequest, "supply overflow", mintResponse, err)
 	})
 }
@@ -2701,6 +2668,16 @@ func TestTokensManager_FungibleMovements(t *testing.T) {
 		env.fungibleRequireSignAndSubmit(t, user, (*FungibleConsolidateResponse)(consResp))
 	}
 
+	burnRequest := types.FungibleMintRequest{
+		Burn:     true,
+		Quantity: 10,
+		Comment:  "seed",
+	}
+	burnResponse, err := env.manager.FungiblePrepareMint(typeId, &burnRequest)
+	require.NoError(t, err)
+	require.NotNil(t, burnResponse)
+	env.fungibleRequireSignAndSubmit(t, "bob", (*FungibleMintResponse)(burnResponse))
+
 	// Expected movements for each user (from oldest to newest)
 	// [cons] balance: 1,000
 	//   - reserve -> user:txID (1,000)
@@ -2784,20 +2761,31 @@ func TestTokensManager_FungibleMovements(t *testing.T) {
 		})
 	}
 
-	t.Run("success: reserve (mint)", func(t *testing.T) {
+	t.Run("success: reserve (mint/burn)", func(t *testing.T) {
 		response, err := env.manager.FungibleMovements(typeId, "reserve", 100, "")
 		require.NoError(t, err)
 		require.NotNil(t, response)
 		assert.Equal(t, typeId, response.TypeId)
 		assert.Equal(t, "reserve", response.Owner)
-		require.Len(t, response.Movements, 4)
-		movement := &response.Movements[3]
-		assert.Empty(t, movement.SourceAccounts)
-		assert.Empty(t, movement.DestinationAccounts)
-		require.NotNil(t, movement.MintRecord)
-		assert.Equal(t, mintRequest.Quantity, movement.MintRecord.Quantity)
-		assert.Equal(t, uint64(mintRequest.Quantity), movement.MintRecord.Supply)
-		assert.Equal(t, mintRequest.Comment, movement.MintRecord.Comment)
+		require.Len(t, response.Movements, 5)
+
+		burnMove := &response.Movements[0]
+		assert.Empty(t, burnMove.SourceAccounts)
+		assert.Empty(t, burnMove.DestinationAccounts)
+		require.NotNil(t, burnMove.MintRecord)
+		assert.Equal(t, burnRequest.Quantity, burnMove.MintRecord.Quantity)
+		assert.Equal(t, mintRequest.Quantity-burnRequest.Quantity, burnMove.MintRecord.Supply)
+		assert.Equal(t, burnRequest.Comment, burnMove.MintRecord.Comment)
+		assert.Equal(t, burnRequest.Burn, burnMove.MintRecord.Burn)
+
+		mintMove := &response.Movements[4]
+		assert.Empty(t, mintMove.SourceAccounts)
+		assert.Empty(t, mintMove.DestinationAccounts)
+		require.NotNil(t, mintMove.MintRecord)
+		assert.Equal(t, mintRequest.Quantity, mintMove.MintRecord.Quantity)
+		assert.Equal(t, mintRequest.Quantity, mintMove.MintRecord.Supply)
+		assert.Equal(t, mintRequest.Comment, mintMove.MintRecord.Comment)
+		assert.Equal(t, mintRequest.Burn, mintMove.MintRecord.Burn)
 	})
 
 	t.Run("error: owner does not exists", func(t *testing.T) {

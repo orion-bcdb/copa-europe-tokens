@@ -177,7 +177,8 @@ type FungibleDeployResponse struct {
 type FungibleDescribeResponse FungibleDeployResponse
 
 type FungibleMintRequest struct {
-	Quantity int64  `json:"quantity"` // the quantity of tokens added/burnt to the supply
+	Burn     bool   `json:"burn"`     // if true, the requested quantity will be burnt instead of minted
+	Quantity uint64 `json:"quantity"` // the quantity of tokens added/burnt to the supply
 	Comment  string `json:"comment"`  // a free form description of the operation
 }
 
@@ -259,7 +260,8 @@ type FungibleOutgoingTxAccountRecord struct {
 
 type FungibleMintTxRecord struct {
 	Supply   uint64 `json:"supply"`   // the total supply of the token after this tx
-	Quantity int64  `json:"quantity"` // the tx minted/burnt quantity
+	Burn     bool   `json:"burn"`     // if true, the tx burnt tokens instead of minting them
+	Quantity uint64 `json:"quantity"` // the tx minted/burnt quantity
 	Comment  string `json:"comment"`  // a free form description of the operation (the mint's description)
 }
 

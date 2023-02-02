@@ -1311,27 +1311,21 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 		return nil, err
 	}
 
-	if request.Quantity > 0 {
-		q := uint64(request.Quantity)
-		if isAddOverflow64(reserve.Supply, q) {
+	if !request.Burn {
+		if isAddOverflow64(reserve.Supply, request.Quantity) {
 			return nil, common.NewErrInvalid("cannot mint due to supply overflow.")
 		}
 		// The balance does not overflow because it is equal or less than the supply
-		reserve.Balance += q
-		reserve.Supply += q
+		reserve.Balance += request.Quantity
+		reserve.Supply += request.Quantity
 
 	} else {
-		// Regarding the corner case where request.Quantity == MinInt64 == -1<<63:
-		// Theoretically, this case causes an overflow because: -MinInt64 = 1<<63 > 1<<63-1 = MaxInt64.
-		// But in practice, the binary representation of -1<<63 is identical to 1<<63,
-		// and the two's complement of 1<<63 is also 1<<63, so it produces the correct outcome.
-		q := uint64(-request.Quantity)
-		if reserve.Balance < q {
+		if reserve.Balance < request.Quantity {
 			return nil, common.NewErrInvalid("cannot burn due to insufficient balance.")
 		}
 		// The supply is sufficient because it is equal or grater than the balance
-		reserve.Balance -= q
-		reserve.Supply -= q
+		reserve.Balance -= request.Quantity
+		reserve.Supply -= request.Quantity
 	}
 	reserve.LastMintRequest = request
 
@@ -1617,6 +1611,7 @@ func (m *Manager) FungibleMovements(typeId string, owner string, limit int64, st
 			}
 			movement.MintRecord = &types.FungibleMintTxRecord{
 				Supply:   reserveDesc.Supply,
+				Burn:     reserveDesc.LastMintRequest.Burn,
 				Quantity: reserveDesc.LastMintRequest.Quantity,
 				Comment:  reserveDesc.LastMintRequest.Comment,
 			}
