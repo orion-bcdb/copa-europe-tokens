@@ -1297,7 +1297,7 @@ func (m *Manager) FungibleDescribe(typeId string) (*types.FungibleDescribeRespon
 
 func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMintRequest) (*types.FungibleMintResponse, error) {
 	if request.Quantity == 0 {
-		return nil, common.NewErrInvalid("Quantity must be a positive integer (quantity > 0).")
+		return nil, common.NewErrInvalid("quantity must be a non-zero integer.")
 	}
 
 	ctx, err := newTxContext(m).fungible(typeId)
@@ -1311,12 +1311,22 @@ func (m *Manager) FungiblePrepareMint(typeId string, request *types.FungibleMint
 		return nil, err
 	}
 
-	if isAddOverflow64(reserve.Supply, request.Quantity) {
-		return nil, common.NewErrInvalid("cannot mint due to supply overflow.")
+	if !request.Burn {
+		if isAddOverflow64(reserve.Supply, request.Quantity) {
+			return nil, common.NewErrInvalid("cannot mint due to supply overflow.")
+		}
+		// The balance does not overflow because it is equal or less than the supply
+		reserve.Balance += request.Quantity
+		reserve.Supply += request.Quantity
+
+	} else {
+		if reserve.Balance < request.Quantity {
+			return nil, common.NewErrInvalid("cannot burn due to insufficient balance.")
+		}
+		// The supply is sufficient because it is equal or grater than the balance
+		reserve.Balance -= request.Quantity
+		reserve.Supply -= request.Quantity
 	}
-	// The balance never overflows because the total supply cannot exceed max uint64
-	reserve.Balance += request.Quantity
-	reserve.Supply += request.Quantity
 	reserve.LastMintRequest = request
 
 	if err = ctx.putReserveAccount(reserve); err != nil {
@@ -1601,6 +1611,7 @@ func (m *Manager) FungibleMovements(typeId string, owner string, limit int64, st
 			}
 			movement.MintRecord = &types.FungibleMintTxRecord{
 				Supply:   reserveDesc.Supply,
+				Burn:     reserveDesc.LastMintRequest.Burn,
 				Quantity: reserveDesc.LastMintRequest.Quantity,
 				Comment:  reserveDesc.LastMintRequest.Comment,
 			}
