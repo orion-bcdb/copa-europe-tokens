@@ -1,5 +1,5 @@
-ARG GO_VER=1.16.9
-ARG ALPINE_VER=3.13
+ARG GO_VER=1.19.4
+ARG ALPINE_VER=3.17
 
 FROM alpine:${ALPINE_VER} as copa-tokens-base
 RUN apk add --no-cache tzdata
