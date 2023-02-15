@@ -2924,6 +2924,17 @@ func (e *offerTestEnv) balance(t *testing.T, user string) uint64 {
 	return balance
 }
 
+func (e *offerTestEnv) movements(t *testing.T, user string) int {
+	movements, err := e.manager.FungibleMovements(e.typeIds["fung"], user, 0, "")
+	require.NoError(t, err, "failed getting %s movements", user)
+
+	fmt.Printf(">>> %s moves (%d) \n", user, len(movements.Movements))
+	for i, v := range movements.Movements {
+		fmt.Printf(">>> %d> %+v \n", i, v)
+	}
+	return len(movements.Movements)
+}
+
 func (e *offerTestEnv) getOffers(owner string) (string, string) {
 	var testOfferId string
 	var freeOfferId string
@@ -3205,6 +3216,7 @@ func TestTokensManager_OfferBuy(t *testing.T) {
 	t.Run("success: everyone is buying everything (3 times)", func(t *testing.T) {
 		for _, u := range env.users {
 			balance := env.balance(t, u)
+			expectedMoves := 1 // the incoming transfer from the reserve
 			for assetOwner, assets := range env.assetIds {
 				for _, assetId := range assets {
 					for offerId, offerRecord := range env.assetOffers[assetId] {
@@ -3218,6 +3230,7 @@ func TestTokensManager_OfferBuy(t *testing.T) {
 							newBalance := env.balance(t, u)
 							assert.Equal(t, int(balance-offerRecord.Price), int(newBalance))
 							balance = newBalance
+							expectedMoves++
 
 							record, err := env.manager.GetToken(b.TokenId)
 							require.NoError(t, err)
@@ -3236,6 +3249,8 @@ func TestTokensManager_OfferBuy(t *testing.T) {
 					}
 				}
 			}
+			//numMovements := env.movements(t, u)
+			//assert.Equal(t, expectedMoves, numMovements)
 		}
 	})
 

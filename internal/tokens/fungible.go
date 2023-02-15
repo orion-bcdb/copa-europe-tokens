@@ -352,13 +352,22 @@ func (ctx *FungibleTxContext) getMovementTxOperations(owner string, ver *orionty
 	if len(env.Payload.DbOperations) == 0 {
 		return nil, common.NewErrInternal("movement TX referred to a data tx that had no modifications")
 	}
-	if len(env.Payload.DbOperations) > 1 {
-		return nil, common.NewErrInternal("movement TX referred to a data tx that modified more than one token type")
+
+	// A TX may include operations on multiple databases, e.g. buying from an offer will entail transferring fungible
+	// tokens on this (ctx.dbName) fungible database, as well as changing ownership or minting on an NFT database.
+	var dbOp *oriontypes.DBOperation
+	for _, op := range env.Payload.DbOperations {
+		if op.DbName == ctx.dbName {
+			dbOp = op
+			break
+		}
 	}
-	dbOp := env.Payload.DbOperations[0]
-	if dbOp.DbName != ctx.dbName {
-		return nil, common.NewErrInternal("movement TX referred to a data tx that modified the wrong token type")
+
+	if dbOp == nil {
+		ctx.lg.Errorf("movement TX referred to a data tx that had no operations on the fungible token type: %s; DB-ops %+v", ctx.dbName, env.Payload.DbOperations)
+		return nil, common.NewErrInternal("movement TX referred to a data tx that had no operations on the fungible token type: %s", ctx.dbName)
 	}
+
 	ret := &OwnerAccountOperation{
 		ownerRead:   map[string]*oriontypes.DataRead{},
 		ownerWrite:  map[string]*oriontypes.DataWrite{},
