@@ -984,7 +984,7 @@ func TestTokensServer(t *testing.T) {
 	})
 
 	t.Run("Rights offer", func(t *testing.T) {
-		var typeId string
+		var offersTypeId string
 		deployRequest := types.DeployRequest{
 			Name:        "Offers test",
 			Description: "Offers test description",
@@ -1000,7 +1000,7 @@ func TestTokensServer(t *testing.T) {
 				http.StatusCreated,
 			)
 			require.NotEmpty(t, response.TypeId)
-			typeId = response.TypeId
+			offersTypeId = response.TypeId
 			assert.Equal(t, deployRequest.Name, response.Name)
 			assert.Equal(t, deployRequest.Description, response.Description)
 			lg.Infof("Rights offer deploy resp: %v", response)
@@ -1009,7 +1009,7 @@ func TestTokensServer(t *testing.T) {
 		})
 
 		t.Run("get-types", func(t *testing.T) {
-			require.NotEmpty(t, typeId)
+			require.NotEmpty(t, offersTypeId)
 			var response []types.TokenDescription
 			env.testGetRequest(t,
 				constants.TokensTypesEndpoint,
@@ -1020,13 +1020,13 @@ func TestTokensServer(t *testing.T) {
 			for i, token := range response {
 				tokenTypes[i] = token.TypeId
 			}
-			assert.Contains(t, tokenTypes, typeId)
+			assert.Contains(t, tokenTypes, offersTypeId)
 		})
 
 		var offerId string
 		var offerRecord types.RightsOfferRecord
 		t.Run("mint and get", func(t *testing.T) {
-			require.NotEmpty(t, typeId)
+			require.NotEmpty(t, offersTypeId)
 			require.NotEmpty(t, fungibleTypeId)
 
 			mintReq := types.RightsOfferMintRequest{
@@ -1040,7 +1040,7 @@ func TestTokensServer(t *testing.T) {
 			}
 			mintResp := tokens.RightsOfferResponse{}
 			env.testRightsPostSignAndSubmit(t,
-				common.URLForType(constants.RightsOfferMint, typeId),
+				common.URLForType(constants.RightsOfferMint, offersTypeId),
 				&mintReq,
 				&mintResp,
 				http.StatusOK,
@@ -1167,7 +1167,7 @@ func TestTokensServer(t *testing.T) {
 			require.NotEmpty(t, offerId)
 			var offers []types.RightsOfferRecord
 			env.testGetRequestWithQuery(t,
-				common.URLForType(constants.RightsOfferQuery, typeId),
+				common.URLForType(constants.RightsOfferQuery, offersTypeId),
 				url.Values{"asset": []string{offerRecord.Asset}}.Encode(),
 				&offers,
 			)
@@ -1179,7 +1179,7 @@ func TestTokensServer(t *testing.T) {
 			require.NotEmpty(t, offerId)
 			var offers []types.RightsOfferRecord
 			env.testGetRequestWithQuery(t,
-				common.URLForType(constants.RightsOfferQuery, typeId),
+				common.URLForType(constants.RightsOfferQuery, offersTypeId),
 				url.Values{"owner": []string{"bob"}}.Encode(),
 				&offers,
 			)
@@ -1191,12 +1191,74 @@ func TestTokensServer(t *testing.T) {
 			require.NotEmpty(t, offerId)
 			var offers []types.RightsOfferRecord
 			env.testGetRequestWithQuery(t,
-				common.URLForType(constants.RightsOfferQuery, typeId),
+				common.URLForType(constants.RightsOfferQuery, offersTypeId),
 				url.Values{"owner": []string{"bob"}, "asset": []string{offerRecord.Asset}}.Encode(),
 				&offers,
 			)
 			assert.Len(t, offers, 1)
 			assert.Equal(t, offerRecord, offers[0])
+		})
+
+		t.Run("movements of bob after charlie bought, before consolidation", func(t *testing.T) {
+			var movementResponse types.FungibleMovementsResponse
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.FungibleMovements, fungibleTypeId),
+				url.Values{"owner": []string{"bob"}, "limit": []string{"100"}}.Encode(),
+				&movementResponse,
+			)
+			assert.Equal(t, fungibleTypeId, movementResponse.TypeId)
+			assert.Equal(t, "bob", movementResponse.Owner)
+			assert.Empty(t, movementResponse.NextStartToken)
+			for i, v := range movementResponse.Movements {
+				fmt.Printf(">>> bob mv %d: %+v \n", i, v)
+			}
+			assert.Empty(t, movementResponse.Movements)
+		})
+
+		t.Run("movements of bob after charlie bought, after consolidation", func(t *testing.T) {
+			request := types.FungibleConsolidateRequest{
+				Owner: "bob",
+			}
+			response := tokens.FungibleConsolidateResponse{}
+			env.testPostSignAndSubmit(t,
+				common.URLForType(constants.FungibleConsolidate, fungibleTypeId),
+				&request,
+				&response,
+				http.StatusOK,
+				signerBob,
+			)
+			assert.Equal(t, fungibleTypeId, response.TypeId)
+			assert.Equal(t, request.Owner, response.Owner)
+
+			var movementResponse types.FungibleMovementsResponse
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.FungibleMovements, fungibleTypeId),
+				url.Values{"owner": []string{"bob"}, "limit": []string{"100"}}.Encode(),
+				&movementResponse,
+			)
+			assert.Equal(t, fungibleTypeId, movementResponse.TypeId)
+			assert.Equal(t, "bob", movementResponse.Owner)
+			assert.Empty(t, movementResponse.NextStartToken)
+			for i, v := range movementResponse.Movements {
+				fmt.Printf(">>> bob mv %d: %+v \n", i, v)
+			}
+			assert.Equal(t, 1, len(movementResponse.Movements))
+		})
+
+		t.Run("movements of charlie after buying from bob's offer", func(t *testing.T) {
+			var movementResponse types.FungibleMovementsResponse
+			env.testGetRequestWithQuery(t,
+				common.URLForType(constants.FungibleMovements, fungibleTypeId),
+				url.Values{"owner": []string{"charlie"}, "limit": []string{"100"}}.Encode(),
+				&movementResponse,
+			)
+			assert.Equal(t, fungibleTypeId, movementResponse.TypeId)
+			assert.Equal(t, "charlie", movementResponse.Owner)
+			assert.Empty(t, movementResponse.NextStartToken)
+			for i, v := range movementResponse.Movements {
+				fmt.Printf(">>> charlie mv %d: %+v \n", i, v)
+			}
+			assert.Equal(t, 4, len(movementResponse.Movements))
 		})
 	})
 
