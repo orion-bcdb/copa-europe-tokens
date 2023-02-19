@@ -3249,8 +3249,8 @@ func TestTokensManager_OfferBuy(t *testing.T) {
 					}
 				}
 			}
-			//numMovements := env.movements(t, u)
-			//assert.Equal(t, expectedMoves, numMovements)
+			numMovements := env.movements(t, u)
+			assert.Equal(t, expectedMoves, numMovements)
 		}
 	})
 
