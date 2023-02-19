@@ -494,7 +494,7 @@ func (m *Manager) PrepareTransfer(tokenId string, transferRequest *types.Transfe
 		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
 	}
 
-	payloadBytes, err := marshal.DefaultMarshaler().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	payloadBytes, err := marshal.DefaultMarshaller().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
 	}
@@ -578,7 +578,7 @@ func (m *Manager) PrepareUpdate(tokenId string, updateRequest *types.UpdateReque
 		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
 	}
 
-	payloadBytes, err := marshal.DefaultMarshaler().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	payloadBytes, err := marshal.DefaultMarshaller().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
 	}
@@ -837,7 +837,7 @@ func (m *Manager) PrepareRegister(tokenTypeId string, registerRequest *types.Ann
 		return nil, errors.Wrap(err, "failed to proto.Marshal Tx envelope")
 	}
 
-	payloadBytes, err := marshal.DefaultMarshaler().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	payloadBytes, err := marshal.DefaultMarshaller().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to json.Marshal DataTx")
 	}

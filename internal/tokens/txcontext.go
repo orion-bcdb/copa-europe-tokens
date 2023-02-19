@@ -185,7 +185,7 @@ func (ctx *TxContext) Prepare() error {
 		return errors.Wrap(err, "failed to proto.Marshal Tx envelope")
 	}
 
-	payloadBytes, err := marshal.DefaultMarshaler().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
+	payloadBytes, err := marshal.DefaultMarshaller().Marshal(txEnv.(*oriontypes.DataTxEnvelope).Payload)
 	if err != nil {
 		return errors.Wrap(err, "failed to json.Marshal DataTx")
 	}
